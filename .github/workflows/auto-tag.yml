@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'charts/nullify-k8s-collector/Chart.yaml'
+      - 'aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml'
 
 jobs:
   tag-release:
@@ -18,7 +18,7 @@ jobs:
     - name: Get Chart Version
       id: chart-version
       run: |
-        version=$(grep '^version:' charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
+        version=$(grep '^version:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
         echo "version=$version" >> $GITHUB_OUTPUT
         echo "tag=v$version" >> $GITHUB_OUTPUT
 
@@ -38,8 +38,8 @@ jobs:
         git config user.email "github-actions[bot]@users.noreply.github.com"
         
         # Create annotated tag with chart information
-        app_version=$(grep '^appVersion:' charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
-        description=$(grep '^description:' charts/nullify-k8s-collector/Chart.yaml | cut -d':' -f2- | xargs)
+        app_version=$(grep '^appVersion:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
+        description=$(grep '^description:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | cut -d':' -f2- | xargs)
         
         git tag -a ${{ steps.chart-version.outputs.tag }} -m "Release ${{ steps.chart-version.outputs.tag }} - Chart Version: ${{ steps.chart-version.outputs.version }}"
         git push origin ${{ steps.chart-version.outputs.tag }}
@@ -70,6 +70,6 @@ jobs:
           
           - [Installation Guide](https://github.com/${{ github.repository }}/blob/main/README.md)
           - [Security Guidelines](https://github.com/${{ github.repository }}/blob/main/SECURITY.md)
-          - [Chart Values](https://github.com/${{ github.repository }}/blob/main/charts/nullify-k8s-collector/values.yaml)
+          - [Chart Values](https://github.com/${{ github.repository }}/blob/main/aws-integration-setup/charts/nullify-k8s-collector/values.yaml)
         draft: false
         prerelease: false 
