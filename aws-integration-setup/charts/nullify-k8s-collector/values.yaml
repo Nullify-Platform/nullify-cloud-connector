@@ -40,7 +40,6 @@ collector:
     s3:
         # S3 bucket name (provided by Nullify support)
         bucket: "YOUR-NULLIFY-S3-BUCKET"  # Replace with actual bucket from Nullify support/UI
-        # Key prefix for storing collected data
         keyPrefix: k8s-collector
     
     # CronJob schedule (daily at midnight UTC)
