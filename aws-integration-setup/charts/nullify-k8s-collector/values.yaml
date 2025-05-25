@@ -1,0 +1,93 @@
+# Default values for nullify-k8s-collector
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Cluster-level permissions
+clusterRole:
+    create: true
+    name: nullify-k8s-collector-role
+clusterRoleBinding:
+    create: true
+    name: nullify-k8s-collector-binding
+
+# Main collector configuration
+collector:
+    # Enable/disable the collector
+    enabled: true
+    
+    # AWS configuration
+    aws:
+        # AWS region where your EKS cluster is deployed
+        region: us-east-1  # Change to your preferred region
+    
+    # Container image configuration
+    image:
+        # Official Nullify k8s-collector image
+        repository: public.ecr.aws/w4o2j2x4/integrations
+        tag: k8s-collector-latest
+        pullPolicy: Always
+    
+    # Resource limits and requests
+    resources:
+        limits:
+            cpu: 200m
+            memory: 256Mi
+        requests:
+            cpu: 100m
+            memory: 128Mi
+    
+    # S3 configuration (values provided by Nullify)
+    s3:
+        # S3 bucket name (provided by Nullify support)
+        bucket: "YOUR-NULLIFY-S3-BUCKET"  # Replace with actual bucket from Nullify support/UI
+        # Key prefix for storing collected data
+        keyPrefix: k8s-collector
+    
+    # CronJob schedule (daily at midnight UTC)
+    schedule: "0 0 * * *"
+    
+    # Security context for the container
+    securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+            drop:
+                - ALL
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+    
+    # Data collection configuration (optional)
+    dataCollection:
+        # Exclude specific namespaces (comma-separated)
+        # excludeNamespaces: "kube-system,kube-public"
+        
+        # Include only specific resources (comma-separated)
+        # includeResources: "pods,services,deployments"
+        
+        # Collect only metadata (no sensitive data)
+        # metadataOnly: true
+
+# Helm chart naming overrides
+fullnameOverride: ""
+nameOverride: ""
+
+# Namespace configuration
+namespace:
+    annotations: {}
+    create: true
+    requireNamespace: false
+
+# Node selector for pod placement
+nodeSelector: {}
+
+# Service account configuration (for IRSA)
+serviceAccount:
+    # Annotations for IAM Role for Service Accounts (IRSA)
+    annotations:
+        # Format: arn:aws:iam::ACCOUNT-ID:role/ROLE-NAME
+        eks.amazonaws.com/role-arn: "arn:aws:iam::NULLIFY-ACCOUNT:role/YOUR-NULLIFY-ROLE-NAME"
+    create: true
+    name: nullify-k8s-collector-sa
+    namespace: nullify
+
+# Pod tolerations
+tolerations: []

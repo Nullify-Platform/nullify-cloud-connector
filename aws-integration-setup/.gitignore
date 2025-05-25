@@ -1,0 +1,168 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars.json
+crash.log
+*.tfvars.backup
+
+# CloudFormation
+*.template
+aws-exports.js
+
+# Helm - Production Values (NEVER COMMIT THESE)
+values-production.yaml
+values-prod.yaml
+values-staging.yaml
+values-dev.yaml
+*-values.yaml
+!values-example.yaml
+charts/*/charts
+charts/*/Chart.lock
+*.tgz
+
+# Secrets and credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+secrets.yaml
+*secret*
+*password*
+*credential*
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Backup files
+*.backup
+*.bak
+*.orig
+
+# Package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# AWS specific
+.aws/
+aws-cli.log
+
+# --- Security: Sensitive Configuration Files ---
+# These files may contain sensitive information and should NEVER be committed
+terraform.tfvars
+*.tfvars
+!*.tfvars.example
+secrets.yaml
+*.env
+.env
+config.yaml
+config.yml
+
+# --- Terraform Files ---
+# Compiled files
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Variable files (may contain sensitive data)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Terraform module and plugin cache
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan files
+*.tfplan
+
+# --- CloudFormation ---
+# Parameter files that may contain sensitive data
+*-parameters.json
+*-parameters.yaml
+*-parameters.yml
+
+# --- Kubernetes ---
+# Secret manifests
+*-secrets.yaml
+*-secrets.yml
+
+# Kubeconfig files
+kubeconfig
+.kubeconfig
+*.kubeconfig
+
+# --- General ---
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# --- Helm ---
+# Dependency charts
+charts/*/charts/
+charts/*/Chart.lock
+
+# Values files that may contain sensitive data
+*-values-secret.yaml
+*-values-secret.yml
+values-secret.yaml
+values-secret.yml 

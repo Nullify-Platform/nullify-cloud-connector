@@ -1,0 +1,57 @@
+Thank you for installing {{ .Chart.Name }}!
+
+The Nullify Kubernetes collector has been deployed as a CronJob and will collect information
+about your cluster resources to help identify security vulnerabilities.
+
+## IMPORTANT SECURITY INFORMATION
+This collector gathers information about your Kubernetes cluster and stores it in an S3 bucket.
+The data collected includes (but is not limited to):
+- Cluster metadata
+- Namespaces 
+- Workloads (Pods, Deployments, StatefulSets, DaemonSets, etc.)
+- Service configuration
+- Network policies
+- RBAC configuration (Roles, RoleBindings, ServiceAccounts)
+- PersistentVolumes and PersistentVolumeClaims
+
+## Configuration
+- S3 Bucket: {{ .Values.collector.s3.bucket }}
+- S3 Key Prefix: {{ .Values.collector.s3.keyPrefix }}
+- AWS Region: {{ .Values.collector.aws.region }}
+- Schedule: {{ .Values.collector.schedule }}
+
+{{- if .Values.collector.dataCollection.excludeNamespaces }}
+- Excluded Namespaces: {{ .Values.collector.dataCollection.excludeNamespaces }}
+{{- end }}
+
+{{- if .Values.collector.dataCollection.metadataOnly }}
+- Collection Mode: Metadata only (no resource content)
+{{- else }}
+- Collection Mode: Full resource data
+{{- end }}
+
+{{- if (index .Values.serviceAccount.annotations "eks.amazonaws.com/role-arn") }}
+- IAM Role: {{ index .Values.serviceAccount.annotations "eks.amazonaws.com/role-arn" }}
+{{- else }}
+NOTE: No IAM role was specified for the ServiceAccount. Make sure the collector 
+has necessary AWS credentials through other means (instance profile, environment variables, etc.)
+{{- end }}
+
+## Required AWS Permissions
+The IAM role or credentials used by the collector need these permissions(Will already be installed as a part of Nullify's IAM Resources):
+- s3:PutObject
+- s3:GetObject
+- s3:ListBucket
+
+## Useful Commands
+You can verify the CronJob is created with:
+  kubectl -n {{ .Values.serviceAccount.namespace }} get cronjob {{ include "k8s-collector.name" . }}
+
+To check when the job is scheduled to run next:
+  kubectl -n {{ .Values.serviceAccount.namespace }} get cronjob {{ include "k8s-collector.name" . }} -o wide
+
+To check logs from the most recent job run:
+  kubectl -n {{ .Values.serviceAccount.namespace }} logs job/$(kubectl -n {{ .Values.serviceAccount.namespace }} get jobs --sort-by=.metadata.creationTimestamp -l app.kubernetes.io/name={{ include "k8s-collector.name" . }} -o jsonpath="{.items[-1].metadata.name}")
+
+To run the job manually:
+  kubectl -n {{ .Values.serviceAccount.namespace }} create job --from=cronjob/{{ include "k8s-collector.name" . }} {{ include "k8s-collector.name" . }}-manual-$(date +%s) 

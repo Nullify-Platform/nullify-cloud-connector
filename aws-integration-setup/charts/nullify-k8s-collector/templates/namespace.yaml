@@ -1,0 +1,16 @@
+{{- if .Values.namespace.create -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.serviceAccount.namespace }}
+  labels:
+    {{- include "k8s-info-collector.labels" . | nindent 4 }}
+    app.kubernetes.io/component: namespace
+  annotations:
+    # Add Helm hooks to ensure namespace is created at the beginning of the installation
+    "helm.sh/hook": "pre-install"
+    "helm.sh/hook-weight": "-10"
+    {{- with .Values.namespace.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

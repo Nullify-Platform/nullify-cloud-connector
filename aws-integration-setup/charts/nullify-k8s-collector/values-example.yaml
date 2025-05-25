@@ -1,0 +1,55 @@
+# Example values for nullify-k8s-collector
+# Copy this file to values-production.yaml and fill in your actual values
+# DO NOT commit values-production.yaml to version control
+
+# Basic configuration
+collector:
+  # Your AWS region
+  aws:
+    region: "us-west-2"  # Change to your EKS cluster region
+  
+  # S3 configuration (provided by Nullify support/UI)
+  s3:
+    bucket: "your-actual-nullify-bucket"  # Get this from Nullify support/UI
+    keyPrefix: "k8s-collector"
+  
+  # Optional: Custom collection schedule (default is daily at midnight)
+  schedule: "0 2 * * *"  # 2 AM UTC daily
+  
+  # Optional: Data collection filters
+  dataCollection:
+    # Exclude sensitive namespaces
+    excludeNamespaces: "kube-system,kube-public,cert-manager"
+    
+    # Collect only specific resource types (optional)
+    # includeResources: "pods,services,deployments,configmaps"
+    
+    # Metadata only mode for sensitive environments
+    # metadataOnly: true
+
+# Service account with IRSA configuration
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-YourCompany-NullifyReadOnlyRole"
+    namespace: "nullify"
+
+# Optional: Resource constraints for production
+collector:
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+
+# Optional: Node placement
+nodeSelector:
+  node-type: "system"
+
+# Optional: Tolerations for dedicated nodes
+tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "system"
+    effect: "NoSchedule" 

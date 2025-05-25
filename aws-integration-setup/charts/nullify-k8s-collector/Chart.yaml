@@ -1,0 +1,13 @@
+apiVersion: v2
+name: k8s-collector
+description: A Helm chart for Nullify's Kubernetes information collector for cloud security scanning
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Nullify
+    url: https://nullify.ai
+keywords:
+  - security
+  - kubernetes
+  - scanning 

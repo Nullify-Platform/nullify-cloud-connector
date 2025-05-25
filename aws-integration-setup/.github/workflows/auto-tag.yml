@@ -1,0 +1,75 @@
+name: Auto Tag Release
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'charts/nullify-k8s-collector/Chart.yaml'
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get Chart Version
+      id: chart-version
+      run: |
+        version=$(grep '^version:' charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "tag=v$version" >> $GITHUB_OUTPUT
+
+    - name: Check if tag exists
+      id: check-tag
+      run: |
+        if git tag | grep -q "^${{ steps.chart-version.outputs.tag }}$"; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create Tag
+      if: steps.check-tag.outputs.exists == 'false'
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Create annotated tag with chart information
+        app_version=$(grep '^appVersion:' charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
+        description=$(grep '^description:' charts/nullify-k8s-collector/Chart.yaml | cut -d':' -f2- | xargs)
+        
+        git tag -a ${{ steps.chart-version.outputs.tag }} -m "Release ${{ steps.chart-version.outputs.tag }} - Chart Version: ${{ steps.chart-version.outputs.version }}"
+        git push origin ${{ steps.chart-version.outputs.tag }}
+
+    - name: Create GitHub Release
+      if: steps.check-tag.outputs.exists == 'false'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.chart-version.outputs.tag }}
+        release_name: Nullify K8s Collector ${{ steps.chart-version.outputs.tag }}
+        body: |
+          ## Nullify Kubernetes Collector Release ${{ steps.chart-version.outputs.tag }}
+          
+          ### 📊 Chart Information
+          - **Chart Version**: ${{ steps.chart-version.outputs.version }}
+          
+          ### 🚀 Installation
+          
+          ```bash
+          helm repo add nullify https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          helm repo update
+          helm install nullify-collector nullify/k8s-collector --version ${{ steps.chart-version.outputs.version }}
+          ```
+          
+          ### 📚 Documentation
+          
+          - [Installation Guide](https://github.com/${{ github.repository }}/blob/main/README.md)
+          - [Security Guidelines](https://github.com/${{ github.repository }}/blob/main/SECURITY.md)
+          - [Chart Values](https://github.com/${{ github.repository }}/blob/main/charts/nullify-k8s-collector/values.yaml)
+        draft: false
+        prerelease: false 

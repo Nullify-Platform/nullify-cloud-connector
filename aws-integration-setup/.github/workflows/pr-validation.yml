@@ -1,0 +1,142 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'charts/**'
+      - 'docs/**'
+      - '.github/workflows/**'
+
+jobs:
+  validate-chart:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.14.0
+
+    - name: Lint Helm Chart
+      run: |
+        echo "🔍 Linting Helm chart..."
+        helm lint charts/nullify-k8s-collector
+
+    - name: Validate Helm Templates
+      run: |
+        echo "🔍 Validating Helm templates..."
+        helm template test-release charts/nullify-k8s-collector \
+          --set collector.s3.bucket="test-bucket" \
+          --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/test-role" \
+          --debug
+
+    - name: Test Chart Installation (dry-run)
+      run: |
+        echo "🔍 Testing chart installation..."
+        helm install test-release charts/nullify-k8s-collector \
+          --set collector.s3.bucket="test-bucket" \
+          --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/test-role" \
+          --dry-run --debug
+
+  security-check:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Check for sensitive data
+      run: |
+        echo "🔍 Checking for sensitive data..."
+        
+        # Check for real AWS account IDs (but allow example ones)
+        if grep -r "arn:aws:iam::[0-9]\{12\}:role/" charts/ --exclude-dir=.git | grep -v "123456789012" | grep -v "NULLIFY-ACCOUNT" | grep -v "YOUR-ACCOUNT"; then
+          echo "❌ Found potentially real AWS ARN in chart files"
+          exit 1
+        fi
+        
+        # Check for real Nullify bucket names
+        if grep -r "nullify-.*-death-star" charts/ --exclude-dir=.git; then
+          echo "❌ Found real Nullify bucket names in chart files"
+          exit 1
+        fi
+        
+        # Check for common secrets
+        if grep -ri "password\|secret\|key" charts/ --exclude-dir=.git | grep -v "YOUR-" | grep -v "NULLIFY-" | grep -v "example" | grep -v "placeholder"; then
+          echo "⚠️  Found potential secrets - please review:"
+          grep -ri "password\|secret\|key" charts/ --exclude-dir=.git | grep -v "YOUR-" | grep -v "NULLIFY-" | grep -v "example" | grep -v "placeholder"
+        fi
+        
+        echo "✅ Security check completed"
+
+    - name: Validate documentation
+      run: |
+        echo "🔍 Checking documentation..."
+        
+        # Check that README files exist
+        if [ ! -f "README.md" ]; then
+          echo "❌ Main README.md not found"
+          exit 1
+        fi
+        
+        if [ ! -f "SECURITY.md" ]; then
+          echo "❌ SECURITY.md not found"
+          exit 1
+        fi
+        
+        # Check for placeholder values in docs
+        if grep -r "YOUR-NULLIFY-S3-BUCKET" . --exclude-dir=.git --exclude-dir=charts; then
+          echo "❌ Found placeholder values in documentation"
+          exit 1
+        fi
+        
+        echo "✅ Documentation validation passed"
+
+  chart-testing:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.14.0
+
+    - name: Set up chart-testing
+      uses: helm/chart-testing-action@v2.6.1
+
+    - name: Run chart-testing (list-changed)
+      id: list-changed
+      run: |
+        changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+        if [[ -n "$changed" ]]; then
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Run chart-testing (lint)
+      if: steps.list-changed.outputs.changed == 'true'
+      run: ct lint --target-branch ${{ github.event.repository.default_branch }}
+
+    - name: Create kind cluster
+      if: steps.list-changed.outputs.changed == 'true'
+      uses: helm/kind-action@v1.10.0
+
+    - name: Run chart-testing (install)
+      if: steps.list-changed.outputs.changed == 'true'
+      run: |
+        # Create test values
+        cat > test-values.yaml << EOF
+        collector:
+          s3:
+            bucket: "test-bucket"
+        serviceAccount:
+          annotations:
+            eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/test-role"
+        EOF
+        
+        ct install --target-branch ${{ github.event.repository.default_branch }} --helm-extra-set-args "--values=test-values.yaml" 

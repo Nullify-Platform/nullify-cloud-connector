@@ -1,0 +1,52 @@
+{{- if .Values.collector.enabled -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "k8s-collector.name" . }}
+  namespace: {{ .Values.serviceAccount.namespace }}
+  labels:
+    {{- include "k8s-collector.labels" . | nindent 4 }}
+spec:
+  schedule: "{{ .Values.collector.schedule }}"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: "Forbid"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "k8s-collector.selectorLabels" . | nindent 12 }}
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          containers:
+          - name: collector
+            image: "{{ .Values.collector.image.repository }}:{{ .Values.collector.image.tag }}"
+            imagePullPolicy: {{ .Values.collector.image.pullPolicy }}
+            {{- with .Values.collector.securityContext }}
+            securityContext:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+            env:
+            - name: NULLIFY_S3_BUCKET_NAME
+              value: "{{ .Values.collector.s3.bucket }}"
+            - name: NULLIFY_S3_KEY_PREFIX
+              value: "{{ .Values.collector.s3.keyPrefix }}"
+            - name: AWS_REGION
+              value: "{{ .Values.collector.aws.region }}"
+            {{- if .Values.collector.dataCollection.excludeNamespaces }}
+            - name: EXCLUDE_NAMESPACES
+              value: "{{ .Values.collector.dataCollection.excludeNamespaces }}"
+            {{- end }}
+            {{- if .Values.collector.dataCollection.includeResources }}
+            - name: INCLUDE_RESOURCES
+              value: "{{ .Values.collector.dataCollection.includeResources }}"
+            {{- end }}
+            {{- if .Values.collector.dataCollection.metadataOnly }}
+            - name: METADATA_ONLY
+              value: "true"
+            {{- end }}
+            resources:
+              {{- toYaml .Values.collector.resources | nindent 14 }}
+          restartPolicy: OnFailure
+{{- end }} 

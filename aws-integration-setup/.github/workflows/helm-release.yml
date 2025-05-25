@@ -1,0 +1,103 @@
+name: Release Helm Chart
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'charts/**'
+      - '.github/workflows/helm-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Configure Git
+      run: |
+        git config user.name "$GITHUB_ACTOR"
+        git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.14.0
+
+    - name: Add Helm repos (if chart has dependencies)
+      run: |
+        helm repo add bitnami https://charts.bitnami.com/bitnami || true
+        helm repo update || true
+
+    - name: Package Helm Chart
+      run: |
+        # Create docs directory if it doesn't exist
+        mkdir -p docs
+        
+        # Package the chart
+        helm package charts/nullify-k8s-collector -d docs/
+        
+        # Generate/update the index
+        helm repo index docs/ --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./docs
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: v3.14.0
+
+    - name: Validate Helm Chart
+      run: |
+        helm lint charts/nullify-k8s-collector
+        helm template charts/nullify-k8s-collector --debug
+
+    - name: Check for sensitive data
+      run: |
+        echo "🔍 Checking for sensitive data in chart..."
+        
+        # Check for real account IDs, ARNs, bucket names
+        if grep -r "arn:aws:iam::[0-9]\{12\}:role/" charts/ --exclude-dir=.git; then
+          echo "❌ Found real AWS ARN in chart files"
+          exit 1
+        fi
+        
+        if grep -r "nullify-.*-death-star" charts/ --exclude-dir=.git; then
+          echo "❌ Found real Nullify bucket names in chart files"
+          exit 1
+        fi
+        
+        if grep -r "[0-9]\{12\}" charts/ --exclude-dir=.git | grep -v "123456789012"; then
+          echo "❌ Found potential real AWS account ID in chart files"
+          exit 1
+        fi
+        
+        echo "✅ No sensitive data found in chart files" 
