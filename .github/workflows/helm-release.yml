@@ -6,6 +6,8 @@ on:
     paths:
       - 'aws-integration-setup/charts/**'
       - '.github/workflows/helm-release.yml'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +37,46 @@ jobs:
       uses: azure/setup-helm@v4
       with:
         version: v3.14.0
+
+    - name: Determine version
+      id: version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          # Use tag version (remove 'v' prefix)
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using tag version: $VERSION"
+        else
+          # Auto-increment patch version for main branch commits
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          
+          # Parse semantic version
+          IFS='.' read -ra VERSION_PARTS <<< "$LATEST_VERSION"
+          MAJOR=${VERSION_PARTS[0]:-0}
+          MINOR=${VERSION_PARTS[1]:-0}
+          PATCH=${VERSION_PARTS[2]:-0}
+          
+          # Increment patch version
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Auto-incremented version: $LATEST_VERSION -> $NEW_VERSION"
+        fi
+
+    - name: Update Chart version
+      run: |
+        VERSION="${{ steps.version.outputs.version }}"
+        
+        # Update Chart.yaml with new version
+        sed -i "s/^version:.*/version: $VERSION/" aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml
+        
+        # Optionally update appVersion to match
+        sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml
+        
+        echo "Updated Chart.yaml to version $VERSION"
+        cat aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | grep -E "^(version|appVersion):"
 
     - name: Add Helm repos (if chart has dependencies)
       run: |
