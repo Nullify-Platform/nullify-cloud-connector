@@ -54,9 +54,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "k8s-info-collector.serviceAccountName" -}}
+{{- define "k8s-collector.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "k8s-info-collector.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "k8s-collector.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

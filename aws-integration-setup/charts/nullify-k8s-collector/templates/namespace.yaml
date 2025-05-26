@@ -4,7 +4,7 @@ kind: Namespace
 metadata:
   name: {{ .Values.serviceAccount.namespace }}
   labels:
-    {{- include "k8s-info-collector.labels" . | nindent 4 }}
+    {{- include "k8s-collector.labels" . | nindent 4 }}
     app.kubernetes.io/component: namespace
   annotations:
     # Add Helm hooks to ensure namespace is created at the beginning of the installation
