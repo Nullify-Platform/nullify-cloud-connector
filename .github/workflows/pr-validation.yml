@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'charts/**'
+      - 'aws-integration-setup/charts/**'
       - 'docs/**'
       - '.github/workflows/**'
 
@@ -23,12 +23,12 @@ jobs:
     - name: Lint Helm Chart
       run: |
         echo "🔍 Linting Helm chart..."
-        helm lint charts/nullify-k8s-collector
+        helm lint aws-integration-setup/charts/nullify-k8s-collector
 
     - name: Validate Helm Templates
       run: |
         echo "🔍 Validating Helm templates..."
-        helm template test-release charts/nullify-k8s-collector \
+        helm template test-release aws-integration-setup/charts/nullify-k8s-collector \
           --set collector.s3.bucket="test-bucket" \
           --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/test-role" \
           --debug
@@ -36,7 +36,7 @@ jobs:
     - name: Test Chart Installation (dry-run)
       run: |
         echo "🔍 Testing chart installation..."
-        helm install test-release charts/nullify-k8s-collector \
+        helm install test-release aws-integration-setup/charts/nullify-k8s-collector \
           --set collector.s3.bucket="test-bucket" \
           --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/test-role" \
           --dry-run --debug
@@ -52,21 +52,21 @@ jobs:
         echo "🔍 Checking for sensitive data..."
         
         # Check for real AWS account IDs (but allow example ones)
-        if grep -r "arn:aws:iam::[0-9]\{12\}:role/" charts/ --exclude-dir=.git | grep -v "123456789012" | grep -v "NULLIFY-ACCOUNT" | grep -v "YOUR-ACCOUNT"; then
+        if grep -r "arn:aws:iam::[0-9]\{12\}:role/" aws-integration-setup/charts/ --exclude-dir=.git | grep -v "123456789012" | grep -v "NULLIFY-ACCOUNT" | grep -v "YOUR-ACCOUNT"; then
           echo "❌ Found potentially real AWS ARN in chart files"
           exit 1
         fi
         
         # Check for real Nullify bucket names
-        if grep -r "nullify-.*-death-star" charts/ --exclude-dir=.git; then
+        if grep -r "nullify-.*-death-star" aws-integration-setup/charts/ --exclude-dir=.git; then
           echo "❌ Found real Nullify bucket names in chart files"
           exit 1
         fi
         
         # Check for common secrets
-        if grep -ri "password\|secret\|key" charts/ --exclude-dir=.git | grep -v "YOUR-" | grep -v "NULLIFY-" | grep -v "example" | grep -v "placeholder"; then
+        if grep -ri "password\|secret\|key" aws-integration-setup/charts/ --exclude-dir=.git | grep -v "YOUR-" | grep -v "NULLIFY-" | grep -v "example" | grep -v "placeholder"; then
           echo "⚠️  Found potential secrets - please review:"
-          grep -ri "password\|secret\|key" charts/ --exclude-dir=.git | grep -v "YOUR-" | grep -v "NULLIFY-" | grep -v "example" | grep -v "placeholder"
+          grep -ri "password\|secret\|key" aws-integration-setup/charts/ --exclude-dir=.git | grep -v "YOUR-" | grep -v "NULLIFY-" | grep -v "example" | grep -v "placeholder"
         fi
         
         echo "✅ Security check completed"

@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "k8s-info-collector.fullname" . }}-namespace-creator
+  name: {{ include "k8s-collector.fullname" . }}-namespace-creator
   annotations:
     "helm.sh/hook": "pre-install"
     "helm.sh/hook-weight": "-20"
@@ -10,7 +10,7 @@ metadata:
 spec:
   template:
     metadata:
-      name: {{ include "k8s-info-collector.fullname" . }}-namespace-creator
+      name: {{ include "k8s-collector.fullname" . }}-namespace-creator
     spec:
       serviceAccountName: default
       restartPolicy: Never

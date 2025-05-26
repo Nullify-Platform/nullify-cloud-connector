@@ -34,15 +34,15 @@ spec:
               value: "{{ .Values.collector.s3.keyPrefix }}"
             - name: AWS_REGION
               value: "{{ .Values.collector.aws.region }}"
-            {{- if .Values.collector.dataCollection.excludeNamespaces }}
+            {{- if and .Values.collector.dataCollection .Values.collector.dataCollection.excludeNamespaces }}
             - name: EXCLUDE_NAMESPACES
               value: "{{ .Values.collector.dataCollection.excludeNamespaces }}"
             {{- end }}
-            {{- if .Values.collector.dataCollection.includeResources }}
+            {{- if and .Values.collector.dataCollection .Values.collector.dataCollection.includeResources }}
             - name: INCLUDE_RESOURCES
               value: "{{ .Values.collector.dataCollection.includeResources }}"
             {{- end }}
-            {{- if .Values.collector.dataCollection.metadataOnly }}
+            {{- if and .Values.collector.dataCollection .Values.collector.dataCollection.metadataOnly }}
             - name: METADATA_ONLY
               value: "true"
             {{- end }}
