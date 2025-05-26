@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml'
+      - 'helm-charts/nullify-k8s-collector/Chart.yaml'
 
 permissions:
   contents: write
@@ -22,7 +22,7 @@ jobs:
     - name: Get Chart Version
       id: chart-version
       run: |
-        version=$(grep '^version:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
+        version=$(grep '^version:' helm-charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
         echo "version=$version" >> $GITHUB_OUTPUT
         echo "tag=v$version" >> $GITHUB_OUTPUT
 
@@ -71,6 +71,6 @@ jobs:
           
           - [Installation Guide](https://github.com/${{ github.repository }}/blob/main/README.md)
           - [Security Guidelines](https://github.com/${{ github.repository }}/blob/main/SECURITY.md)
-          - [Chart Values](https://github.com/${{ github.repository }}/blob/main/aws-integration-setup/charts/nullify-k8s-collector/values.yaml)
+          - [Chart Values](https://github.com/${{ github.repository }}/blob/main/helm-charts/nullify-k8s-collector/values.yaml)
         draft: false
         prerelease: false 
