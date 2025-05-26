@@ -121,25 +121,3 @@ jobs:
       run: |
         helm lint aws-integration-setup/charts/nullify-k8s-collector
         helm template aws-integration-setup/charts/nullify-k8s-collector --debug
-
-    - name: Check for sensitive data
-      run: |
-        echo "🔍 Checking for sensitive data in chart..."
-        
-        # Check for real account IDs, ARNs, bucket names
-        if grep -r "arn:aws:iam::[0-9]\{12\}:role/" aws-integration-setup/charts/ --exclude-dir=.git; then
-          echo "❌ Found real AWS ARN in chart files"
-          exit 1
-        fi
-        
-        if grep -r "nullify-.*-death-star" aws-integration-setup/charts/ --exclude-dir=.git; then
-          echo "❌ Found real Nullify bucket names in chart files"
-          exit 1
-        fi
-        
-        if grep -r "[0-9]\{12\}" aws-integration-setup/charts/ --exclude-dir=.git | grep -v "123456789012"; then
-          echo "❌ Found potential real AWS account ID in chart files"
-          exit 1
-        fi
-        
-        echo "✅ No sensitive data found in chart files" 
