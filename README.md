@@ -14,7 +14,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 - 🔧 **Terraform Modules** - Infrastructure-as-code for AWS integration
 - 🤖 **GitHub Actions** - Automated chart publishing and validation
 - 📚 **Documentation** - Comprehensive setup and security guides
-- ❌ **NO real sensitive data, bucket names, or account IDs, bucket names**
+- ❌ **NO real sensitive data, bucket names, or account IDs**
 
 ### **Use Cases**
 - **Kubernetes Security Scanning** - Deploy collectors to gather cluster metadata
