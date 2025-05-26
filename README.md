@@ -2,7 +2,7 @@
 
 **Secure Helm chart for deploying Nullify's Kubernetes data collector in your EKS cluster.**
 
-> 🚨 **SECURITY NOTICE**: This repository contains **GENERIC TEMPLATES ONLY**. See [SECURITY.md](SECURITY.md) for critical security guidelines.
+> 🚨 **SECURITY NOTICE**: This repository contains **GENERIC TEMPLATES ONLY**. Contact Nullify support for production configuration values.
 
 ## 🎯 **Overview**
 
@@ -34,7 +34,7 @@ This Helm chart deploys Nullify's k8s-collector as a CronJob in your Kubernetes 
 
 ```bash
 # 1. Add the Nullify Helm repository
-helm repo add nullify https://nullify-cloud-connector.github.io/aws-integration-setup/
+helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
 
 # 2. Create your production values file
@@ -52,7 +52,7 @@ serviceAccount:
 EOF
 
 # 3. Install the chart
-helm install nullify-collector nullify/k8s-collector \
+helm install nullify-collector nullify/nullify-k8s-collector \
   -f values-production.yaml \
   --namespace nullify \
   --create-namespace
@@ -65,17 +65,17 @@ kubectl get all -n nullify
 
 ```bash
 # 1. Clone this repository
-git clone <repository-url>
-cd aws-integration-setup
+git clone https://github.com/Nullify-Platform/nullify-cloud-connector.git
+cd nullify-cloud-connector
 
 # 2. Create your production values file
-cp charts/nullify-k8s-collector/values-example.yaml values-production.yaml
+cp aws-integration-setup/charts/nullify-k8s-collector/values-example.yaml values-production.yaml
 
 # 3. Edit with your actual values (provided by Nullify)
 vi values-production.yaml
 
 # 4. Install the chart
-helm install nullify-collector charts/nullify-k8s-collector \
+helm install nullify-collector aws-integration-setup/charts/nullify-k8s-collector \
   -f values-production.yaml \
   --namespace nullify \
   --create-namespace
@@ -103,39 +103,45 @@ kubectl logs -l job-name=<job-name> -n nullify
 ## 📁 **Repository Structure**
 
 ```
-aws-integration-setup/
+nullify-cloud-connector/
 ├── 📋 README.md                          # This file
-├── 🔒 SECURITY.md                        # Security guidelines (READ FIRST!)
 ├── 📄 LICENSE                            # MIT License
 ├── 🚫 .gitignore                         # Prevents sensitive file commits
+├── 📖 IMPLEMENTATION.md                  # Implementation details
 │
-├── ⚙️ charts/nullify-k8s-collector/       # Main Helm chart
-│   ├── Chart.yaml                        # Chart metadata
-│   ├── values.yaml                       # Default values (generic)
-│   ├── values-example.yaml               # Example production config
-│   ├── README.md                         # Chart-specific documentation
-│   └── templates/                        # Kubernetes manifests
-│       ├── namespace.yaml                # Namespace creation
-│       ├── serviceaccount.yaml           # IRSA service account
-│       ├── clusterrole.yaml              # Read-only cluster permissions
-│       ├── clusterrolebinding.yaml       # RBAC binding
-│       ├── cronjob.yaml                  # Main collector job
-│       └── pre-install-job.yaml          # Pre-installation tasks
+├── 🤖 .github/workflows/                 # GitHub Actions
+│   ├── helm-release.yml                  # Auto-publish to Helm repo
+│   ├── pr-validation.yml                 # PR validation and testing
+│   └── auto-tag.yml                      # Auto-tag releases
 │
-├── 📚 docs/                              # Helm repository (GitHub Pages)
-│   ├── README.md                         # Helm repository documentation
-│   ├── index.yaml                        # Helm repository index
-│   └── *.tgz                             # Packaged charts
-│
-├── 🔧 scripts/
-│   ├── validate-deployment.sh            # Deployment validation
-│   ├── update-helm-repo.sh               # Update Helm repository
-│   └── cleanup.sh                        # Clean removal script
-│
-└── 🤖 .github/workflows/                 # GitHub Actions
-    ├── helm-release.yml                  # Auto-publish to Helm repo
-    ├── pr-validation.yml                 # PR validation and testing
-    └── auto-tag.yml                      # Auto-tag releases
+└── aws-integration-setup/
+    ├── ⚙️ charts/nullify-k8s-collector/   # Main Helm chart
+    │   ├── Chart.yaml                    # Chart metadata
+    │   ├── values.yaml                   # Default values (generic)
+    │   ├── values-example.yaml           # Example production config
+    │   ├── README.md                     # Chart-specific documentation
+    │   └── templates/                    # Kubernetes manifests
+    │       ├── namespace.yaml            # Namespace creation
+    │       ├── serviceaccount.yaml       # IRSA service account
+    │       ├── clusterrole.yaml          # Read-only cluster permissions
+    │       ├── clusterrolebinding.yaml   # RBAC binding
+    │       ├── cronjob.yaml              # Main collector job
+    │       └── pre-install-job.yaml      # Pre-installation tasks
+    │
+    ├── 🏗️ cloudformation/                # CloudFormation templates
+    │   ├── nullify-cloudformation-template.json
+    │   └── README.md
+    │
+    ├── 🔧 terraform/                     # Terraform modules
+    │   └── modules/nullify-aws-integration/
+    │
+    ├── 📚 docs/                          # Documentation
+    │   └── README.md
+    │
+    └── 🔧 scripts/                       # Utility scripts
+        ├── validate-deployment.sh        # Deployment validation
+        ├── update-helm-repo.sh           # Update Helm repository
+        └── cleanup.sh                    # Clean removal script
 ```
 
 ## 🔐 **Security Configuration**
@@ -207,17 +213,17 @@ collector:
 ### **Repository Management**
 ```bash
 # View available chart versions
-helm search repo nullify/k8s-collector --versions
+helm search repo nullify/nullify-k8s-collector --versions
 
 # Get chart information
-helm show chart nullify/k8s-collector
-helm show values nullify/k8s-collector
+helm show chart nullify/nullify-k8s-collector
+helm show values nullify/nullify-k8s-collector
 ```
 
 ### **Deployment Management**
 ```bash
 # Upgrade the chart
-helm upgrade nullify-collector nullify/k8s-collector \
+helm upgrade nullify-collector nullify/nullify-k8s-collector \
   -f values-production.yaml \
   --namespace nullify
 
@@ -232,10 +238,10 @@ kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nul
 
 | Document | Description |
 |----------|-------------|
-| [🔒 SECURITY.md](SECURITY.md) | **CRITICAL**: Security guidelines and best practices |
-| [📖 docs/README.md](docs/README.md) | Helm repository documentation |
-| [🔧 docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-| [🏛️ docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Technical architecture overview |
+| [📖 IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
+| [📖 Chart README](aws-integration-setup/charts/nullify-k8s-collector/README.md) | Chart-specific documentation |
+| [🏗️ CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
+| [📚 Docs](aws-integration-setup/docs/README.md) | Additional documentation |
 
 ## 🐛 **Troubleshooting**
 
@@ -288,7 +294,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🚨 **Security Reminder**
 
 **Before deploying:**
-1. 📖 Read [SECURITY.md](SECURITY.md) thoroughly
+1. 📖 Read [IMPLEMENTATION.md](IMPLEMENTATION.md) for technical details
 2. 🔐 Obtain **complete IAM role ARN** from Nullify support  
 3. 🚫 Never commit `values-production.yaml`
 4. ✅ Use `values-example.yaml` as a template only
