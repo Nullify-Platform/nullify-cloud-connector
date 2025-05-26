@@ -12,7 +12,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = "ap-southeast-2"
 }
 
 module "nullify_aws_integration" {
@@ -24,7 +24,7 @@ module "nullify_aws_integration" {
   nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT-ID:role/NULLIFY-ROLE-NAME"
 
   # Optional - using defaults for most values
-  aws_region = "us-east-1"
+  aws_region = "ap-southeast-2"
 
   # Custom tags
   tags = {
