@@ -37,10 +37,7 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Create annotated tag with chart information
-        app_version=$(grep '^appVersion:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
-        description=$(grep '^description:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | cut -d':' -f2- | xargs)
-        
+        # Create annotated tag with chart version only
         git tag -a ${{ steps.chart-version.outputs.tag }} -m "Release ${{ steps.chart-version.outputs.tag }} - Chart Version: ${{ steps.chart-version.outputs.version }}"
         git push origin ${{ steps.chart-version.outputs.tag }}
 
