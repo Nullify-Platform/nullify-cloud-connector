@@ -20,11 +20,11 @@ The data collected includes (but is not limited to):
 - AWS Region: {{ .Values.collector.aws.region }}
 - Schedule: {{ .Values.collector.schedule }}
 
-{{- if .Values.collector.dataCollection.excludeNamespaces }}
+{{- if and .Values.collector.dataCollection .Values.collector.dataCollection.excludeNamespaces }}
 - Excluded Namespaces: {{ .Values.collector.dataCollection.excludeNamespaces }}
 {{- end }}
 
-{{- if .Values.collector.dataCollection.metadataOnly }}
+{{- if and .Values.collector.dataCollection .Values.collector.dataCollection.metadataOnly }}
 - Collection Mode: Metadata only (no resource content)
 {{- else }}
 - Collection Mode: Full resource data

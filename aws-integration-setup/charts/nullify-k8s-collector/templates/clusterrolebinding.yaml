@@ -4,13 +4,13 @@ kind: ClusterRoleBinding
 metadata:
   name: {{ .Values.clusterRoleBinding.name }}
   labels:
-    {{- include "k8s-info-collector.labels" . | nindent 4 }}
+    {{- include "k8s-collector.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ .Values.clusterRole.name }}
 subjects:
 - kind: ServiceAccount
-  name: {{ include "k8s-info-collector.serviceAccountName" . }}
+  name: {{ include "k8s-collector.serviceAccountName" . }}
   namespace: {{ .Values.serviceAccount.namespace }}
 {{- end }} 
