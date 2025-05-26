@@ -1,34 +1,56 @@
-# 🛡️ Nullify Kubernetes Collector - Helm Chart
+# 🛡️ Nullify Cloud Connector - Infrastructure Templates
 
-**Secure Helm chart for deploying Nullify's Kubernetes data collector in your EKS cluster.**
+**Complete infrastructure templates for deploying Nullify's cloud security integrations across Kubernetes and AWS.**
 
 > 🚨 **SECURITY NOTICE**: This repository contains **GENERIC TEMPLATES ONLY**. Contact Nullify support for production configuration values.
 
 ## 🎯 **Overview**
 
-This Helm chart deploys Nullify's k8s-collector as a CronJob in your Kubernetes cluster to securely collect cluster metadata for security scanning. The collector uses **IAM Roles for Service Accounts (IRSA)** for secure AWS authentication.
+This repository provides comprehensive infrastructure-as-code templates for integrating Nullify's security platform with your cloud environment. It includes multiple deployment options to suit different infrastructure preferences and requirements.
 
 ### **What's Included**
-- ✅ **Production-ready Helm chart** with IRSA support
-- ✅ **Security-focused configuration** (non-root, read-only filesystem)
-- ✅ **CronJob deployment** for scheduled data collection
-- ✅ **Comprehensive RBAC** permissions
-- ✅ **Example configuration files** with placeholders
+- ⚙️ **Helm Charts** - Production-ready Kubernetes deployment with IRSA support
+- 🏗️ **CloudFormation Templates** - AWS infrastructure setup with IAM roles and policies
+- 🔧 **Terraform Modules** - Infrastructure-as-code for AWS integration
+- 🤖 **GitHub Actions** - Automated chart publishing and validation
+- 📚 **Documentation** - Comprehensive setup and security guides
 - ❌ **NO real account IDs, bucket names, or sensitive data**
+
+### **Use Cases**
+- **Kubernetes Security Scanning** - Deploy collectors to gather cluster metadata
+- **AWS Account Integration** - Set up cross-account access for security assessments  
+- **Multi-Cloud Deployments** - Consistent infrastructure across environments
+- **GitOps Workflows** - Automated deployment and updates via CI/CD
+
+### **Deployment Options**
+1. **Helm Charts** (`helm-charts/`) - For Kubernetes-native deployments
+2. **CloudFormation** (`aws-integration-setup/cloudformation/`) - For AWS-centric infrastructure
+3. **Terraform** (`aws-integration-setup/terraform/`) - For infrastructure-as-code workflows
 
 ## 🚀 **Quick Start**
 
-### **Prerequisites**
+### **Choose Your Deployment Method**
 
-1. **EKS Cluster** with IRSA enabled
-2. **AWS Cross-account IAM Role** (created by Nullify)
-3. **Helm 3.x** installed
-4. **kubectl** configured for your cluster
+| Method | Best For | Prerequisites |
+|--------|----------|---------------|
+| **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS cluster, Helm 3.x, kubectl |
+| **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
+| **🔧 Terraform** | Infrastructure-as-code, multi-cloud teams | Terraform, AWS provider configured |
+
+### **Prerequisites (All Methods)**
+
+1. **AWS Account** with appropriate permissions
+2. **Nullify Account** and support contact
+3. **EKS Cluster** (for Kubernetes deployments)
 
 **Contact Nullify Support** to obtain:
 - Complete IAM role ARN for IRSA
 - S3 bucket name for data storage
 - Specific deployment instructions
+
+---
+
+## ⚙️ **Helm Chart Deployment**
 
 ### **Option 1: Install from Helm Repository (Recommended)**
 
@@ -69,13 +91,13 @@ git clone https://github.com/Nullify-Platform/nullify-cloud-connector.git
 cd nullify-cloud-connector
 
 # 2. Create your production values file
-cp aws-integration-setup/charts/nullify-k8s-collector/values-example.yaml values-production.yaml
+cp helm-charts/nullify-k8s-collector/values-example.yaml values-production.yaml
 
 # 3. Edit with your actual values (provided by Nullify)
 vi values-production.yaml
 
 # 4. Install the chart
-helm install nullify-collector aws-integration-setup/charts/nullify-k8s-collector \
+helm install nullify-collector helm-charts/nullify-k8s-collector \
   -f values-production.yaml \
   --namespace nullify \
   --create-namespace
@@ -100,49 +122,129 @@ kubectl get jobs -n nullify
 kubectl logs -l job-name=<job-name> -n nullify
 ```
 
+## 🏗️ **CloudFormation Deployment**
+
+Deploy AWS infrastructure using CloudFormation templates for cross-account access and IAM role setup.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Nullify-Platform/nullify-cloud-connector.git
+cd nullify-cloud-connector/aws-integration-setup/cloudformation
+
+# 2. Deploy the CloudFormation stack
+aws cloudformation create-stack \
+  --stack-name nullify-aws-integration \
+  --template-body file://nullify-cloudformation-template.json \
+  --parameters \
+    ParameterKey=CustomerName,ParameterValue=your-company \
+    ParameterKey=ExternalID,ParameterValue=your-external-id \
+    ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::ACCOUNT:role/ROLE \
+    ParameterKey=NullifyS3Bucket,ParameterValue=your-nullify-bucket \
+    ParameterKey=EnableEKSIntegration,ParameterValue=true \
+    ParameterKey=EKSOidcProviderURL,ParameterValue=your-oidc-url \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-west-2
+
+# 3. Verify stack creation
+aws cloudformation describe-stacks --stack-name nullify-aws-integration
+```
+
+**See:** [CloudFormation README](aws-integration-setup/cloudformation/README.md) for detailed instructions.
+
+## 🔧 **Terraform Deployment**
+
+Use Terraform modules for infrastructure-as-code deployments with version control and state management.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Nullify-Platform/nullify-cloud-connector.git
+cd nullify-cloud-connector/aws-integration-setup/terraform
+
+# 2. Create terraform configuration
+cat > main.tf << EOF
+module "nullify_aws_integration" {
+  source = "./modules/nullify-aws-integration"
+  
+  customer_name           = "your-company"
+  external_id            = "your-external-id"
+  cross_account_role_arn = "arn:aws:iam::ACCOUNT:role/ROLE"
+  nullify_s3_bucket      = "your-nullify-bucket"
+  enable_eks_integration = true
+  eks_oidc_provider_url  = "your-oidc-url"
+}
+EOF
+
+# 3. Initialize and apply
+terraform init
+terraform plan
+terraform apply
+```
+
+**See:** [Terraform README](aws-integration-setup/terraform/README.md) for detailed instructions.
+
 ## 📁 **Repository Structure**
 
 ```
 nullify-cloud-connector/
-├── 📋 README.md                          # This file
+├── 📋 README.md                          # This file - main documentation
 ├── 📄 LICENSE                            # MIT License
 ├── 🚫 .gitignore                         # Prevents sensitive file commits
-├── 📖 IMPLEMENTATION.md                  # Implementation details
+├── 📖 IMPLEMENTATION.md                  # Technical implementation details
 │
-├── 🤖 .github/workflows/                 # GitHub Actions
-│   ├── helm-release.yml                  # Auto-publish to Helm repo
+├── 🤖 .github/workflows/                 # CI/CD Automation
+│   ├── helm-release.yml                  # Auto-publish Helm charts to GitHub Pages
 │   ├── pr-validation.yml                 # PR validation and testing
-│   └── auto-tag.yml                      # Auto-tag releases
+│   └── auto-tag.yml                      # Auto-tag releases on version changes
 │
-└── aws-integration-setup/
-    ├── ⚙️ charts/nullify-k8s-collector/   # Main Helm chart
-    │   ├── Chart.yaml                    # Chart metadata
-    │   ├── values.yaml                   # Default values (generic)
-    │   ├── values-example.yaml           # Example production config
-    │   ├── README.md                     # Chart-specific documentation
-    │   └── templates/                    # Kubernetes manifests
-    │       ├── namespace.yaml            # Namespace creation
-    │       ├── serviceaccount.yaml       # IRSA service account
-    │       ├── clusterrole.yaml          # Read-only cluster permissions
-    │       ├── clusterrolebinding.yaml   # RBAC binding
-    │       ├── cronjob.yaml              # Main collector job
-    │       └── pre-install-job.yaml      # Pre-installation tasks
+├── ⚙️ helm-charts/                       # 🎯 KUBERNETES DEPLOYMENT
+│   └── nullify-k8s-collector/            # Main Helm chart for K8s collector
+│       ├── Chart.yaml                    # Chart metadata and version
+│       ├── values.yaml                   # Default values (generic/safe)
+│       ├── values-example.yaml           # Example production configuration
+│       ├── README.md                     # Chart-specific documentation
+│       └── templates/                    # Kubernetes resource templates
+│           ├── namespace.yaml            # Namespace creation
+│           ├── serviceaccount.yaml       # IRSA service account
+│           ├── clusterrole.yaml          # Read-only cluster permissions
+│           ├── clusterrolebinding.yaml   # RBAC binding
+│           ├── cronjob.yaml              # Main collector CronJob
+│           └── pre-install-job.yaml      # Pre-installation validation
+│
+└── aws-integration-setup/               # 🏗️ AWS INFRASTRUCTURE
     │
-    ├── 🏗️ cloudformation/                # CloudFormation templates
-    │   ├── nullify-cloudformation-template.json
-    │   └── README.md
+    ├── 🏗️ cloudformation/               # CloudFormation Templates
+    │   ├── nullify-cloudformation-template.json  # Main CF template
+    │   └── README.md                     # CloudFormation deployment guide
     │
-    ├── 🔧 terraform/                     # Terraform modules
-    │   └── modules/nullify-aws-integration/
+    ├── 🔧 terraform/                     # Terraform Modules
+    │   ├── modules/nullify-aws-integration/  # Main Terraform module
+    │   │   ├── main.tf                   # Core infrastructure resources
+    │   │   ├── variables.tf              # Input variables
+    │   │   ├── outputs.tf                # Output values
+    │   │   └── README.md                 # Module documentation
+    │   └── examples/                     # Example Terraform configurations
     │
-    ├── 📚 docs/                          # Documentation
-    │   └── README.md
+    ├── 📚 docs/                          # Additional Documentation
+    │   ├── README.md                     # Documentation index
+    │   ├── security-guidelines.md        # Security best practices
+    │   └── troubleshooting.md            # Common issues and solutions
     │
-    └── 🔧 scripts/                       # Utility scripts
+    └── 🔧 scripts/                       # Utility Scripts
         ├── validate-deployment.sh        # Deployment validation
         ├── update-helm-repo.sh           # Update Helm repository
-        └── cleanup.sh                    # Clean removal script
+        ├── cleanup.sh                    # Clean removal script
+        └── setup-aws-integration.sh      # AWS setup automation
 ```
+
+### **Component Overview**
+
+| Component | Purpose | Use When |
+|-----------|---------|----------|
+| **🎯 Helm Charts** | Deploy K8s collector with IRSA | You have EKS and prefer K8s-native tools |
+| **🏗️ CloudFormation** | Set up AWS IAM roles and policies | You prefer AWS-native infrastructure |
+| **🔧 Terraform** | Infrastructure-as-code with state management | You use Terraform for infrastructure |
+| **🤖 GitHub Actions** | Automated testing and publishing | You want CI/CD for chart updates |
+| **📚 Documentation** | Setup guides and troubleshooting | You need detailed implementation help |
 
 ## 🔐 **Security Configuration**
 
@@ -239,7 +341,7 @@ kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nul
 | Document | Description |
 |----------|-------------|
 | [📖 IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
-| [📖 Chart README](aws-integration-setup/charts/nullify-k8s-collector/README.md) | Chart-specific documentation |
+| [📖 Chart README](helm-charts/nullify-k8s-collector/README.md) | Chart-specific documentation |
 | [🏗️ CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
 | [📚 Docs](aws-integration-setup/docs/README.md) | Additional documentation |
 

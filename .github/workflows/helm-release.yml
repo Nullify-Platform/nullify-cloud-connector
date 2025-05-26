@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'aws-integration-setup/charts/**'
+      - 'helm-charts/**'
       - '.github/workflows/helm-release.yml'
   workflow_dispatch:
 
@@ -39,7 +39,7 @@ jobs:
     - name: Get Chart Version
       id: version
       run: |
-        VERSION=$(grep '^version:' aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
+        VERSION=$(grep '^version:' helm-charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Using Chart.yaml version: $VERSION"
 
@@ -54,7 +54,7 @@ jobs:
         mkdir -p docs
         
         # Package the chart
-        helm package aws-integration-setup/charts/nullify-k8s-collector -d docs/
+        helm package helm-charts/nullify-k8s-collector -d docs/
         
         # Generate/update the index
         helm repo index docs/ --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
@@ -84,5 +84,5 @@ jobs:
 
     - name: Validate Helm Chart
       run: |
-        helm lint aws-integration-setup/charts/nullify-k8s-collector
-        helm template aws-integration-setup/charts/nullify-k8s-collector --debug
+        helm lint helm-charts/nullify-k8s-collector
+        helm template helm-charts/nullify-k8s-collector --debug
