@@ -6,6 +6,10 @@ on:
     paths:
       - 'aws-integration-setup/charts/nullify-k8s-collector/Chart.yaml'
 
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
   tag-release:
     runs-on: ubuntu-latest
