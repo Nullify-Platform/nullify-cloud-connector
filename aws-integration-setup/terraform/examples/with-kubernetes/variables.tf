@@ -22,7 +22,7 @@ variable "nullify_role_arn" {
 variable "aws_region" {
   type        = string
   description = "The AWS region where resources are deployed"
-  default     = "us-east-1"
+  default     = "ap-southeast-2"
 }
 
 variable "eks_cluster_name" {
