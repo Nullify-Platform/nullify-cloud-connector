@@ -63,7 +63,7 @@ jobs:
           ```bash
           helm repo add nullify https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           helm repo update
-          helm install nullify-collector nullify/k8s-collector --version ${{ steps.chart-version.outputs.version }}
+          helm install nullify-collector nullify/nullify-k8s-collector --version ${{ steps.chart-version.outputs.version }}
           ```
           
           ### 📚 Documentation
