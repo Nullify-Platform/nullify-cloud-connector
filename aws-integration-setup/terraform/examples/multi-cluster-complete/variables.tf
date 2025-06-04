@@ -8,19 +8,16 @@ variable "customer_name" {
     condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_-]*$", var.customer_name))
     error_message = "Customer name must start with a letter and can only contain letters, numbers, underscores, and hyphens"
   }
-  default = "test"
 }
 
 variable "external_id" {
   type        = string
   description = "The external ID for the role (provided by Nullify)"
-  default = "test"
 }
 
 variable "nullify_role_arn" {
   type        = string
   description = "The Nullify cross-account role ARN"
-  default = "arn:aws:iam::521464361009:role/alex-aws-access-websocket-apigw"
 }
 
 variable "eks_cluster_arns" {
@@ -31,10 +28,6 @@ variable "eks_cluster_arns" {
     condition     = length(var.eks_cluster_arns) > 0
     error_message = "You must provide at least one cluster ARN."
   }
-  default = [
-    "arn:aws:eks:ap-southeast-2:521464361009:cluster/nullify-k8s-collector",
-    "arn:aws:eks:ap-southeast-2:521464361009:cluster/curious-alternative-badger"
-  ]
 }
 
 variable "aws_region" {
@@ -75,4 +68,4 @@ variable "tags" {
     Purpose     = "NullifyIntegration"
     Environment = "Production"
   }
-} 
+}
