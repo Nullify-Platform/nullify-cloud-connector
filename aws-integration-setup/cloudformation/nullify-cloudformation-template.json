@@ -481,7 +481,8 @@
                   "lakeformation:List*",
                   "lakeformation:Search*",
                   "lambda:List*",
-                  "lambda:Get*"
+                  "lambda:Get*",
+                  "ec2:Describe*"
                 ],
                 "Resource": "*",
                 "Condition": {}
