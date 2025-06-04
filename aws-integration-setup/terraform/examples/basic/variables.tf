@@ -25,27 +25,10 @@ variable "aws_region" {
   default     = "ap-southeast-2"
 }
 
-variable "eks_cluster_name" {
+variable "s3_bucket_name" {
   type        = string
-  description = "Name of the EKS cluster to integrate with"
-}
-
-variable "kubernetes_namespace" {
-  type        = string
-  description = "The Kubernetes namespace for Nullify resources"
-  default     = "nullify"
-}
-
-variable "service_account_name" {
-  type        = string
-  description = "The name of the Kubernetes service account"
-  default     = "nullify-k8s-collector-sa"
-}
-
-variable "cronjob_schedule" {
-  type        = string
-  description = "Cron schedule for the Kubernetes collector job"
-  default     = "0 0 * * *"
+  description = "The name of the S3 bucket for storing scan results (optional)"
+  default     = ""
 }
 
 variable "tags" {
