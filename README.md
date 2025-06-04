@@ -11,7 +11,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 ### **What's Included**
 - ⚙️ **Helm Charts** - Production-ready Kubernetes deployment with IRSA support
 - 🏗️ **CloudFormation Templates** - AWS infrastructure setup with IAM roles and policies
-- 🔧 **Terraform Modules** - Infrastructure-as-code for AWS integration
+- 🔧 **Terraform Modules** - Modular infrastructure-as-code for AWS and multi-cluster EKS integration
 - 🤖 **GitHub Actions** - Automated chart publishing and validation
 - 📚 **Documentation** - Comprehensive setup and security guides
 - ❌ **NO real sensitive data, bucket names, or account IDs**
@@ -20,12 +20,13 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 - **Kubernetes Security Scanning** - Deploy collectors to gather cluster metadata
 - **AWS Account Integration** - Set up cross-account access for security assessments  
 - **Multi-Cloud Deployments** - Consistent infrastructure across environments
+- **Multi-Cluster Support** - Integrate multiple EKS clusters across regions
 - **GitOps Workflows** - Automated deployment and updates via CI/CD
 
 ### **Deployment Options**
 1. **Helm Charts** (`helm-charts/`) - For Kubernetes-native deployments
 2. **CloudFormation** (`aws-integration-setup/cloudformation/`) - For AWS-centric infrastructure
-3. **Terraform** (`aws-integration-setup/terraform/`) - For infrastructure-as-code workflows
+3. **Terraform** (`aws-integration-setup/terraform/`) - For infrastructure-as-code workflows with modular architecture
 
 ## 🚀 **Quick Start**
 
@@ -35,7 +36,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 |--------|----------|---------------|
 | **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS cluster, Helm 3.x, kubectl |
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
-| **🔧 Terraform** | Infrastructure-as-code, multi-cloud teams | Terraform, AWS provider configured |
+| **🔧 Terraform** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
 
 ### **Prerequisites (All Methods)**
 
@@ -126,6 +127,8 @@ kubectl logs -l job-name=<job-name> -n nullify
 
 Deploy AWS infrastructure using CloudFormation templates for cross-account access and IAM role setup.
 
+> ⚠️ **Important**: CloudFormation only sets up IAM roles and trust policies. For EKS integration, you must deploy Kubernetes resources separately using Helm charts.
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Nullify-Platform/nullify-cloud-connector.git
@@ -153,32 +156,64 @@ aws cloudformation describe-stacks --stack-name nullify-aws-integration
 
 ## 🔧 **Terraform Deployment**
 
-Use Terraform modules for infrastructure-as-code deployments with version control and state management.
+Use Terraform's modular architecture for infrastructure-as-code deployments with version control and state management.
+
+> ⚠️ **Important**: The AWS integration module only sets up IAM roles and trust policies. For full EKS integration, you must also deploy the Kubernetes resources using the separate `k8s-resources` module.
+
+### **Multi-Cluster EKS Integration**
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Nullify-Platform/nullify-cloud-connector.git
-cd nullify-cloud-connector/aws-integration-setup/terraform
+cd nullify-cloud-connector/aws-integration-setup/terraform/examples/multi-cluster-complete
 
 # 2. Create terraform configuration
-cat > main.tf << EOF
-module "nullify_aws_integration" {
-  source = "./modules/nullify-aws-integration"
-  
-  customer_name           = "your-company"
-  external_id            = "your-external-id"
-  cross_account_role_arn = "arn:aws:iam::ACCOUNT:role/ROLE"
-  nullify_s3_bucket      = "your-nullify-bucket"
-  enable_eks_integration = true
-  eks_oidc_provider_url  = "your-oidc-url"
-}
+cp terraform.tfvars.example terraform.tfvars
+
+# 3. Edit with your cluster ARNs and values (supports multiple regions)
+cat > terraform.tfvars << EOF
+customer_name = "your-company"
+external_id   = "your-external-id"
+nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT:role/ROLE"
+
+# Multi-cluster support - clusters can be from different regions
+eks_cluster_arns = [
+  "arn:aws:eks:us-west-2:123456789012:cluster/prod-cluster",
+  "arn:aws:eks:eu-west-1:123456789012:cluster/eu-cluster"
+]
+
+aws_region = "us-west-2"
+s3_bucket_name = "your-nullify-bucket"
 EOF
 
-# 3. Initialize and apply
+# 4. Initialize and apply
 terraform init
 terraform plan
 terraform apply
 ```
+
+### **AWS-Only Integration**
+
+```bash
+# For AWS resources only (no Kubernetes)
+cd aws-integration-setup/terraform/examples/basic
+
+cp ../../terraform.tfvars.example terraform.tfvars
+# Edit with your values
+terraform init && terraform apply
+```
+
+### **Module Architecture**
+
+The Terraform configuration uses separate, focused modules:
+
+- **`nullify-aws-integration`**: Creates IAM roles with multi-cluster OIDC trust policies
+- **`k8s-resources`**: Deploys collector cronjob and RBAC to any cluster
+
+**Benefits:**
+- Deploy AWS resources once, K8s resources per cluster
+- Multi-region support with automatic region detection
+- Independent module lifecycle management
 
 **See:** [Terraform README](aws-integration-setup/terraform/README.md) for detailed instructions.
 
@@ -217,12 +252,25 @@ nullify-cloud-connector/
     │   └── README.md                     # CloudFormation deployment guide
     │
     ├── 🔧 terraform/                     # Terraform Modules
-    │   ├── modules/nullify-aws-integration/  # Main Terraform module
-    │   │   ├── main.tf                   # Core infrastructure resources
-    │   │   ├── variables.tf              # Input variables
-    │   │   ├── outputs.tf                # Output values
-    │   │   └── README.md                 # Module documentation
-    │   └── examples/                     # Example Terraform configurations
+    │   ├── modules/                      # Reusable Terraform modules
+    │   │   ├── nullify-aws-integration/  # AWS IAM resources only
+    │   │   │   ├── main.tf               # Core infrastructure resources
+    │   │   │   ├── variables.tf          # Input variables
+    │   │   │   ├── data.tf               # Data sources and policies
+    │   │   │   ├── locals.tf             # Local values
+    │   │   │   └── outputs.tf            # Output values
+    │   │   └── k8s-resources/            # Kubernetes resources only
+    │   │       ├── main.tf               # Kubernetes resources
+    │   │       ├── variables.tf          # Input variables
+    │   │       └── outputs.tf            # Output values
+    │   ├── examples/                     # Example Terraform configurations
+    │   │   ├── basic/                    # AWS-only integration
+    │   │   └── multi-cluster-complete/   # Multi-cluster EKS integration
+    │   ├── main.tf                       # Root module instantiation
+    │   ├── variables.tf                  # Root input variables
+    │   ├── outputs.tf                    # Root outputs
+    │   ├── terraform.tfvars.example      # Example configuration
+    │   └── README.md                     # Terraform documentation
     │
     ├── 📚 docs/                          # Additional Documentation
     │   ├── README.md                     # Documentation index
@@ -242,7 +290,7 @@ nullify-cloud-connector/
 |-----------|---------|----------|
 | **🎯 Helm Charts** | Deploy K8s collector with IRSA | You have EKS and prefer K8s-native tools |
 | **🏗️ CloudFormation** | Set up AWS IAM roles and policies | You prefer AWS-native infrastructure |
-| **🔧 Terraform** | Infrastructure-as-code with state management | You use Terraform for infrastructure |
+| **🔧 Terraform** | Modular infrastructure-as-code with multi-cluster support | You use Terraform for infrastructure |
 | **🤖 GitHub Actions** | Automated testing and publishing | You want CI/CD for chart updates |
 | **📚 Documentation** | Setup guides and troubleshooting | You need detailed implementation help |
 
@@ -265,6 +313,7 @@ serviceAccount:
 - 🚫 **No privilege escalation**
 - 📊 **Minimal resource requests**
 - 🎯 **Least-privilege RBAC**
+- 🌍 **Multi-cluster security isolation**
 
 ## ⚙️ **Configuration Options**
 
@@ -288,6 +337,23 @@ collector:
 serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/ROLE-NAME"
+```
+
+### **Multi-Cluster Configuration**
+
+```hcl
+# Terraform configuration for multiple clusters
+eks_cluster_arns = [
+  "arn:aws:eks:us-west-2:123456789012:cluster/prod-cluster",
+  "arn:aws:eks:eu-west-1:123456789012:cluster/eu-cluster",
+  "arn:aws:eks:us-west-2:123456789012:cluster/staging-cluster"
+]
+
+# Features:
+# - Automatic region extraction from cluster ARNs
+# - Dynamic OIDC provider discovery
+# - Multi-region trust policy generation
+# - Single IAM role trusts all specified clusters
 ```
 
 ### **Advanced Configuration**
@@ -343,6 +409,7 @@ kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nul
 | [📖 IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
 | [📖 Chart README](helm-charts/nullify-k8s-collector/README.md) | Chart-specific documentation |
 | [🏗️ CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
+| [🔧 Terraform README](aws-integration-setup/terraform/README.md) | Terraform modules documentation |
 | [📚 Docs](aws-integration-setup/docs/README.md) | Additional documentation |
 
 ## 🐛 **Troubleshooting**
@@ -363,6 +430,15 @@ kubectl logs -l app=nullify-k8s-collector -n nullify
 **Permission errors:**
 ```bash
 kubectl auth can-i --list --as=system:serviceaccount:nullify:nullify-k8s-collector-sa
+```
+
+**Multi-cluster configuration issues:**
+```bash
+# Check cluster ARN format
+aws eks describe-cluster --name YOUR_CLUSTER_NAME --query 'cluster.arn'
+
+# Verify OIDC provider
+aws eks describe-cluster --name YOUR_CLUSTER_NAME --query 'cluster.identity.oidc.issuer'
 ```
 
 ### **Validation Script**

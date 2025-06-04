@@ -1,5 +1,25 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_eks_cluster" "clusters" {
+  count = var.enable_kubernetes_integration ? length(var.eks_cluster_arns) : 0
+  name  = element(split("/", var.eks_cluster_arns[count.index]), length(split("/", var.eks_cluster_arns[count.index])) - 1)
+}
+
+locals {
+  all_clusters_info = var.enable_kubernetes_integration ? [
+    for i, cluster in data.aws_eks_cluster.clusters : {
+      oidc_id = split("/", cluster.identity[0].oidc[0].issuer)[4]
+      region  = split(":", var.eks_cluster_arns[i])[3]  # Extract region from ARN
+    }
+  ] : []
+
+  all_oidc_ids = [for cluster in local.all_clusters_info : cluster.oidc_id]
+  eks_oidc_provider_arns = var.enable_kubernetes_integration ? [
+    for cluster in local.all_clusters_info :
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${cluster.region}.amazonaws.com/id/${cluster.oidc_id}"
+  ] : []
+}
+
 data "aws_iam_policy_document" "assume_role_policy" {
   statement {
     effect = "Allow"
@@ -16,17 +36,17 @@ data "aws_iam_policy_document" "assume_role_policy" {
   }
 
   dynamic "statement" {
-    for_each = var.enable_kubernetes_integration ? [1] : []
+    for_each = var.enable_kubernetes_integration ? local.all_clusters_info : []
     content {
       effect = "Allow"
       principals {
         type        = "Federated"
-        identifiers = [local.eks_oidc_provider_arn]
+        identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${statement.value.region}.amazonaws.com/id/${statement.value.oidc_id}"]
       }
       actions = ["sts:AssumeRoleWithWebIdentity"]
       condition {
         test     = "StringEquals"
-        variable = "oidc.eks.${var.aws_region}.amazonaws.com/id/${var.eks_oidc_id}:sub"
+        variable = "oidc.eks.${statement.value.region}.amazonaws.com/id/${statement.value.oidc_id}:sub"
         values   = [local.oidc_subject]
       }
     }
@@ -49,7 +69,6 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "access-analyzer:ValidatePolicy",
       "account:GetAccountInformation",
       "account:GetAlternateContact",
-      "account:GetChallengeQuestions",
       "account:GetContactInformation",
       "account:GetPrimaryEmail",
       "account:GetRegionOptStatus",
@@ -58,10 +77,6 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "acm-pca:List*",
       "acm:Describe*",
       "acm:List*",
-      "aiops:GetInvestigation",
-      "aiops:GetInvestigationEvent",
-      "aiops:GetInvestigationGroup",
-      "aiops:GetInvestigationResource",
       "aiops:List*",
       "airflow:List*",
       "amplify:GetBranch",
@@ -247,7 +262,8 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "lakeformation:List*",
       "lakeformation:Search*",
       "lambda:Get*",
-      "lambda:List*"
+      "lambda:List*",
+      "ec2:Describe*"
     ]
     resources = ["*"]
   }
@@ -313,8 +329,6 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "notifications:GetNotificationsAccessForOrganization",
       "notifications:GetNotificationEvent",
       "notifications:List*",
-      "observabilityadmin:ListResourceTelemetry",
-      "observabilityadmin:ListResourceTelemetryForOrganization",
       "one:ListUsers",
       "opsworks-cm:Describe*",
       "opsworks-cm:List*",
@@ -337,7 +351,6 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "ram:List*",
       "rbin:List*",
       "rds:Describe*",
-      "rds:Download*",
       "rds:List*",
       "redshift-serverless:List*",
       "redshift:Describe*",

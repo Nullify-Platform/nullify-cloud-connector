@@ -2,6 +2,10 @@
 
 This directory contains a CloudFormation template for setting up AWS IAM roles and permissions required for Nullify's AWS integration.
 
+## ⚠️ Important Notice
+
+**EKS Integration**: The EKS integration created by this CloudFormation template only sets up the necessary IAM roles and trust policies. For the integration to be fully functional, you must deploy the Kubernetes cronjob resources separately using Helm charts or other Kubernetes deployment methods. The CloudFormation template alone does not deploy any Kubernetes resources.
+
 ## Overview
 
 This template creates:
@@ -24,6 +28,7 @@ This template creates:
 3. **For EKS Integration** (optional):
    - EKS cluster with OIDC provider enabled
    - OIDC provider URL (see [Getting EKS OIDC URL](#getting-eks-oidc-url) below)
+   - **Helm charts or Kubernetes manifests** to deploy the collector cronjobs
 
 ## Getting EKS OIDC URL
 

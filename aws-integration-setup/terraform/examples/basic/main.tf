@@ -1,4 +1,5 @@
-# Basic Example: Nullify AWS Integration (AWS IAM only)
+# Basic Example: Nullify AWS Integration (AWS resources only)
+# This example shows the minimal setup for AWS integration without Kubernetes
 
 terraform {
   required_version = ">= 1.0"
@@ -12,26 +13,26 @@ terraform {
 }
 
 provider "aws" {
-  region = "ap-southeast-2"
+  region = var.aws_region
 }
 
 module "nullify_aws_integration" {
   source = "../../modules/nullify-aws-integration"
 
   # Required variables
-  customer_name    = "acme-corp"
-  external_id      = "your-external-id-from-nullify"
-  nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT-ID:role/NULLIFY-ROLE-NAME"
+  customer_name    = var.customer_name
+  external_id      = var.external_id
+  nullify_role_arn = var.nullify_role_arn
 
-  # Optional - using defaults for most values
-  aws_region = "ap-southeast-2"
+  # AWS Configuration
+  aws_region     = var.aws_region
+  s3_bucket_name = var.s3_bucket_name
+
+  # Kubernetes integration disabled - no Kubernetes provider needed
+  enable_kubernetes_integration = false
 
   # Custom tags
-  tags = {
-    Environment = "production"
-    Team        = "security"
-    Project     = "nullify-integration"
-  }
+  tags = var.tags
 }
 
 output "role_arn" {

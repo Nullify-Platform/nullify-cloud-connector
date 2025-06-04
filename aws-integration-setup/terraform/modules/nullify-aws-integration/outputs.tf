@@ -29,25 +29,38 @@ output "customer_name" {
   value       = var.customer_name
 }
 
-# Kubernetes-related outputs (only when enabled)
-output "kubernetes_namespace" {
-  description = "Name of the Kubernetes namespace for Nullify resources"
-  value       = var.enable_kubernetes_integration ? kubernetes_namespace.nullify[0].metadata[0].name : null
+# EKS/OIDC related outputs
+output "all_oidc_ids" {
+  description = "List of all OIDC provider IDs for integrated clusters"
+  value       = var.enable_kubernetes_integration ? local.all_oidc_ids : null
 }
 
-output "kubernetes_service_account" {
-  description = "Name of the Kubernetes service account for the collector"
-  value       = var.enable_kubernetes_integration ? kubernetes_service_account.nullify_collector_sa[0].metadata[0].name : null
+output "all_oidc_provider_arns" {
+  description = "List of ARNs of all EKS OIDC providers used for the integration"
+  value       = var.enable_kubernetes_integration ? local.eks_oidc_provider_arns : null
 }
 
-output "kubernetes_cluster_role" {
-  description = "Name of the Kubernetes cluster role for the collector"
-  value       = var.enable_kubernetes_integration ? kubernetes_cluster_role.nullify_readonly_role[0].metadata[0].name : null
+output "cluster_integration_summary" {
+  description = "Summary of all cluster integrations"
+  value = var.enable_kubernetes_integration ? {
+    total_clusters = length(local.all_clusters_info)
+    clusters = [
+      for cluster in local.all_clusters_info : {
+        region  = cluster.region
+        oidc_id = cluster.oidc_id
+      }
+    ]
+  } : null
 }
 
-output "kubernetes_cronjob" {
-  description = "Name of the Kubernetes CronJob for data collection"
-  value       = var.enable_kubernetes_integration ? kubernetes_cron_job_v1.k8s_collector[0].metadata[0].name : null
+output "all_clusters_info" {
+  description = "Complete information about all integrated clusters including regions"
+  value = var.enable_kubernetes_integration ? [
+    for cluster in local.all_clusters_info : {
+      region  = cluster.region
+      oidc_id = cluster.oidc_id
+    }
+  ] : null
 }
 
 # Policy ARNs
@@ -71,8 +84,6 @@ output "deployment_summary" {
     s3_bucket                  = var.s3_bucket_name != "" ? var.s3_bucket_name : null
     s3_integration_enabled     = local.enable_s3_access
     kubernetes_integration     = var.enable_kubernetes_integration
-    kubernetes_namespace       = var.enable_kubernetes_integration ? kubernetes_namespace.nullify[0].metadata[0].name : null
-    kubernetes_service_account = var.enable_kubernetes_integration ? kubernetes_service_account.nullify_collector_sa[0].metadata[0].name : null
-    cronjob_schedule           = var.cronjob_schedule
+    total_clusters_configured  = var.enable_kubernetes_integration ? length(local.all_oidc_ids) : 0
   }
 } 

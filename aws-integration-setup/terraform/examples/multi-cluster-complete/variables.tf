@@ -1,7 +1,8 @@
+# Simplified Multi-Cluster Example Variables
+
 variable "customer_name" {
   type        = string
   description = "The name of the customer to create the role for"
-  default     = "acme-corp"
 
   validation {
     condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_-]*$", var.customer_name))
@@ -19,15 +20,26 @@ variable "nullify_role_arn" {
   description = "The Nullify cross-account role ARN"
 }
 
+variable "eks_cluster_arns" {
+  type        = list(string)
+  description = "List of ARNs of EKS clusters to integrate with (can be from different regions)"
+
+  validation {
+    condition     = length(var.eks_cluster_arns) > 0
+    error_message = "You must provide at least one cluster ARN."
+  }
+}
+
 variable "aws_region" {
   type        = string
-  description = "The AWS region where resources are deployed"
+  description = "The primary AWS region for the integration (where IAM resources are created)"
   default     = "ap-southeast-2"
 }
 
-variable "eks_cluster_name" {
+variable "s3_bucket_name" {
   type        = string
-  description = "Name of the EKS cluster to integrate with"
+  description = "The name of the S3 bucket for storing scan results (optional)"
+  default     = ""
 }
 
 variable "kubernetes_namespace" {
@@ -36,25 +48,24 @@ variable "kubernetes_namespace" {
   default     = "nullify"
 }
 
-variable "service_account_name" {
-  type        = string
-  description = "The name of the Kubernetes service account"
-  default     = "nullify-k8s-collector-sa"
-}
-
 variable "cronjob_schedule" {
   type        = string
   description = "Cron schedule for the Kubernetes collector job"
-  default     = "0 0 * * *"
+  default     = "*/5 * * * *"
+}
+
+variable "collector_image" {
+  type        = string
+  description = "Docker image for the Kubernetes collector"
+  default     = "nullify/k8s-collector:latest"
 }
 
 variable "tags" {
   type        = map(string)
   description = "Tags to apply to AWS resources"
   default = {
-    Environment = "production"
-    Team        = "security"
-    Project     = "nullify-integration"
     ManagedBy   = "Terraform"
+    Purpose     = "NullifyIntegration"
+    Environment = "Production"
   }
-} 
+}

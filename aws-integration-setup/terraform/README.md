@@ -1,102 +1,99 @@
 # Nullify AWS Integration Terraform
 
-This Terraform configuration uses a module to create the necessary AWS IAM roles and policies, plus optional Kubernetes resources for integrating with Nullify's security scanning platform.
+This Terraform configuration provides modular components for integrating with Nullify's security scanning platform, supporting both AWS-only and full EKS cluster integrations.
+
+## ⚠️ Important Notice
+
+**EKS Integration**: The AWS integration module only sets up IAM roles and trust policies. For full EKS integration, you must also deploy the Kubernetes resources using the separate `k8s-resources` module or Helm charts.
 
 ## Architecture
 
-This configuration is organized as a Terraform module with a clean separation between the reusable module and the root configuration:
+The configuration is organized into separate, focused modules:
 
 ```
 terraform/
 ├── modules/
-│   └── nullify-aws-integration/    # Reusable module
-│       ├── versions.tf             # Module provider requirements
+│   ├── nullify-aws-integration/    # AWS IAM resources only
+│   │   ├── versions.tf             # AWS provider requirements
+│   │   ├── variables.tf            # Module input variables
+│   │   ├── locals.tf               # Module local values
+│   │   ├── data.tf                 # Data sources and policies  
+│   │   ├── main.tf                 # Core IAM resources
+│   │   └── outputs.tf              # Module outputs
+│   └── k8s-resources/              # Kubernetes resources only
+│       ├── versions.tf             # Kubernetes provider requirements
 │       ├── variables.tf            # Module input variables
-│       ├── locals.tf               # Module local values
-│       ├── data.tf                 # Data sources and policies
-│       ├── main.tf                 # Core IAM resources
-│       ├── kubernetes.tf           # Kubernetes resources
-│       ├── outputs.tf              # Module outputs
-│       └── README.md               # Module documentation
+│       ├── main.tf                 # Kubernetes resources
+│       └── outputs.tf              # Module outputs
 ├── examples/
 │   ├── basic/                      # AWS IAM only example
-│   └── with-kubernetes/            # Full EKS integration example
+│   └── multi-cluster-complete/     # Full multi-cluster EKS example
 ├── versions.tf                     # Root provider requirements
-├── providers.tf                    # Root provider configurations
 ├── variables.tf                    # Root input variables
 ├── main.tf                         # Module instantiation
-├── outputs.tf                      # Root outputs (from module)
+├── outputs.tf                      # Root outputs
 ├── terraform.tfvars.example        # Example configuration
 └── README.md                       # This file
 ```
 
-## Examples
+## Module Separation Benefits
 
-Two complete examples are provided:
+- **AWS Module**: Creates IAM roles with multi-cluster OIDC trust policies
+- **K8s Module**: Deploys collector cronjob and RBAC to any cluster
+- **Independent Deployment**: Deploy AWS resources once, K8s resources per cluster
+- **Multi-Region Support**: Automatic region detection from cluster ARNs
+- **Simplified Management**: Each module has focused responsibilities
+
+## Examples
 
 ### **Basic Example** (`examples/basic/`)
 - AWS IAM resources only
 - No Kubernetes integration
-- Minimal configuration
+- Minimal configuration for cloud-only scanning
 
-### **With-Kubernetes Example** (`examples/with-kubernetes/`)
-- Full AWS IAM + EKS integration
-- Kubernetes resources and IRSA setup
-- Complete EKS cluster integration
+### **Multi-Cluster Complete** (`examples/multi-cluster-complete/`)
+- Full AWS IAM + multi-cluster EKS integration  
+- Supports clusters from different regions
+- Automatic OIDC provider discovery
+- Single deployment handles multiple clusters
 
-Both examples reference the shared `terraform.tfvars.example` from the root directory.
+## Multi-Cluster Support
 
-## Benefits of Module Structure
+The architecture now supports multiple EKS clusters seamlessly:
 
-- **Reusability**: The module can be used across multiple environments
-- **Encapsulation**: Clean separation of concerns
-- **Versioning**: Module can be versioned and published
-- **Testing**: Module can be tested independently
-- **Maintainability**: Easier to maintain and update
+```hcl
+# Supports clusters from different regions
+eks_cluster_arns = [
+  "arn:aws:eks:us-west-2:123456789012:cluster/prod-cluster",
+  "arn:aws:eks:eu-west-1:123456789012:cluster/eu-cluster",
+  "arn:aws:eks:us-west-2:123456789012:cluster/staging-cluster"
+]
+```
+
+**Features:**
+- Automatic region extraction from cluster ARNs
+- Dynamic OIDC provider discovery 
+- Multi-region trust policy generation
+- Single IAM role trusts all specified clusters
 
 ## Quick Start
 
-1. **Copy the example configuration:**
-   ```bash
-   cp terraform.tfvars.example terraform.tfvars
-   ```
+### 1. AWS-Only Integration
 
-2. **Edit `terraform.tfvars`** with your specific values:
-   ```hcl
-   customer_name = "your-company-name"
-   # Add other required variables
-   ```
+```bash
+cd examples/basic/
+cp ../../terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+terraform init && terraform apply
+```
 
-3. **Initialize Terraform:**
-   ```bash
-   terraform init
-   ```
+### 2. Multi-Cluster EKS Integration
 
-4. **Plan the deployment:**
-   ```bash
-   terraform plan
-   ```
-
-5. **Apply the configuration:**
-   ```bash
-   terraform apply
-   ```
-
-## Module Usage
-
-The root configuration instantiates the `nullify-aws-integration` module:
-
-```hcl
-module "nullify_aws_integration" {
-  source = "./modules/nullify-aws-integration"
-  
-  customer_name                 = var.customer_name
-  external_id                   = var.external_id
-  nullify_role_arn              = var.nullify_role_arn
-  enable_kubernetes_integration = var.enable_kubernetes_integration
-  eks_oidc_id                  = var.eks_oidc_id
-  # ... other variables
-}
+```bash
+cd examples/multi-cluster-complete/
+cp terraform.tfvars.example terraform.tfvars
+# Edit with your cluster ARNs and values
+terraform init && terraform apply
 ```
 
 ## Required Variables
@@ -105,85 +102,112 @@ module "nullify_aws_integration" {
 - `external_id`: External ID for cross-account access (provided by Nullify)
 - `nullify_role_arn`: Nullify's cross-account role ARN (provided by Nullify)
 
+## EKS Integration Variables
+
+- `eks_cluster_arns`: List of EKS cluster ARNs to integrate with
+- `enable_kubernetes_integration`: Set to `true` for EKS integration
+
 ## Optional Variables
 
-- `aws_region`: AWS region for deployment (default: ap-southeast-2)
-- `s3_bucket_name`: S3 bucket for scan results (only needed if S3 integration required)
-- `enable_kubernetes_integration`: Enable Kubernetes resources (default: false)
-- `eks_oidc_id`: EKS OIDC provider ID (required if Kubernetes enabled)
+- `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
+- `s3_bucket_name`: S3 bucket for scan results (optional)
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
-- `service_account_name`: Kubernetes service account name (default: nullify-k8s-collector-sa)
 - `cronjob_schedule`: Cron schedule for data collection (default: "0 0 * * *")
-- `tags`: Resource tags (default: ManagedBy=Terraform, Purpose=NullifyIntegration)
+- `collector_image`: Docker image for collector (default: nullify/k8s-collector:latest)
+- `tags`: Resource tags
 
-## S3 Integration
+## Module Usage
 
-S3 integration is optional. If you don't provide an `s3_bucket_name`, the S3 access policy will not be created. This makes the integration more flexible for environments that don't require S3 access.
+### AWS Integration Only
+```hcl
+module "nullify_aws_integration" {
+  source = "./modules/nullify-aws-integration"
+  
+  customer_name    = "your-company"
+  external_id      = "your-external-id"
+  nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT:role/role-name"
+  
+  # Optional EKS integration
+  enable_kubernetes_integration = true
+  eks_cluster_arns = [
+    "arn:aws:eks:us-west-2:123456789012:cluster/my-cluster"
+  ]
+}
+```
 
-## Kubernetes Integration
-
-To enable Kubernetes integration:
-
-1. Set `enable_kubernetes_integration = true`
-2. Provide your EKS cluster's OIDC provider ID in `eks_oidc_id`
-3. Configure the Kubernetes provider in `providers.tf`
+### Kubernetes Resources (Deploy per Cluster)
+```hcl
+module "k8s_resources" {
+  source = "./modules/k8s-resources"
+  
+  providers = {
+    kubernetes = kubernetes.cluster_a
+  }
+  
+  iam_role_arn = module.nullify_aws_integration.role_arn
+  s3_bucket_name = "my-scan-results-bucket"
+  aws_region = "us-west-2"
+}
+```
 
 ## Outputs
 
-The configuration provides several outputs from the module:
-
+### AWS Integration Module
 - `role_arn`: ARN of the created IAM role
 - `deployment_summary`: Complete deployment information
-- Kubernetes resource names (when enabled)
+- `cluster_integration_summary`: Multi-cluster setup details
+- `all_oidc_ids`: List of OIDC provider IDs
 
-## Using the Module in Other Projects
+### K8s Resources Module  
+- `namespace_name`: Created namespace name
+- `service_account_name`: Service account name
+- `cronjob_name`: Data collector cronjob name
 
-You can use this module in other Terraform projects by referencing it:
+## Using Modules in Other Projects
+
+Reference the modules in other Terraform projects:
 
 ```hcl
-module "nullify_integration" {
+module "nullify_aws" {
   source = "git::https://github.com/your-org/nullify-terraform.git//terraform/modules/nullify-aws-integration?ref=v1.0.0"
   
   customer_name = "my-company"
-  aws_region    = "us-west-2"
+  external_id   = var.external_id
+  # ... other variables
+}
+
+module "nullify_k8s" {
+  source = "git::https://github.com/your-org/nullify-terraform.git//terraform/modules/k8s-resources?ref=v1.0.0"
+  
+  iam_role_arn = module.nullify_aws.role_arn
   # ... other variables
 }
 ```
 
-## Validation
-
-To validate your configuration:
-
-```bash
-# Format code
-terraform fmt -recursive
-
-# Validate syntax
-terraform validate
-
-# Check what will be created
-terraform plan
-```
-
 ## Security Considerations
 
-- The external ID acts as an additional security layer for cross-account access
-- The IAM role has comprehensive read-only permissions as required by Nullify
+- External ID provides additional cross-account security
+- IAM role has comprehensive read-only permissions
 - Kubernetes resources use least-privilege RBAC
-- All sensitive outputs are marked as sensitive
+- Supports multiple clusters without compromising security
+- IRSA (IAM Roles for Service Accounts) for secure pod authentication
 
-## Module Development
+## Validation
 
-To modify the module:
+```bash
+# Format and validate
+terraform fmt -recursive
+terraform validate
 
-1. Make changes in `modules/nullify-aws-integration/`
-2. Test the module independently
-3. Update version tags for releases
-4. Update documentation as needed
+# Plan deployment
+terraform plan
+
+# Check security
+terraform show -json | jq '.values.root_module.resources[].values'
+```
 
 ## Support
 
-For questions about this Terraform configuration:
-- Check the [module documentation](./modules/nullify-aws-integration/README.md)
-- Refer to Nullify documentation
-- Contact Nullify support 
+- Module documentation: `./modules/*/README.md`
+- Example configurations: `./examples/*/`
+- Contact Nullify support for integration assistance

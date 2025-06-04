@@ -24,14 +24,14 @@ variable "enable_kubernetes_integration" {
   default     = false
 }
 
-variable "eks_oidc_id" {
-  type        = string
-  description = "The OIDC provider ID for the EKS cluster (required when Kubernetes integration is enabled)"
-  default     = ""
-  
+variable "eks_cluster_arns" {
+  type        = list(string)
+  description = "List of ARNs of EKS clusters to integrate with (OIDC provider IDs will be fetched automatically)"
+  default     = []
+
   validation {
-    condition     = !var.enable_kubernetes_integration || (var.enable_kubernetes_integration && var.eks_oidc_id != "")
-    error_message = "EKS OIDC provider ID is required when Kubernetes integration is enabled"
+    condition     = !var.enable_kubernetes_integration || (var.enable_kubernetes_integration && length(var.eks_cluster_arns) > 0)
+    error_message = "When Kubernetes integration is enabled, you must provide at least one cluster ARN in eks_cluster_arns"
   }
 }
 
