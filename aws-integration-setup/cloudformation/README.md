@@ -16,10 +16,14 @@ This template creates:
 
 ## Prerequisites
 
-1. **Contact Nullify Support** to obtain:
-   - External ID for your account
-   - Nullify's cross-account role ARN
-   - S3 bucket name (for Kubernetes integration)
+1. **Obtain Configuration Values from Nullify Configure Page**:
+   - Log in to your Nullify configure page
+   - Navigate to Configure > Integrations
+   - Select AWS integration to begin setup
+   - Note the provided values:
+     - External ID for your account
+     - Nullify's cross-account role ARN
+     - S3 bucket name (for Kubernetes integration)
 
 2. **AWS Requirements**:
    - AWS CLI configured with appropriate permissions
@@ -29,6 +33,10 @@ This template creates:
    - EKS cluster with OIDC provider enabled
    - OIDC provider URL (see [Getting EKS OIDC URL](#getting-eks-oidc-url) below)
    - **Helm charts or Kubernetes manifests** to deploy the collector cronjobs
+
+> 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
+
+**Alternative**: Contact Nullify Support for assistance with configuration values.
 
 ## Getting EKS OIDC URL
 
@@ -86,13 +94,14 @@ eksctl utils associate-iam-oidc-provider --cluster YOUR_CLUSTER_NAME --approve
 2. Go to CloudFormation console
 3. Create new stack
 4. Upload template file
-5. Fill in parameters with values from Nullify support
+5. Fill in parameters with values from Nullify configure page
 6. Deploy stack
 
 ### 2. Deploy via AWS CLI
 
 ```bash
 # Deploy the stack
+# Note: ExternalID, CrossAccountRoleArn, and NullifyS3Bucket values are provided in the Nullify configure page
 aws cloudformation create-stack \
   --stack-name nullify-aws-integration \
   --template-body file://nullify-cloudformation-template.json \
@@ -120,6 +129,7 @@ aws cloudformation describe-stacks \
 ```bash
 # For EKS clusters, enable integration
 # First, get your OIDC URL (see "Getting EKS OIDC URL" section above)
+# Note: ExternalID, CrossAccountRoleArn, and NullifyS3Bucket values are provided in the Nullify configure page
 OIDC_URL=$(aws eks describe-cluster --name YOUR_CLUSTER_NAME --query 'cluster.identity.oidc.issuer' --output text | sed 's|https://||')
 
 aws cloudformation create-stack \

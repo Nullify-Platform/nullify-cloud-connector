@@ -41,13 +41,22 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 ### **Prerequisites (All Methods)**
 
 1. **AWS Account** with appropriate permissions
-2. **Nullify Account** and support contact
+2. **Nullify Account** and dashboard access
 3. **EKS Cluster** (for Kubernetes deployments)
 
-**Contact Nullify Support** to obtain:
-- Complete IAM role ARN for IRSA
-- S3 bucket name for data storage
-- Specific deployment instructions
+**Obtain Configuration Values from Nullify Configure Page:**
+
+1. **Log in to your Nullify configure page**
+2. **Navigate to Configure > Integrations**
+3. **Select AWS integration** to begin setup
+4. **Note the provided values:**
+   - **Nullify Role ARN**: The ARN of Nullify's cross-account role
+   - **External ID**: Unique identifier for secure cross-account access
+   - **S3 Bucket Name**: For secure data transfer (if applicable)
+
+> 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
+
+**Alternative**: Contact Nullify Support for assistance with configuration values.
 
 ---
 
@@ -66,11 +75,11 @@ collector:
   aws:
     region: "us-west-2"  # Your AWS region
   s3:
-    bucket: "your-nullify-bucket-name"  # From Nullify support
+    bucket: "your-nullify-bucket-name"  # From Nullify configure page
 
 serviceAccount:
   annotations:
-    # Complete IAM role ARN from Nullify support
+    # Complete IAM role ARN from Nullify configure page
     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-YourCompany-NullifyReadOnlyRole"
 EOF
 
@@ -94,7 +103,7 @@ cd nullify-cloud-connector
 # 2. Create your production values file
 cp helm-charts/nullify-k8s-collector/values-example.yaml values-production.yaml
 
-# 3. Edit with your actual values (provided by Nullify)
+# 3. Edit with your actual values (provided by Nullify configure page)
 vi values-production.yaml
 
 # 4. Install the chart
@@ -148,6 +157,8 @@ aws cloudformation create-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-west-2
 
+# Note: ExternalID and CrossAccountRoleArn are provided in the Nullify configure page
+
 # 3. Verify stack creation
 aws cloudformation describe-stacks --stack-name nullify-aws-integration
 ```
@@ -173,8 +184,8 @@ cp terraform.tfvars.example terraform.tfvars
 # 3. Edit with your cluster ARNs and values (supports multiple regions)
 cat > terraform.tfvars << EOF
 customer_name = "your-company"
-external_id   = "your-external-id"
-nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT:role/ROLE"
+external_id   = "your-external-id"  # From Nullify configure page
+nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT:role/ROLE"  # From Nullify configure page
 
 # Multi-cluster support - clusters can be from different regions
 eks_cluster_arns = [
@@ -183,7 +194,7 @@ eks_cluster_arns = [
 ]
 
 aws_region = "us-west-2"
-s3_bucket_name = "your-nullify-bucket"
+s3_bucket_name = "your-nullify-bucket"  # From Nullify configure page
 EOF
 
 # 4. Initialize and apply
@@ -303,7 +314,7 @@ The collector uses IRSA for secure AWS authentication. You only need to provide 
 ```yaml
 serviceAccount:
   annotations:
-    # Complete IAM role ARN provided by Nullify support
+    # Complete IAM role ARN provided by Nullify configure page
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT-ID:role/ROLE-NAME"
 ```
 
@@ -325,7 +336,7 @@ collector:
   aws:
     region: "us-west-2"
   
-  # S3 storage (provided by Nullify)
+  # S3 storage (provided by Nullify configure page)
   s3:
     bucket: "your-nullify-bucket"
     keyPrefix: "k8s-collector"
@@ -333,7 +344,7 @@ collector:
   # Collection schedule (cron format)
   schedule: "0 2 * * *"  # Daily at 2 AM UTC
 
-# IRSA configuration (provided by Nullify)
+# IRSA configuration (provided by Nullify configure page)
 serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/ROLE-NAME"
@@ -473,9 +484,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Before deploying:**
 1. 📖 Read [IMPLEMENTATION.md](IMPLEMENTATION.md) for technical details
-2. 🔐 Obtain **complete IAM role ARN** from Nullify support  
+2. 🔐 Obtain **complete IAM role ARN** from Nullify configure page  
 3. 🚫 Never commit `values-production.yaml`
 4. ✅ Use `values-example.yaml` as a template only
 5. 🔍 Verify IRSA configuration before deployment
 
-**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from Nullify support. 
+**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page. 

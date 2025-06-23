@@ -99,8 +99,8 @@ terraform init && terraform apply
 ## Required Variables
 
 - `customer_name`: Your company/customer name (used in resource naming)
-- `external_id`: External ID for cross-account access (provided by Nullify)
-- `nullify_role_arn`: Nullify's cross-account role ARN (provided by Nullify)
+- `external_id`: External ID for cross-account access (provided by Nullify configure page)
+- `nullify_role_arn`: Nullify's cross-account role ARN (provided by Nullify configure page)
 
 ## EKS Integration Variables
 
