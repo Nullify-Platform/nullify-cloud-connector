@@ -52,4 +52,9 @@ tolerations:
   - key: "dedicated"
     operator: "Equal"
     value: "system"
-    effect: "NoSchedule" 
+    effect: "NoSchedule"
+
+# Optional: Additional labels added to all resources
+labels:
+  custom-label: "my-value"
+  another-label: "another-value"

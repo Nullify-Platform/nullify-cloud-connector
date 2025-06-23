@@ -6,6 +6,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 
 - Kubernetes 1.16+
 - Helm 3.0+
+
 ## Configuration
 
 The following table lists the configurable parameters of the chart and their default values.
@@ -22,10 +23,12 @@ The following table lists the configurable parameters of the chart and their def
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `nullify-death-star-dast-k8s` |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | AWS region | `ap-southeast-2` |
+| `labels` | Additional labels for the collector resources | `null` |
 
 ## Security Context
 
 The collector runs with:
+
 - Non-root user (UID 1001)
 - Read-only root filesystem
 - No privilege escalation
@@ -94,11 +97,13 @@ helm delete k8s-collector
 If the CronJob is not creating jobs on schedule:
 
 1. Check that the cron schedule is valid:
+
    ```bash
    kubectl -n nullify get cronjob k8s-collector -o jsonpath='{.spec.schedule}'
    ```
 
 2. Check the CronJob status:
+
    ```bash
    kubectl -n nullify describe cronjob k8s-collector
    ```
@@ -109,4 +114,4 @@ If the job is failing due to S3 access issues:
 
 1. Verify that the IAM role or credentials have the necessary permissions
 2. Check that the S3 bucket exists and is accessible
-3. Examine the job logs for detailed error messages 
+3. Examine the job logs for detailed error messages

@@ -41,6 +41,9 @@ helm.sh/chart: {{ include "k8s-collector.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- with .Values.labels }}
+{{- toYaml . }}
+{{- end }}
 {{- end }}
 
 {{/*
