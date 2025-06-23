@@ -70,6 +70,9 @@ collector:
 fullnameOverride: ""
 nameOverride: ""
 
+# Add additional labels to all objects and pods defined in this chart.
+labels: {}
+
 # Namespace configuration
 namespace:
     annotations: {}
