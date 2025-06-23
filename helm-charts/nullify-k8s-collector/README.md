@@ -13,13 +13,13 @@ The following table lists the configurable parameters of the chart and their def
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `serviceAccount.create` | If true, create a new service account | `true` |
-| `serviceAccount.annotations` | Annotations for the service account | `eks.amazonaws.com/role-arn: YOUR-NULLIFY-READ-ONLY-ROLE-ARN` |
+| `serviceAccount.annotations` | Annotations for the service account (IAM role ARN from Nullify configure page) | `eks.amazonaws.com/role-arn: YOUR-NULLIFY-READ-ONLY-ROLE-ARN` |
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
 | `collector.image.tag` | Image tag | `k8s-collector-latest` |
 | `collector.image.pullPolicy` | Pull policy | `Always` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
-| `collector.s3.bucket` | S3 bucket for storing data | `nullify-death-star-dast-k8s` |
+| `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `nullify-death-star-dast-k8s` |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | AWS region | `ap-southeast-2` |
 
@@ -32,6 +32,8 @@ The collector runs with:
 - All capabilities dropped
 
 ## AWS IAM Configuration
+
+> 📖 **Note**: The IAM role ARN required for IRSA configuration is provided in the Nullify configure page. Log in to your Nullify configure page, navigate to Configure > Integrations, and select AWS integration to obtain the required values.
 
 ### EKS with IRSA (IAM Roles for Service Accounts)
 
