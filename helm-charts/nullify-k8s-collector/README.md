@@ -26,7 +26,7 @@ The following table lists the configurable parameters of the chart and their def
 ## Security Context
 
 The collector runs with:
-- Non-root user (UID 1000)
+- Non-root user (UID 1001)
 - Read-only root filesystem
 - No privilege escalation
 - All capabilities dropped
