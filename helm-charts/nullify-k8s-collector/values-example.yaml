@@ -13,6 +13,10 @@ collector:
     bucket: "your-actual-nullify-bucket"  # Get this from Nullify support/UI
     keyPrefix: "k8s-collector"
   
+  # KMS configuration (optional, provided by Nullify if needed)
+  kms:
+    keyArn: ""  # Get this from Nullify configure page if key management is required
+  
   # Optional: Custom collection schedule (default is daily at midnight)
   schedule: "0 2 * * *"  # 2 AM UTC daily
   

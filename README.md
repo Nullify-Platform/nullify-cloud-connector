@@ -53,6 +53,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
    - **Nullify Role ARN**: The ARN of Nullify's cross-account role
    - **External ID**: Unique identifier for secure cross-account access
    - **S3 Bucket Name**: For secure data transfer (if applicable)
+   - **KMS Key ARN**: For key management operations (if applicable)
 
 > 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
 

@@ -511,6 +511,22 @@ data "aws_iam_policy_document" "s3_access_policy" {
   }
 }
 
+data "aws_iam_policy_document" "kms_access_policy" {
+  count = local.enable_kms_access ? 1 : 0
+  
+  statement {
+    effect = "Allow"
+    actions = [
+      "kms:DescribeKey",
+      "kms:GenerateDataKey",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo"
+    ]
+    resources = [var.kms_key_arn]
+  }
+}
+
 data "aws_iam_policy_document" "deny_actions_policy" {
   statement {
     effect = "Deny"
@@ -532,9 +548,6 @@ data "aws_iam_policy_document" "deny_actions_policy" {
       "ssm:PutParameter*",
       "ssm:DeleteParameter*",
       "kms:Decrypt",
-      "kms:DescribeKey",
-      "kms:GenerateDataKey*",
-      "kms:CreateGrant",
       "lambda:InvokeFunction",
       "lambda:InvokeAsync",
       "sts:AssumeRole",

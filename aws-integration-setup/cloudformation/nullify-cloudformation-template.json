@@ -42,6 +42,13 @@
         "Type": "String",
         "Description": "The S3 bucket name provided by Nullify for data collection.",
         "Default": "YOUR-NULLIFY-S3-BUCKET"
+      },
+      "NullifyKMSKeyArn": {
+        "Type": "String",
+        "Description": "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed).",
+        "Default": "",
+        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+)?$",
+        "ConstraintDescription": "Must be a valid KMS key ARN or empty string."
       }
     },
     "Conditions": {
@@ -84,6 +91,18 @@
             ]
           }
         ]
+      },
+      "KMSKeyProvided": {
+        "Fn::Not": [
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "NullifyKMSKeyArn"
+              },
+              ""
+            ]
+          }
+        ]
       }
     },
     "Resources": {
@@ -116,10 +135,6 @@
                   "ssm:GetParameter*",
                   "ssm:PutParameter*",
                   "ssm:DeleteParameter*",
-                  "kms:Decrypt",
-                  "kms:DescribeKey",
-                  "kms:GenerateDataKey*",
-                  "kms:CreateGrant",
                   "lambda:InvokeFunction",
                   "lambda:InvokeAsync",
                   "sts:AssumeRole",
@@ -226,31 +241,72 @@
           "ManagedPolicyArns": {
             "Fn::If": [
               "EKSIntegrationEnabled",
-              [
-                {
-                  "Ref": "ReadOnlyAccessPolicy"
-                },
-                {
-                  "Ref": "ReadOnlyAccessPolicy2"
-                },
-                {
-                  "Ref": "S3AccessPolicy"
-                },
-                {
-                  "Ref": "DenyActionsPolicy"
-                }
-              ],
-              [
-                {
-                  "Ref": "ReadOnlyAccessPolicy"
-                },
-                {
-                  "Ref": "ReadOnlyAccessPolicy2"
-                },
-                {
-                  "Ref": "DenyActionsPolicy"
-                }
-              ]
+              {
+                "Fn::If": [
+                  "KMSKeyProvided",
+                  [
+                    {
+                      "Ref": "ReadOnlyAccessPolicy"
+                    },
+                    {
+                      "Ref": "ReadOnlyAccessPolicy2"
+                    },
+                    {
+                      "Ref": "S3AccessPolicy"
+                    },
+                    {
+                      "Ref": "KMSAccessPolicy"
+                    },
+                    {
+                      "Ref": "DenyActionsPolicy"
+                    }
+                  ],
+                  [
+                    {
+                      "Ref": "ReadOnlyAccessPolicy"
+                    },
+                    {
+                      "Ref": "ReadOnlyAccessPolicy2"
+                    },
+                    {
+                      "Ref": "S3AccessPolicy"
+                    },
+                    {
+                      "Ref": "DenyActionsPolicy"
+                    }
+                  ]
+                ]
+              },
+              {
+                "Fn::If": [
+                  "KMSKeyProvided",
+                  [
+                    {
+                      "Ref": "ReadOnlyAccessPolicy"
+                    },
+                    {
+                      "Ref": "ReadOnlyAccessPolicy2"
+                    },
+                    {
+                      "Ref": "KMSAccessPolicy"
+                    },
+                    {
+                      "Ref": "DenyActionsPolicy"
+                    }
+                  ],
+                  [
+                    {
+                      "Ref": "ReadOnlyAccessPolicy"
+                    },
+                    {
+                      "Ref": "ReadOnlyAccessPolicy2"
+                    },
+                    {
+                      "Ref": "DenyActionsPolicy"
+                    }
+                  ]
+                ]
+              }
             ]
           },
           "RoleName": {
@@ -749,6 +805,35 @@
                     "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
                   }
                 ],
+                "Condition": {}
+              }
+            ]
+          }
+        }
+      },
+      "KMSAccessPolicy": {
+        "Type": "AWS::IAM::ManagedPolicy",
+        "Condition": "KMSKeyProvided",
+        "Properties": {
+          "Description": "KMS access for Nullify key management operations",
+          "ManagedPolicyName": {
+            "Fn::Sub": "AWSIntegration-${CustomerName}-KMSAccess"
+          },
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "kms:DescribeKey",
+                  "kms:GenerateDataKey",
+                  "kms:GenerateDataKeyWithoutPlaintext",
+                  "kms:ReEncryptFrom",
+                  "kms:ReEncryptTo"
+                ],
+                "Resource": {
+                  "Ref": "NullifyKMSKeyArn"
+                },
                 "Condition": {}
               }
             ]

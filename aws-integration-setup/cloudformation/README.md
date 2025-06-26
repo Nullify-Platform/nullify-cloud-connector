@@ -24,6 +24,7 @@ This template creates:
      - External ID for your account
      - Nullify's cross-account role ARN
      - S3 bucket name (for Kubernetes integration)
+     - KMS key ARN (optional, for key management operations)
 
 2. **AWS Requirements**:
    - AWS CLI configured with appropriate permissions
@@ -155,5 +156,21 @@ aws cloudformation create-stack \
     ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
     ParameterKey=EnableEKSIntegration,ParameterValue=true \
     ParameterKey=EKSOidcProviderURL,ParameterValue=A78D8794A06CAE5791C5812CDB164C7D.gr7.ap-southeast-2.eks.amazonaws.com \
+  --capabilities CAPABILITY_NAMED_IAM
+```
+
+### 4. Deploy with KMS Integration (Optional)
+
+```bash
+# Deploy with KMS key ARN for key management operations
+aws cloudformation create-stack \
+  --stack-name nullify-aws-integration \
+  --template-body file://nullify-cloudformation-template.json \
+  --parameters \
+    ParameterKey=CustomerName,ParameterValue=yourcompany \
+    ParameterKey=ExternalID,ParameterValue=YOUR-EXTERNAL-ID \
+    ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::NULLIFY-ACCOUNT:role/NULLIFY-ROLE \
+    ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
+    ParameterKey=NullifyKMSKeyArn,ParameterValue=arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012 \
   --capabilities CAPABILITY_NAMED_IAM
 ```

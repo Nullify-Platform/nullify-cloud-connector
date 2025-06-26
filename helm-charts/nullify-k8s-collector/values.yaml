@@ -43,6 +43,11 @@ collector:
         # Key prefix for storing collected data
         keyPrefix: k8s-collector
     
+    # KMS configuration (optional, provided by Nullify if needed)
+    kms:
+        # KMS key ARN for key management operations
+        keyArn: ""  # Replace with actual KMS key ARN from Nullify configure page if provided
+    
     # CronJob schedule (daily at midnight UTC)
     schedule: "0 0 * * *"
     

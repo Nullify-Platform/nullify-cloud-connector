@@ -69,3 +69,9 @@ variable "tags" {
     Environment = "Production"
   }
 }
+
+variable "kms_key_arn" {
+  type        = string
+  description = "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed)"
+  default     = ""
+}

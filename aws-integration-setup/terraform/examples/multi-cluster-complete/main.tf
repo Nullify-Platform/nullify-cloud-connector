@@ -54,6 +54,7 @@ module "nullify_aws_integration" {
   nullify_role_arn = var.nullify_role_arn
   aws_region     = var.aws_region
   s3_bucket_name = var.s3_bucket_name
+  kms_key_arn    = var.kms_key_arn
 
   # Multiple Kubernetes Clusters Configuration
   enable_kubernetes_integration = true
@@ -69,6 +70,7 @@ module "k8s_resources_primary" {
   }
   iam_role_arn         = module.nullify_aws_integration.role_arn
   s3_bucket_name       = var.s3_bucket_name
+  kms_key_arn          = var.kms_key_arn
   aws_region           = var.aws_region
   kubernetes_namespace = var.kubernetes_namespace
   cronjob_schedule     = var.cronjob_schedule
@@ -82,6 +84,7 @@ module "k8s_resources_secondary" {
   }
   iam_role_arn         = module.nullify_aws_integration.role_arn
   s3_bucket_name       = var.s3_bucket_name
+  kms_key_arn          = var.kms_key_arn
   aws_region           = var.aws_region
   kubernetes_namespace = var.kubernetes_namespace
   cronjob_schedule     = var.cronjob_schedule
