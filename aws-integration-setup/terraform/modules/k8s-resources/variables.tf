@@ -43,4 +43,10 @@ variable "kms_key_arn" {
   type        = string
   description = "The ARN of the KMS key for key management operations (optional)"
   default     = ""
+}
+
+variable "enable_debug" {
+  type        = bool
+  description = "Enable debug logging for troubleshooting"
+  default     = false
 } 

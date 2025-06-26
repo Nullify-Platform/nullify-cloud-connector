@@ -198,6 +198,14 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
                 }
               }
 
+              dynamic "env" {
+                for_each = var.enable_debug ? [1] : []
+                content {
+                  name  = "ENABLE_DEBUG_LOG"
+                  value = "true"
+                }
+              }
+
               resources {
                 requests = {
                   memory = "256Mi"

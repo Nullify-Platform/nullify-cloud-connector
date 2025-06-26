@@ -17,6 +17,10 @@ collector:
   kms:
     keyArn: ""  # Get this from Nullify configure page if key management is required
   
+  # Debug configuration (optional)
+  debug:
+    enabled: false  # Set to true to enable debug logging for troubleshooting
+  
   # Optional: Custom collection schedule (default is daily at midnight)
   schedule: "0 2 * * *"  # 2 AM UTC daily
   

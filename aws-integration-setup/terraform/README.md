@@ -153,6 +153,7 @@ module "k8s_resources" {
   s3_bucket_name = "my-scan-results-bucket"
   kms_key_arn    = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"  # Optional
   aws_region     = "us-west-2"
+  enable_debug   = false  # Set to true to enable debug logging
 }
 ```
 

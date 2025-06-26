@@ -48,6 +48,11 @@ collector:
         # KMS key ARN for key management operations
         keyArn: ""  # Replace with actual KMS key ARN from Nullify configure page if provided
     
+    # Debug configuration (optional)
+    debug:
+        # Enable debug logging for troubleshooting
+        enabled: false
+    
     # CronJob schedule (daily at midnight UTC)
     schedule: "0 0 * * *"
     
