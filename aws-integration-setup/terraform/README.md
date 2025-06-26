@@ -111,6 +111,7 @@ terraform init && terraform apply
 
 - `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
 - `s3_bucket_name`: S3 bucket for scan results (optional)
+- `kms_key_arn`: KMS key ARN for key management operations (optional, provided by Nullify configure page if needed)
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `cronjob_schedule`: Cron schedule for data collection (default: "0 0 * * *")
 - `collector_image`: Docker image for collector (default: nullify/k8s-collector:latest)
@@ -126,6 +127,10 @@ module "nullify_aws_integration" {
   customer_name    = "your-company"
   external_id      = "your-external-id"
   nullify_role_arn = "arn:aws:iam::NULLIFY-ACCOUNT:role/role-name"
+  
+  # Optional configurations
+  kms_key_arn    = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"  # Optional
+  s3_bucket_name = "your-scan-results-bucket"  # Optional
   
   # Optional EKS integration
   enable_kubernetes_integration = true
@@ -144,9 +149,11 @@ module "k8s_resources" {
     kubernetes = kubernetes.cluster_a
   }
   
-  iam_role_arn = module.nullify_aws_integration.role_arn
+  iam_role_arn   = module.nullify_aws_integration.role_arn
   s3_bucket_name = "my-scan-results-bucket"
-  aws_region = "us-west-2"
+  kms_key_arn    = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"  # Optional
+  aws_region     = "us-west-2"
+  enable_debug   = false  # Set to true to enable debug logging
 }
 ```
 

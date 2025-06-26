@@ -46,6 +46,14 @@ spec:
             - name: METADATA_ONLY
               value: "true"
             {{- end }}
+            {{- if .Values.collector.kms.keyArn }}
+            - name: NULLIFY_KMS_KEY_ARN
+              value: "{{ .Values.collector.kms.keyArn }}"
+            {{- end }}
+            {{- if .Values.collector.debug.enabled }}
+            - name: ENABLE_DEBUG_LOG
+              value: "true"
+            {{- end }}
             resources:
               {{- toYaml .Values.collector.resources | nindent 14 }}
           restartPolicy: OnFailure

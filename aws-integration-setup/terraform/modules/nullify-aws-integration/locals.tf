@@ -7,6 +7,7 @@ locals {
   readonly_policy_part1_name = "${local.role_name_prefix}-ReadOnlyAccess-Part1"
   readonly_policy_part2_name = "${local.role_name_prefix}-ReadOnlyAccess-Part2"
   s3_access_policy_name      = "${local.role_name_prefix}-S3Access"
+  kms_access_policy_name     = "${local.role_name_prefix}-KMSAccess"
   deny_actions_policy_name   = "${local.role_name_prefix}-DenyActions"
   
   # Cross-account role ARN (use directly)
@@ -18,6 +19,9 @@ locals {
   # S3 configuration
   enable_s3_access = var.s3_bucket_name != ""
   s3_bucket_arn    = var.s3_bucket_name != "" ? "arn:aws:s3:::${var.s3_bucket_name}" : ""
+  
+  # KMS configuration
+  enable_kms_access = var.kms_key_arn != ""
   
   # Common tags
   common_tags = merge(var.tags, {

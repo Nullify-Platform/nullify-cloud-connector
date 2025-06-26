@@ -23,6 +23,8 @@ The following table lists the configurable parameters of the chart and their def
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `nullify-death-star-dast-k8s` |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | AWS region | `ap-southeast-2` |
+| `collector.kms.keyArn` | KMS key ARN for key management operations (optional) | `""` |
+| `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `labels` | Additional labels for the collector resources | `null` |
 
 ## Security Context
@@ -115,3 +117,30 @@ If the job is failing due to S3 access issues:
 1. Verify that the IAM role or credentials have the necessary permissions
 2. Check that the S3 bucket exists and is accessible
 3. Examine the job logs for detailed error messages
+
+### Debug Mode
+
+To enable debug logging for troubleshooting:
+
+1. **Enable debug mode** in your values file:
+   ```yaml
+   collector:
+     debug:
+       enabled: true
+   ```
+
+2. **Upgrade the deployment**:
+   ```bash
+   helm upgrade nullify-collector nullify/nullify-k8s-collector -f values.yaml
+   ```
+
+3. **Check debug logs**:
+   ```bash
+   # Wait for the next job to run or trigger manually
+   kubectl create job --from=cronjob/nullify-k8s-collector manual-debug-run -n nullify
+   
+   # View debug logs
+   kubectl logs -l job-name=manual-debug-run -n nullify
+   ```
+
+Debug mode enables the `ENABLE_DEBUG_LOG` environment variable, which provides more detailed logging information to help diagnose collection issues.

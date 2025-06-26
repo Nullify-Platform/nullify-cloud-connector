@@ -27,6 +27,7 @@ module "nullify_aws_integration" {
   # AWS Configuration
   aws_region     = var.aws_region
   s3_bucket_name = var.s3_bucket_name
+  kms_key_arn    = var.kms_key_arn
 
   # Kubernetes integration disabled - no Kubernetes provider needed
   enable_kubernetes_integration = false

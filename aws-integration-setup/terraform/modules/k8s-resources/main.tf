@@ -190,6 +190,22 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
                 value = var.aws_region
               }
 
+              dynamic "env" {
+                for_each = var.kms_key_arn != "" ? [1] : []
+                content {
+                  name  = "NULLIFY_KMS_KEY_ARN"
+                  value = var.kms_key_arn
+                }
+              }
+
+              dynamic "env" {
+                for_each = var.enable_debug ? [1] : []
+                content {
+                  name  = "ENABLE_DEBUG_LOG"
+                  value = "true"
+                }
+              }
+
               resources {
                 requests = {
                   memory = "256Mi"

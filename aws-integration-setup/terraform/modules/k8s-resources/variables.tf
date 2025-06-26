@@ -37,4 +37,16 @@ variable "cronjob_schedule" {
   type        = string
   description = "Cron schedule for the Kubernetes collector job"
   default     = "0 0 * * *"
+}
+
+variable "kms_key_arn" {
+  type        = string
+  description = "The ARN of the KMS key for key management operations (optional)"
+  default     = ""
+}
+
+variable "enable_debug" {
+  type        = bool
+  description = "Enable debug logging for troubleshooting"
+  default     = false
 } 

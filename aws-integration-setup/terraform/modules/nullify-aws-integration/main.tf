@@ -33,6 +33,15 @@ resource "aws_iam_policy" "s3_access_policy" {
   tags        = local.common_tags
 }
 
+resource "aws_iam_policy" "kms_access_policy" {
+  count = local.enable_kms_access ? 1 : 0
+  
+  name        = local.kms_access_policy_name
+  description = "KMS access policy for Nullify key management operations"
+  policy      = data.aws_iam_policy_document.kms_access_policy[0].json
+  tags        = local.common_tags
+}
+
 resource "aws_iam_policy" "deny_actions_policy" {
   name        = local.deny_actions_policy_name
   description = "Policy to explicitly deny certain actions"
@@ -56,6 +65,13 @@ resource "aws_iam_role_policy_attachment" "s3_access_policy" {
   
   role       = aws_iam_role.nullify_readonly_role.name
   policy_arn = aws_iam_policy.s3_access_policy[0].arn
+}
+
+resource "aws_iam_role_policy_attachment" "kms_access_policy" {
+  count = local.enable_kms_access ? 1 : 0
+  
+  role       = aws_iam_role.nullify_readonly_role.name
+  policy_arn = aws_iam_policy.kms_access_policy[0].arn
 }
 
 resource "aws_iam_role_policy_attachment" "deny_actions_policy" {
