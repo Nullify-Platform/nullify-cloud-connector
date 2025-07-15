@@ -8,6 +8,9 @@ collector:
   aws:
     region: "us-west-2"  # Change to your EKS cluster region
   
+  # Cluster identification
+  clusterName: "my-production-cluster"  # Replace with your actual cluster name
+  
   # S3 configuration (provided by Nullify support/UI)
   s3:
     bucket: "your-actual-nullify-bucket"  # Get this from Nullify support/UI
