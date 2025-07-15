@@ -23,6 +23,7 @@ The following table lists the configurable parameters of the chart and their def
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `nullify-death-star-dast-k8s` |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | AWS region | `ap-southeast-2` |
+| `collector.clusterName` | Cluster name identifier | `YOUR-CLUSTER-NAME` |
 | `collector.kms.keyArn` | KMS key ARN for key management operations (optional) | `""` |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `labels` | Additional labels for the collector resources | `null` |

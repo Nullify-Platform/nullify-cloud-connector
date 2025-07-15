@@ -20,6 +20,9 @@ collector:
         # AWS region where your EKS cluster is deployed
         region: us-east-1  # Change to your preferred region
     
+    # Cluster identification
+    clusterName: "YOUR-CLUSTER-NAME"  # Replace with your actual cluster name
+    
     # Container image configuration
     image:
         # Official Nullify k8s-collector image

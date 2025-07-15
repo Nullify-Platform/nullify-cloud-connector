@@ -34,6 +34,8 @@ spec:
               value: "{{ .Values.collector.s3.keyPrefix }}"
             - name: AWS_REGION
               value: "{{ .Values.collector.aws.region }}"
+            - name: CLUSTER_NAME
+              value: "{{ .Values.collector.clusterName }}"
             {{- if and .Values.collector.dataCollection .Values.collector.dataCollection.excludeNamespaces }}
             - name: EXCLUDE_NAMESPACES
               value: "{{ .Values.collector.dataCollection.excludeNamespaces }}"
