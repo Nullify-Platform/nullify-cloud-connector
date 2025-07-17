@@ -502,7 +502,8 @@ data "aws_iam_policy_document" "s3_access_policy" {
     effect = "Allow"
     actions = [
       "s3:PutObject",
-      "s3:ListBucket"
+      "s3:ListBucket",
+      "s3:PutObjectAcl"
     ]
     resources = [
       local.s3_bucket_arn,
