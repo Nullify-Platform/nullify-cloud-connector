@@ -533,7 +533,9 @@
                   "lakeformation:Search*",
                   "lambda:List*",
                   "lambda:Get*",
-                  "ec2:Describe*"
+                  "ec2:Describe*",
+                  "ec2:GetTransitGateway*",
+                  "ec2:SearchTransitGateway*"
                 ],
                 "Resource": "*",
                 "Condition": {}
