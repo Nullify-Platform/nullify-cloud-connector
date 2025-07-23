@@ -263,7 +263,9 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "lakeformation:Search*",
       "lambda:Get*",
       "lambda:List*",
-      "ec2:Describe*"
+      "ec2:Describe*",
+      "ec2:GetTransitGateway*",
+      "ec2:SearchTransitGateway*"
     ]
     resources = ["*"]
   }
