@@ -18,10 +18,10 @@ output "cluster_integration_summary" {
 output "k8s_resources" {
   description = "Kubernetes resources deployed to primary cluster"
   value = {
-    namespace_name           = module.k8s_resources.namespace_name
-    service_account_name     = module.k8s_resources.service_account_name
-    cluster_role_name        = module.k8s_resources.cluster_role_name
+    namespace_name            = module.k8s_resources.namespace_name
+    service_account_name      = module.k8s_resources.service_account_name
+    cluster_role_name         = module.k8s_resources.cluster_role_name
     cluster_role_binding_name = module.k8s_resources.cluster_role_binding_name
-    cronjob_name            = module.k8s_resources.cronjob_name
+    cronjob_name              = module.k8s_resources.cronjob_name
   }
 }

@@ -9,7 +9,7 @@ locals {
   all_clusters_info = var.enable_kubernetes_integration ? [
     for i, cluster in data.aws_eks_cluster.clusters : {
       oidc_id = split("/", cluster.identity[0].oidc[0].issuer)[4]
-      region  = split(":", var.eks_cluster_arns[i])[3]  # Extract region from ARN
+      region  = split(":", var.eks_cluster_arns[i])[3] # Extract region from ARN
     }
   ] : []
 
@@ -499,7 +499,7 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
 
 data "aws_iam_policy_document" "s3_access_policy" {
   count = local.enable_s3_access ? 1 : 0
-  
+
   statement {
     effect = "Allow"
     actions = [
@@ -516,7 +516,7 @@ data "aws_iam_policy_document" "s3_access_policy" {
 
 data "aws_iam_policy_document" "kms_access_policy" {
   count = local.enable_kms_access ? 1 : 0
-  
+
   statement {
     effect = "Allow"
     actions = [
@@ -582,4 +582,4 @@ data "aws_iam_policy_document" "deny_actions_policy" {
     ]
     resources = ["*"]
   }
-} 
+}

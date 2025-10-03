@@ -1,7 +1,7 @@
 variable "customer_name" {
   type        = string
   description = "The name of the customer to create the role for"
-  
+
   validation {
     condition     = can(regex("^[a-zA-Z][a-zA-Z0-9_-]*$", var.customer_name))
     error_message = "Customer name must start with a letter and can only contain letters, numbers, underscores, and hyphens"
@@ -16,6 +16,11 @@ variable "external_id" {
 variable "nullify_role_arn" {
   type        = string
   description = "The Nullify cross-account role ARN"
+
+  validation {
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.nullify_role_arn))
+    error_message = "Must be a valid ARN for an IAM role in the format arn:aws:iam::<account-id>:role/<role-name>"
+  }
 }
 
 variable "enable_kubernetes_integration" {
