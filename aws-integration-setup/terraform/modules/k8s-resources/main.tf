@@ -39,7 +39,7 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     api_groups = [""]
     resources = [
       "pods",
-      "services", 
+      "services",
       "endpoints",
       "namespaces",
       "nodes",
@@ -186,7 +186,7 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
               }
 
               env {
-                name = "AWS_REGION"
+                name  = "AWS_REGION"
                 value = var.aws_region
               }
 

@@ -78,12 +78,12 @@ output "policy_arns" {
 output "deployment_summary" {
   description = "Summary of the Nullify integration deployment"
   value = {
-    role_arn                   = aws_iam_role.nullify_readonly_role.arn
-    customer_name              = var.customer_name
-    aws_region                 = var.aws_region
-    s3_bucket                  = var.s3_bucket_name != "" ? var.s3_bucket_name : null
-    s3_integration_enabled     = local.enable_s3_access
-    kubernetes_integration     = var.enable_kubernetes_integration
-    total_clusters_configured  = var.enable_kubernetes_integration ? length(local.all_oidc_ids) : 0
+    role_arn                  = aws_iam_role.nullify_readonly_role.arn
+    customer_name             = var.customer_name
+    aws_region                = var.aws_region
+    s3_bucket                 = var.s3_bucket_name != "" ? var.s3_bucket_name : null
+    s3_integration_enabled    = local.enable_s3_access
+    kubernetes_integration    = var.enable_kubernetes_integration
+    total_clusters_configured = var.enable_kubernetes_integration ? length(local.all_oidc_ids) : 0
   }
 } 

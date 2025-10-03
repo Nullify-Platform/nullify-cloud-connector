@@ -193,9 +193,7 @@
                     },
                     "Effect": "Allow",
                     "Principal": {
-                      "AWS": {
-                        "Ref": "CrossAccountRoleArn"
-                      }
+                      "AWS": {"Fn::Sub": "${CrossAccountRoleArn}"}
                     }
                   },
                   {
@@ -228,9 +226,7 @@
                     },
                     "Effect": "Allow",
                     "Principal": {
-                      "AWS": {
-                        "Ref": "CrossAccountRoleArn"
-                      }
+                      "AWS": {"Fn::Sub": "${CrossAccountRoleArn}"}
                     }
                   }
                 ],
