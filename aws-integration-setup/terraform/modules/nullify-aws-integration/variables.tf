@@ -83,4 +83,9 @@ variable "kms_key_arn" {
   type        = string
   description = "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed)"
   default     = ""
+
+  validation {
+    condition     = var.kms_key_arn == "" || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+)$", var.kms_key_arn))
+    error_message = "Must be a valid KMS key ARN (key ID or alias format) or empty string. Example: arn:aws:kms:region:account-id:key/key-id or arn:aws:kms:region:account-id:alias/alias-name"
+  }
 } 

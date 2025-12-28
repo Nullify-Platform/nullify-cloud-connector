@@ -47,8 +47,8 @@
         "Type": "String",
         "Description": "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed).",
         "Default": "",
-        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+)?$",
-        "ConstraintDescription": "Must be a valid KMS key ARN or empty string."
+        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+))?$",
+        "ConstraintDescription": "Must be a valid KMS key ARN (key ID or alias) or empty string."
       }
     },
     "Conditions": {
