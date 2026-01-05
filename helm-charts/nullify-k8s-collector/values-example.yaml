@@ -16,9 +16,10 @@ collector:
     bucket: "your-actual-nullify-bucket"  # Get this from Nullify support/UI
     keyPrefix: "k8s-collector"
   
-  # KMS configuration (optional, provided by Nullify if needed)
+  # KMS configuration (REQUIRED)
   kms:
-    keyArn: ""  # Get this from Nullify configure page if key management is required
+    # ⚠️ REQUIRED: Get this from Nullify configure page
+    keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
   
   # Debug configuration (optional)
   debug:

@@ -24,7 +24,7 @@ The following table lists the configurable parameters of the chart and their def
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | AWS region | `ap-southeast-2` |
 | `collector.clusterName` | Cluster name identifier | `YOUR-CLUSTER-NAME` |
-| `collector.kms.keyArn` | KMS key ARN for key management operations (optional) | `""` |
+| `collector.kms.keyArn` | **REQUIRED**: KMS key ARN for encryption operations (from Nullify configure page) | `""` |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `labels` | Additional labels for the collector resources | `null` |
 
