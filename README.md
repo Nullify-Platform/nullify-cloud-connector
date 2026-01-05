@@ -52,8 +52,8 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 4. **Note the provided values:**
    - **Nullify Role ARN**: The ARN of Nullify's cross-account role
    - **External ID**: Unique identifier for secure cross-account access
-   - **S3 Bucket Name**: For secure data transfer (if applicable)
-   - **KMS Key ARN**: For key management operations (if applicable)
+   - **S3 Bucket Name**: For secure data transfer
+   - **KMS Key ARN**: ⚠️ **REQUIRED** for encryption operations
 
 > 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
 
@@ -74,9 +74,11 @@ helm repo update
 cat > values-production.yaml << EOF
 collector:
   aws:
-    region: "us-west-2"  # Your AWS region
+    region: "us-west-2"  # ⚠️ IMPORTANT: Extract this from your KMS key ARN (e.g., arn:aws:kms:us-west-2:... → use "us-west-2")
   s3:
     bucket: "your-nullify-bucket-name"  # From Nullify configure page
+  kms:
+    keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"  # ⚠️ REQUIRED: From Nullify configure page
 
 serviceAccount:
   annotations:
@@ -342,6 +344,10 @@ collector:
     bucket: "your-nullify-bucket"
     keyPrefix: "k8s-collector"
   
+  # KMS configuration (REQUIRED - provided by Nullify configure page)
+  kms:
+    keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
+  
   # Collection schedule (cron format)
   schedule: "0 2 * * *"  # Daily at 2 AM UTC
 
@@ -485,9 +491,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Before deploying:**
 1. 📖 Read [IMPLEMENTATION.md](IMPLEMENTATION.md) for technical details
-2. 🔐 Obtain **complete IAM role ARN** from Nullify configure page  
-3. 🚫 Never commit `values-production.yaml`
-4. ✅ Use `values-example.yaml` as a template only
-5. 🔍 Verify IRSA configuration before deployment
+2. 🔐 Obtain **complete IAM role ARN** from Nullify configure page
+3. 🔑 Obtain **KMS key ARN** from Nullify configure page (required)
+4. 🚫 Never commit `values-production.yaml`
+5. ✅ Use `values-example.yaml` as a template only
+6. 🔍 Verify IRSA configuration before deployment
 
 **Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page. 
