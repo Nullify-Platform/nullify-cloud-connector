@@ -11,6 +11,8 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 
 The following table lists the configurable parameters of the chart and their default values.
 
+> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, and `serviceAccount.annotations.eks.amazonaws.com/role-arn` must be configured before deployment. Get these from the Nullify configure page.
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `serviceAccount.create` | If true, create a new service account | `true` |
@@ -23,8 +25,8 @@ The following table lists the configurable parameters of the chart and their def
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `nullify-death-star-dast-k8s` |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | AWS region | `ap-southeast-2` |
-| `collector.clusterName` | Cluster name identifier | `YOUR-CLUSTER-NAME` |
-| `collector.kms.keyArn` | **REQUIRED**: KMS key ARN for encryption operations (from Nullify configure page) | `""` |
+| `collector.clusterName` | Cluster name (must match your actual EKS cluster name) | `YOUR-CLUSTER-NAME` |
+| `collector.kms.keyArn` | KMS key ARN for encryption (from Nullify configure page) | `""` |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `labels` | Additional labels for the collector resources | `null` |
 

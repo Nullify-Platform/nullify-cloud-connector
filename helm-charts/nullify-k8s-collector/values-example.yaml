@@ -1,52 +1,44 @@
 # Example values for nullify-k8s-collector
 # Copy this file to values-production.yaml and fill in your actual values
 # DO NOT commit values-production.yaml to version control
+#
+# REQUIRED VALUES (get these from Nullify configure page):
+#   - collector.clusterName: Your exact EKS cluster name
+#   - collector.s3.bucket: S3 bucket name
+#   - collector.kms.keyArn: KMS key ARN
+#   - serviceAccount.annotations.eks.amazonaws.com/role-arn: IAM role ARN
 
-# Basic configuration
 collector:
-  # Your AWS region
+  # AWS region (extract from your KMS key ARN)
   aws:
-    region: "us-west-2"  # Change to your EKS cluster region
+    region: "us-west-2"
   
-  # Cluster identification
-  clusterName: "my-production-cluster"  # Replace with your actual cluster name
+  # Must match your actual EKS cluster name exactly
+  clusterName: "my-production-cluster"
   
-  # S3 configuration (provided by Nullify support/UI)
+  # S3 configuration (from Nullify configure page)
   s3:
-    bucket: "your-actual-nullify-bucket"  # Get this from Nullify support/UI
+    bucket: "your-nullify-bucket"
     keyPrefix: "k8s-collector"
   
-  # KMS configuration (REQUIRED)
+  # KMS configuration (from Nullify configure page)
   kms:
-    # ⚠️ REQUIRED: Get this from Nullify configure page
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
   
-  # Debug configuration (optional)
+  # Debug logging (optional)
   debug:
-    enabled: false  # Set to true to enable debug logging for troubleshooting
+    enabled: false
   
-  # Optional: Custom collection schedule (default is daily at midnight)
-  schedule: "0 2 * * *"  # 2 AM UTC daily
+  # Collection schedule (optional, default: daily at midnight)
+  schedule: "0 2 * * *"
   
-  # Optional: Data collection filters
+  # Data collection filters (optional)
   dataCollection:
-    # Exclude sensitive namespaces
     excludeNamespaces: "kube-system,kube-public,cert-manager"
-    
-    # Collect only specific resource types (optional)
     # includeResources: "pods,services,deployments,configmaps"
-    
-    # Metadata only mode for sensitive environments
     # metadataOnly: true
-
-# Service account with IRSA configuration
-serviceAccount:
-  annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-YourCompany-NullifyReadOnlyRole"
-    namespace: "nullify"
-
-# Optional: Resource constraints for production
-collector:
+  
+  # Resource limits (optional)
   resources:
     limits:
       cpu: "500m"
@@ -55,18 +47,22 @@ collector:
       cpu: "200m"
       memory: "256Mi"
 
-# Optional: Node placement
+# Service account with IRSA (from Nullify configure page)
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/NullifyReadOnlyRole"
+
+# Node placement (optional)
 nodeSelector:
   node-type: "system"
 
-# Optional: Tolerations for dedicated nodes
+# Tolerations (optional)
 tolerations:
   - key: "dedicated"
     operator: "Equal"
     value: "system"
     effect: "NoSchedule"
 
-# Optional: Additional labels added to all resources
+# Additional labels (optional)
 labels:
-  custom-label: "my-value"
-  another-label: "another-value"
+  environment: "production"
