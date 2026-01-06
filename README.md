@@ -53,7 +53,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
    - **Nullify Role ARN**: The ARN of Nullify's cross-account role
    - **External ID**: Unique identifier for secure cross-account access
    - **S3 Bucket Name**: For secure data transfer
-   - **KMS Key ARN**: ⚠️ **REQUIRED** for encryption operations
+   - **KMS Key ARN**: For encryption operations
 
 > 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
 
@@ -70,20 +70,20 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
 
-# 2. Create your production values file
+# 2. Create your production values file (get values from Nullify configure page)
 cat > values-production.yaml << EOF
 collector:
   aws:
-    region: "us-west-2"  # ⚠️ IMPORTANT: Extract this from your KMS key ARN (e.g., arn:aws:kms:us-west-2:... → use "us-west-2")
+    region: "us-west-2"                # Extract from your KMS key ARN
+  clusterName: "your-cluster-name"     # Must match your actual EKS cluster name
   s3:
-    bucket: "your-nullify-bucket-name"  # From Nullify configure page
+    bucket: "your-nullify-bucket"
   kms:
-    keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"  # ⚠️ REQUIRED: From Nullify configure page
+    keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
 
 serviceAccount:
   annotations:
-    # Complete IAM role ARN from Nullify configure page
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-YourCompany-NullifyReadOnlyRole"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/NullifyReadOnlyRole"
 EOF
 
 # 3. Install the chart
@@ -333,25 +333,20 @@ serviceAccount:
 
 ### **Basic Configuration**
 
+All required values are provided in the Nullify configure page.
+
 ```yaml
 collector:
-  # AWS region
   aws:
-    region: "us-west-2"
-  
-  # S3 storage (provided by Nullify configure page)
+    region: "us-west-2"              # Extract from your KMS key ARN
+  clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
     keyPrefix: "k8s-collector"
-  
-  # KMS configuration (REQUIRED - provided by Nullify configure page)
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
-  
-  # Collection schedule (cron format)
-  schedule: "0 2 * * *"  # Daily at 2 AM UTC
+  schedule: "0 2 * * *"              # Daily at 2 AM UTC
 
-# IRSA configuration (provided by Nullify configure page)
 serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/ROLE-NAME"
@@ -491,10 +486,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Before deploying:**
 1. 📖 Read [IMPLEMENTATION.md](IMPLEMENTATION.md) for technical details
-2. 🔐 Obtain **complete IAM role ARN** from Nullify configure page
-3. 🔑 Obtain **KMS key ARN** from Nullify configure page (required)
-4. 🚫 Never commit `values-production.yaml`
-5. ✅ Use `values-example.yaml` as a template only
-6. 🔍 Verify IRSA configuration before deployment
+2. 🔐 Obtain all required values from Nullify configure page (IAM role ARN, KMS key ARN, S3 bucket)
+3. 🚫 Never commit `values-production.yaml`
+4. ✅ Use `values-example.yaml` as a template only
+5. 🔍 Verify IRSA configuration before deployment
 
 **Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page. 

@@ -1,6 +1,11 @@
 # Default values for nullify-k8s-collector
 # This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+#
+# REQUIRED VALUES (must be configured before deployment):
+#   - collector.clusterName: Your exact EKS cluster name
+#   - collector.s3.bucket: S3 bucket from Nullify configure page
+#   - collector.kms.keyArn: KMS key ARN from Nullify configure page
+#   - serviceAccount.annotations.eks.amazonaws.com/role-arn: IAM role ARN from Nullify configure page
 
 # Cluster-level permissions
 clusterRole:
@@ -12,25 +17,22 @@ clusterRoleBinding:
 
 # Main collector configuration
 collector:
-    # Enable/disable the collector
     enabled: true
     
-    # AWS configuration
+    # AWS region (extract from your KMS key ARN)
     aws:
-        # AWS region where your EKS cluster is deployed
-        region: us-east-1  # Change to your preferred region
+        region: us-east-1
     
-    # Cluster identification
-    clusterName: "YOUR-CLUSTER-NAME"  # Replace with your actual cluster name
+    # Must match your actual EKS cluster name exactly
+    clusterName: "YOUR-CLUSTER-NAME"
     
-    # Container image configuration
+    # Container image
     image:
-        # Official Nullify k8s-collector image
         repository: public.ecr.aws/w4o2j2x4/integrations
         tag: k8s-collector-latest
         pullPolicy: Always
     
-    # Resource limits and requests
+    # Resource limits
     resources:
         limits:
             cpu: 200m
@@ -39,28 +41,23 @@ collector:
             cpu: 100m
             memory: 128Mi
     
-    # S3 configuration (values provided by Nullify)
+    # S3 configuration (from Nullify configure page)
     s3:
-        # S3 bucket name (provided by Nullify support)
-        bucket: "YOUR-NULLIFY-S3-BUCKET"  # Replace with actual bucket from Nullify support/UI
-        # Key prefix for storing collected data
+        bucket: "YOUR-NULLIFY-S3-BUCKET"
         keyPrefix: k8s-collector
     
-    # KMS configuration (REQUIRED - provided by Nullify)
+    # KMS configuration (from Nullify configure page)
     kms:
-        # ⚠️ REQUIRED: KMS key ARN for encryption operations
-        # Get this from the Nullify configure page
-        keyArn: "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"  # Replace with actual KMS key ARN from Nullify configure page
+        keyArn: "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"
     
-    # Debug configuration (optional)
+    # Debug logging
     debug:
-        # Enable debug logging for troubleshooting
         enabled: false
     
     # CronJob schedule (daily at midnight UTC)
     schedule: "0 0 * * *"
     
-    # Security context for the container
+    # Security context
     securityContext:
         allowPrivilegeEscalation: false
         capabilities:
@@ -69,22 +66,17 @@ collector:
         readOnlyRootFilesystem: true
         runAsNonRoot: true
     
-    # Data collection configuration (optional)
+    # Data collection filters (optional)
     dataCollection:
-        # Exclude specific namespaces (comma-separated)
         # excludeNamespaces: "kube-system,kube-public"
-        
-        # Include only specific resources (comma-separated)
         # includeResources: "pods,services,deployments"
-        
-        # Collect only metadata (no sensitive data)
         # metadataOnly: true
 
-# Helm chart naming overrides
+# Helm chart naming
 fullnameOverride: ""
 nameOverride: ""
 
-# Add additional labels to all objects and pods defined in this chart.
+# Labels for all resources
 labels: {}
 
 # Namespace configuration
@@ -93,15 +85,13 @@ namespace:
     create: true
     requireNamespace: false
 
-# Node selector for pod placement
+# Node selector
 nodeSelector: {}
 
-# Service account configuration (for IRSA)
+# Service account for IRSA (from Nullify configure page)
 serviceAccount:
-    # Annotations for IAM Role for Service Accounts (IRSA)
     annotations:
-        # Format: arn:aws:iam::ACCOUNT-ID:role/ROLE-NAME
-        eks.amazonaws.com/role-arn: "arn:aws:iam::NULLIFY-ACCOUNT:role/YOUR-NULLIFY-ROLE-NAME"
+        eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/ROLE-NAME"
     create: true
     name: nullify-k8s-collector-sa
     namespace: nullify
