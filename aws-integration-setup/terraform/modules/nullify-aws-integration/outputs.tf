@@ -70,6 +70,7 @@ output "policy_arns" {
     readonly_part1 = aws_iam_policy.readonly_policy_part1.arn
     readonly_part2 = aws_iam_policy.readonly_policy_part2.arn
     s3_access      = local.enable_s3_access ? aws_iam_policy.s3_access_policy[0].arn : null
+    kms_access     = local.enable_kms_access ? aws_iam_policy.kms_access_policy[0].arn : null
     deny_actions   = aws_iam_policy.deny_actions_policy.arn
   }
 }
@@ -83,6 +84,7 @@ output "deployment_summary" {
     aws_region                = var.aws_region
     s3_bucket                 = var.s3_bucket_name != "" ? var.s3_bucket_name : null
     s3_integration_enabled    = local.enable_s3_access
+    kms_integration_enabled   = local.enable_kms_access
     kubernetes_integration    = var.enable_kubernetes_integration
     total_clusters_configured = var.enable_kubernetes_integration ? length(local.all_oidc_ids) : 0
   }

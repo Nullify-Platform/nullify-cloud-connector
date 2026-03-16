@@ -13,9 +13,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-CHART_DIR="charts/nullify-k8s-collector"
+CHART_DIR="helm-charts/nullify-k8s-collector"
 REPO_DIR="docs"
-REPO_URL="https://nullify-cloud-connector.github.io/aws-integration-setup/"
+REPO_URL="https://Nullify-Platform.github.io/nullify-cloud-connector/"
 
 echo -e "${BLUE}🔧 Updating Nullify Helm Repository${NC}"
 echo "=================================="

@@ -14,14 +14,25 @@ output "cluster_integration_summary" {
   value       = module.nullify_aws_integration.cluster_integration_summary
 }
 
-# Cluster A Kubernetes Resources
-output "k8s_resources" {
+# Kubernetes Resources
+output "k8s_resources_primary" {
   description = "Kubernetes resources deployed to primary cluster"
   value = {
-    namespace_name            = module.k8s_resources.namespace_name
-    service_account_name      = module.k8s_resources.service_account_name
-    cluster_role_name         = module.k8s_resources.cluster_role_name
-    cluster_role_binding_name = module.k8s_resources.cluster_role_binding_name
-    cronjob_name              = module.k8s_resources.cronjob_name
+    namespace_name            = module.k8s_resources_primary.namespace_name
+    service_account_name      = module.k8s_resources_primary.service_account_name
+    cluster_role_name         = module.k8s_resources_primary.cluster_role_name
+    cluster_role_binding_name = module.k8s_resources_primary.cluster_role_binding_name
+    cronjob_name              = module.k8s_resources_primary.cronjob_name
+  }
+}
+
+output "k8s_resources_secondary" {
+  description = "Kubernetes resources deployed to secondary cluster"
+  value = {
+    namespace_name            = module.k8s_resources_secondary.namespace_name
+    service_account_name      = module.k8s_resources_secondary.service_account_name
+    cluster_role_name         = module.k8s_resources_secondary.cluster_role_name
+    cluster_role_binding_name = module.k8s_resources_secondary.cluster_role_binding_name
+    cronjob_name              = module.k8s_resources_secondary.cronjob_name
   }
 }

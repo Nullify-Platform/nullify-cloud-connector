@@ -26,11 +26,11 @@ data "aws_eks_cluster_auth" "primary" {
 }
 
 data "aws_eks_cluster" "secondary" {
-  name = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[0])) - 1)
+  name = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[1])) - 1)
 }
 
 data "aws_eks_cluster_auth" "secondary" {
-  name = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[0])) - 1)
+  name = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[1])) - 1)
 }
 
 provider "kubernetes" {
