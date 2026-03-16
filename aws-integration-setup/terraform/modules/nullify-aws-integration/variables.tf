@@ -11,6 +11,11 @@ variable "customer_name" {
 variable "external_id" {
   type        = string
   description = "The external ID for the role (provided by Nullify)"
+
+  validation {
+    condition     = length(var.external_id) >= 12
+    error_message = "External ID must be at least 12 characters for security best practice"
+  }
 }
 
 variable "nullify_role_arn" {

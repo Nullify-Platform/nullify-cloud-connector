@@ -36,7 +36,9 @@
       },
       "ExternalID": {
         "Type": "String",
-        "Description": "The external ID for the role."
+        "Description": "The external ID for the role.",
+        "MinLength": 12,
+        "ConstraintDescription": "External ID must be at least 12 characters for security best practice."
       },
       "NullifyS3Bucket": {
         "Type": "String",
@@ -135,6 +137,7 @@
                   "ssm:GetParameter*",
                   "ssm:PutParameter*",
                   "ssm:DeleteParameter*",
+                  "kms:Decrypt",
                   "lambda:InvokeFunction",
                   "lambda:InvokeAsync",
                   "sts:AssumeRole",
@@ -181,37 +184,10 @@
             "Fn::If": [
               "ValidEKSConfig",
               {
-                "Statement": [
-                  {
-                    "Action": "sts:AssumeRole",
-                    "Condition": {
-                      "StringEquals": {
-                        "sts:ExternalId": {
-                          "Ref": "ExternalID"
-                        }
-                      }
-                    },
-                    "Effect": "Allow",
-                    "Principal": {
-                      "AWS": {"Fn::Sub": "${CrossAccountRoleArn}"}
-                    }
-                  },
-                  {
-                    "Action": "sts:AssumeRoleWithWebIdentity",
-                    "Condition": {
-                      "StringLike": {
-                        "*:sub": "system:serviceaccount:nullify:nullify-k8s-collector-sa"
-                      }
-                    },
-                    "Effect": "Allow",
-                    "Principal": {
-                      "Federated": {
-                        "Fn::Sub": "arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSOidcProviderURL}"
-                      }
-                    }
-                  }
-                ],
-                "Version": "2012-10-17"
+                "Fn::Sub": [
+                  "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Condition\":{\"StringEquals\":{\"sts:ExternalId\":\"${ExternalID}\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"${CrossAccountRoleArn}\"}},{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringLike\":{\"${EKSOidcProviderURL}:sub\":\"system:serviceaccount:nullify:nullify-k8s-collector-sa\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSOidcProviderURL}\"}}]}",
+                  {}
+                ]
               },
               {
                 "Statement": [
@@ -485,6 +461,11 @@
                   "emr-containers:List*",
                   "elastictranscoder:List*",
                   "elastictranscoder:Read*",
+                  "events:Describe*",
+                  "events:List*",
+                  "events:ListTagsForResource",
+                  "dynamodb:Describe*",
+                  "dynamodb:List*",
                   "discovery:Describe*",
                   "config:SelectResourceConfig",
                   "iam:SimulateCustomPolicy",
@@ -553,6 +534,11 @@
               {
                 "Effect": "Allow",
                 "Action": [
+                  "globalaccelerator:Describe*",
+                  "globalaccelerator:List*",
+                  "guardduty:Describe*",
+                  "guardduty:Get*",
+                  "guardduty:List*",
                   "launchwizard:Describe*",
                   "launchwizard:GetWorkload",
                   "launchwizard:List*",
@@ -600,6 +586,8 @@
                   "networkmanager:DescribeGlobalNetworks",
                   "networkmanager:Get*",
                   "networkmanager:List*",
+                  "neptune:Describe*",
+                  "neptune:List*",
                   "nimble:List*",
                   "notifications-contacts:List*",
                   "notifications:Get*",

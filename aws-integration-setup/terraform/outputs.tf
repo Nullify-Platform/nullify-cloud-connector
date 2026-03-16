@@ -30,24 +30,14 @@ output "customer_name" {
 }
 
 # Kubernetes-related outputs (only when enabled)
-output "kubernetes_namespace" {
-  description = "Name of the Kubernetes namespace for Nullify resources"
-  value       = module.nullify_aws_integration.kubernetes_namespace
+output "cluster_integration_summary" {
+  description = "Summary of all cluster integrations"
+  value       = module.nullify_aws_integration.cluster_integration_summary
 }
 
-output "kubernetes_service_account" {
-  description = "Name of the Kubernetes service account for the collector"
-  value       = module.nullify_aws_integration.kubernetes_service_account
-}
-
-output "kubernetes_cluster_role" {
-  description = "Name of the Kubernetes cluster role for the collector"
-  value       = module.nullify_aws_integration.kubernetes_cluster_role
-}
-
-output "kubernetes_cronjob" {
-  description = "Name of the Kubernetes CronJob for data collection"
-  value       = module.nullify_aws_integration.kubernetes_cronjob
+output "all_clusters_info" {
+  description = "Complete information about all integrated clusters"
+  value       = module.nullify_aws_integration.all_clusters_info
 }
 
 # Policy ARNs
