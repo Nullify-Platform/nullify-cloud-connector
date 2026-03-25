@@ -1,0 +1,64 @@
+name: 'Nullify Context'
+description: 'Upload context data (Terraform plans, CI logs, etc.) to Nullify for infrastructure-aware security analysis'
+branding:
+  icon: 'upload-cloud'
+  color: 'blue'
+
+inputs:
+  nullify-token:
+    description: 'Nullify service account JWT'
+    required: true
+  type:
+    description: 'Context type: terraform, ci_logs, config, deploy, api_spec'
+    required: true
+  name:
+    description: 'Logical name for this context (e.g. networking, ecs-api, CI)'
+    required: true
+  mode:
+    description: 'Upload mode: merge-only, pr-only, both'
+    default: 'both'
+  environment:
+    description: 'Deployment environment: development, staging, production, unknown'
+    default: 'unknown'
+  plan-path:
+    description: 'Path to the file(s) to upload (supports glob patterns)'
+    default: ''
+  skip-on-draft:
+    description: 'Skip upload for draft PRs'
+    default: 'true'
+  dry-run:
+    description: 'Log what would be uploaded without uploading'
+    default: 'false'
+
+outputs:
+  action-taken:
+    description: 'Action taken: uploaded, skipped, cleaned-up'
+    value: ${{ steps.run.outputs.action_taken }}
+  upload-path:
+    description: 'S3 key prefix where data was uploaded'
+    value: ${{ steps.run.outputs.upload_path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Nullify CLI
+      shell: bash
+      run: |
+        curl -sSL https://cli.nullify.ai/install.sh | bash || {
+          echo "::error::Failed to install Nullify CLI"
+          exit 1
+        }
+
+    - name: Run context action
+      id: run
+      shell: bash
+      env:
+        NULLIFY_TOKEN: ${{ inputs.nullify-token }}
+        INPUT_TYPE: ${{ inputs.type }}
+        INPUT_NAME: ${{ inputs.name }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_PLAN_PATH: ${{ inputs.plan-path }}
+        INPUT_SKIP_ON_DRAFT: ${{ inputs.skip-on-draft }}
+        INPUT_DRY_RUN: ${{ inputs.dry-run }}
+      run: ${{ github.action_path }}/scripts/entrypoint.sh
