@@ -12,17 +12,16 @@ ACTION_TAKEN="skipped"
 # --- Detect event context ---
 EVENT_NAME="${GITHUB_EVENT_NAME:-}"
 REF_NAME="${GITHUB_REF_NAME:-}"
-REPOSITORY="${GITHUB_REPOSITORY:-}"
-SHA="${GITHUB_SHA:-}"
 PR_NUMBER=""
 PR_MERGED="false"
 PR_DRAFT="false"
+PR_ACTION=""
 
 if [[ "$EVENT_NAME" == "pull_request" ]]; then
-  PR_NUMBER=$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH")
-  PR_MERGED=$(jq -r '.pull_request.merged // false' "$GITHUB_EVENT_PATH")
-  PR_DRAFT=$(jq -r '.pull_request.draft // false' "$GITHUB_EVENT_PATH")
-  PR_ACTION=$(jq -r '.action // empty' "$GITHUB_EVENT_PATH")
+  PR_NUMBER=$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
+  PR_MERGED=$(jq -r '.pull_request.merged // false' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "false")
+  PR_DRAFT=$(jq -r '.pull_request.draft // false' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "false")
+  PR_ACTION=$(jq -r '.action // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)
 fi
 
 echo "Event: $EVENT_NAME | Mode: $INPUT_MODE | Ref: $REF_NAME | PR: ${PR_NUMBER:-none}"
@@ -57,10 +56,7 @@ case "$INPUT_MODE" in
     if [[ "$EVENT_NAME" == "push" ]]; then
       should_upload="true"
     elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-      if [[ "$PR_ACTION" == "closed" && "$PR_MERGED" == "true" ]]; then
-        # Merged — the push event handles the upload
-        should_cleanup="true"
-      elif [[ "$PR_ACTION" == "closed" && "$PR_MERGED" != "true" ]]; then
+      if [[ "$PR_ACTION" == "closed" ]]; then
         should_cleanup="true"
       elif [[ "$PR_ACTION" == "opened" || "$PR_ACTION" == "synchronize" ]]; then
         should_upload="true"
@@ -75,41 +71,65 @@ esac
 
 # --- Execute ---
 if [[ "$should_upload" == "true" ]]; then
-  # Build CLI args
-  CLI_ARGS="--type $INPUT_TYPE --name $INPUT_NAME"
-
-  if [[ -n "$INPUT_ENVIRONMENT" ]]; then
-    CLI_ARGS="$CLI_ARGS --environment $INPUT_ENVIRONMENT"
-  fi
-
-  if [[ -n "$PR_NUMBER" && "$EVENT_NAME" == "pull_request" ]]; then
-    CLI_ARGS="$CLI_ARGS --pr-number $PR_NUMBER"
-  fi
-
-  if [[ "$INPUT_DRY_RUN" == "true" ]]; then
-    CLI_ARGS="$CLI_ARGS --dry-run"
-  fi
-
   # Resolve files to upload
-  FILES=""
-  if [[ -n "$INPUT_PLAN_PATH" ]]; then
-    # Use glob expansion
-    shopt -s nullglob globstar
-    for f in $INPUT_PLAN_PATH; do
-      FILES="$FILES $f"
-    done
-    shopt -u nullglob globstar
+  PLAN_PATH="${INPUT_PLAN_PATH:-}"
+  if [[ -z "$PLAN_PATH" ]]; then
+    # Default: find all plan.json files recursively
+    PLAN_PATH="**/plan.json"
   fi
 
-  if [[ -z "$FILES" && -n "$INPUT_PLAN_PATH" ]]; then
-    echo "::warning::No files matched pattern: $INPUT_PLAN_PATH"
+  # Expand glob into array safely
+  shopt -s nullglob globstar
+  FILES=()
+  for f in $PLAN_PATH; do
+    FILES+=("$f")
+  done
+  shopt -u nullglob globstar
+
+  if [[ ${#FILES[@]} -eq 0 ]]; then
+    echo "::warning::No files matched pattern: $PLAN_PATH"
     echo "action_taken=skipped" >> "$GITHUB_OUTPUT"
     exit 0
   fi
 
-  echo "Uploading context: type=$INPUT_TYPE name=$INPUT_NAME"
-  # shellcheck disable=SC2086
-  nullify api context push $CLI_ARGS $FILES
+  echo "Found ${#FILES[@]} file(s) to upload"
+
+  # Upload each file as a separate context entry with name derived from path
+  for f in "${FILES[@]}"; do
+    # Derive name from file's parent directory
+    # e.g. infrastructure/networking/plan.json → infrastructure/networking
+    # e.g. plan.json → root
+    FILE_DIR=$(dirname "$f")
+    if [[ "$FILE_DIR" == "." || "$FILE_DIR" == "/" ]]; then
+      FILE_NAME="root"
+    else
+      FILE_NAME="$FILE_DIR"
+    fi
+
+    # Use explicit --name if provided, otherwise use derived name
+    EFFECTIVE_NAME="${INPUT_NAME:-$FILE_NAME}"
+
+    # Build CLI args as array (prevents command injection)
+    CLI_ARGS=(
+      "--type" "$INPUT_TYPE"
+      "--name" "$EFFECTIVE_NAME"
+    )
+
+    if [[ -n "${INPUT_ENVIRONMENT:-}" ]]; then
+      CLI_ARGS+=("--environment" "$INPUT_ENVIRONMENT")
+    fi
+
+    if [[ -n "$PR_NUMBER" && "$EVENT_NAME" == "pull_request" ]]; then
+      CLI_ARGS+=("--pr-number" "$PR_NUMBER")
+    fi
+
+    if [[ "${INPUT_DRY_RUN:-false}" == "true" ]]; then
+      CLI_ARGS+=("--dry-run")
+    fi
+
+    echo "Uploading: $f (name=$EFFECTIVE_NAME)"
+    nullify api context push "${CLI_ARGS[@]}" "$f"
+  done
 
   ACTION_TAKEN="uploaded"
 

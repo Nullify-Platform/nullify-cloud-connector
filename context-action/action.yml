@@ -12,8 +12,9 @@ inputs:
     description: 'Context type: terraform, ci_logs, config, deploy, api_spec'
     required: true
   name:
-    description: 'Logical name for this context (e.g. networking, ecs-api, CI)'
-    required: true
+    description: 'Logical name for this context. Auto-derived from file path if omitted (e.g. infrastructure/networking/plan.json → infrastructure/networking)'
+    required: false
+    default: ''
   mode:
     description: 'Upload mode: merge-only, pr-only, both'
     default: 'both'
@@ -21,7 +22,7 @@ inputs:
     description: 'Deployment environment: development, staging, production, unknown'
     default: 'unknown'
   plan-path:
-    description: 'Path to the file(s) to upload (supports glob patterns)'
+    description: 'Path to the file(s) to upload. Supports glob patterns. Defaults to **/plan.json'
     default: ''
   skip-on-draft:
     description: 'Skip upload for draft PRs'
@@ -44,10 +45,14 @@ runs:
     - name: Install Nullify CLI
       shell: bash
       run: |
-        curl -sSL https://cli.nullify.ai/install.sh | bash || {
-          echo "::error::Failed to install Nullify CLI"
-          exit 1
-        }
+        if command -v nullify &>/dev/null; then
+          echo "Nullify CLI already installed: $(nullify --version 2>/dev/null || echo 'unknown')"
+        else
+          curl -sSL https://cli.nullify.ai/install.sh | bash || {
+            echo "::error::Failed to install Nullify CLI"
+            exit 1
+          }
+        fi
 
     - name: Run context action
       id: run
