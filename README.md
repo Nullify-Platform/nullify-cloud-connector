@@ -27,6 +27,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 1. **Helm Charts** (`helm-charts/`) - For Kubernetes-native deployments
 2. **CloudFormation** (`aws-integration-setup/cloudformation/`) - For AWS-centric infrastructure
 3. **Terraform** (`aws-integration-setup/terraform/`) - For infrastructure-as-code workflows with modular architecture
+4. **GCP Terraform** (`gcp-integration-setup/terraform/`) - For Google Cloud read-only integration via Workload Identity Federation
 
 ## 🚀 **Quick Start**
 
