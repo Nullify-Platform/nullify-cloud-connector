@@ -37,7 +37,23 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 |--------|----------|---------------|
 | **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS cluster, Helm 3.x, kubectl |
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
-| **🔧 Terraform** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
+| **🔧 Terraform (AWS)** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
+| **☁️ Terraform (GCP)** | GCP environments, Workload Identity Federation | Terraform, `gcloud` auth on the host project, org or folder admin access |
+
+### **GCP Quick Start**
+
+The GCP integration uses Workload Identity Federation only — no long-lived service account JSON keys are minted.
+
+```bash
+cd gcp-integration-setup/terraform
+cp terraform.tfvars.example terraform.tfvars
+$EDITOR terraform.tfvars            # paste values from the Nullify console
+terraform init && terraform apply
+```
+
+Then paste the `service_account_email` and `workload_identity_provider` outputs into the Nullify console under **Settings → Cloud Integrations → GCP** and click **Verify**.
+
+See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terraform/README.md) for the full guide, the org / folder / project scope options, and the gcloud-only installer.
 
 ### **Prerequisites (All Methods)**
 

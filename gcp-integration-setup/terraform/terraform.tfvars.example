@@ -4,17 +4,26 @@
 customer_name   = "acme-corp"
 host_project_id = "acme-security"
 
-# Choose ONE of the two scoping modes below.
+# Choose ONE of the three scoping modes below.
 
 # Option A: Organization-wide (recommended for full coverage).
 scope           = "organization"
 organization_id = "123456789012"
 
-# Option B: Per-project. Comment out the two lines above and uncomment these.
-# scope       = "projects"
-# project_ids = ["acme-prod", "acme-staging"]
+# Option B: Folder-scoped. Pin Nullify to a single folder in the hierarchy
+# (e.g. a dedicated `security/` or `prod/` folder).
+# scope           = "folder"
+# organization_id = "123456789012"  # still required so the custom role can be defined at the org
+# folder_id       = "987654321098"
+
+# Option C: Per-project. project_ids must be a list of GCP project IDs.
+# When project_ids contains anything other than host_project_id, you also
+# need to set organization_id (so the long-tail custom role is assignable
+# across projects).
+# scope           = "projects"
+# project_ids     = ["acme-prod", "acme-staging"]
+# organization_id = "123456789012"  # required for multi-project installs
 
 # Values from the Nullify console — DO NOT change these manually.
 nullify_aws_principal_arn = "arn:aws:iam::000000000000:role/nullify-cloud-connector"
 nullify_aws_account_id    = "000000000000"
-tenant_external_id        = "REPLACE_WITH_VALUE_FROM_NULLIFY_CONSOLE"

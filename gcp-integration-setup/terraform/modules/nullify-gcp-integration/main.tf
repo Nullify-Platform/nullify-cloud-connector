@@ -18,16 +18,42 @@
 #
 # See modules/nullify-gcp-integration/README.md for the full permission list.
 
-locals {
-  common_labels = merge(
-    {
-      managed-by         = "nullify-cloud-connector"
-      customer-name      = lower(var.customer_name)
-      tenant-external-id = lower(var.tenant_external_id)
-    },
-    var.labels,
-  )
+# ---------------------------------------------------------------------------
+# Input validation that needs to look at multiple variables. Per-variable
+# `validation` blocks can't reference other vars, so we use a no-op
+# terraform_data resource with `precondition` checks instead.
+# ---------------------------------------------------------------------------
 
+resource "terraform_data" "input_validation" {
+  lifecycle {
+    precondition {
+      condition     = var.scope != "organization" || var.organization_id != ""
+      error_message = "scope = \"organization\" requires organization_id to be set."
+    }
+    precondition {
+      condition     = var.scope != "folder" || var.folder_id != ""
+      error_message = "scope = \"folder\" requires folder_id to be set."
+    }
+    precondition {
+      condition     = var.scope != "folder" || var.organization_id != ""
+      error_message = "scope = \"folder\" requires organization_id to be set so the long-tail custom role can be defined at the organisation and granted on the folder."
+    }
+    precondition {
+      condition     = var.scope != "projects" || length(var.project_ids) > 0
+      error_message = "scope = \"projects\" requires project_ids to be non-empty."
+    }
+    precondition {
+      # If any project_id is different from host_project_id, the custom role
+      # must be assignable across projects, which requires the org-level
+      # variant. Block the apply early rather than having terraform try to
+      # bind a project-scoped custom role on a sibling project.
+      condition     = var.scope != "projects" || var.organization_id != "" || alltrue([for p in var.project_ids : p == var.host_project_id])
+      error_message = "scope = \"projects\" with project_ids that include any project other than host_project_id requires organization_id to be set, because the custom role must be defined at the organisation to be assignable across projects."
+    }
+  }
+}
+
+locals {
   # Predefined viewer roles granted to the Nullify service account. Each role
   # is named here so an auditor can trace why each binding exists.
   predefined_viewer_roles = [
@@ -77,21 +103,31 @@ locals {
     # Pub/Sub topics + subscriptions.
     "roles/pubsub.viewer",
   ]
-}
 
-# ---------------------------------------------------------------------------
-# Custom role: long-tail read permissions Nullify needs that are not covered
-# by any predefined viewer role. Strict allowlist of *.get / *.list only.
-# ---------------------------------------------------------------------------
+  # Robust extraction of the friendly role name from the Nullify principal
+  # ARN. The previous regex (`/^arn:aws:iam::[0-9]+:role\\//`) silently broke
+  # if the role were ever issued under a path (e.g. `role/some/path/Name`),
+  # because it would leave `some/path/Name` and the assumed-role assertion
+  # arrives without a path component. The split-and-take-last approach is
+  # path-tolerant: arn:aws:iam::000000000000:role/some/path/RoleName → RoleName.
+  nullify_aws_role_name = element(reverse(split("/", var.nullify_aws_principal_arn)), 0)
 
-resource "google_project_iam_custom_role" "nullify_cloud_connector" {
-  project     = var.host_project_id
-  role_id     = "nullifyCloudConnector"
-  title       = "Nullify Cloud Connector (read-only)"
-  description = "Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
-  stage       = "GA"
+  # When organization_id is set, the custom role can be defined at the
+  # organisation and granted on any project/folder/org within it. This is
+  # the only way `scope = "projects"` with multiple project_ids (or with a
+  # project_id != host_project_id) can work, because a project-scoped custom
+  # role is only assignable on resources inside that project.
+  use_org_custom_role = var.organization_id != ""
 
-  permissions = [
+  # The fully qualified custom-role ID downstream bindings reference. We
+  # build it once here so the bindings don't have to know which of the two
+  # custom-role resources actually exists.
+  custom_role_id = local.use_org_custom_role ? google_organization_iam_custom_role.nullify_cloud_connector[0].id : google_project_iam_custom_role.nullify_cloud_connector[0].id
+
+  # The full set of permissions Nullify needs above and beyond the predefined
+  # viewer roles. Strict allowlist of *.get / *.list only — no mutations and
+  # no data-plane reads.
+  custom_role_permissions = [
     # Cloud Armor security policies (ingress WAF rules).
     "compute.securityPolicies.get",
     "compute.securityPolicies.list",
@@ -142,6 +178,43 @@ resource "google_project_iam_custom_role" "nullify_cloud_connector" {
 }
 
 # ---------------------------------------------------------------------------
+# Custom role: long-tail read permissions Nullify needs that are not covered
+# by any predefined viewer role.
+#
+# Two variants exist because GCP's IAM model is unforgiving here:
+#   - google_project_iam_custom_role only assignable on resources within the
+#     defining project. Fine for single-project installs.
+#   - google_organization_iam_custom_role assignable on any project, folder,
+#     or the org itself. Required for org-scope, folder-scope, and any
+#     multi-project install.
+#
+# Selection is keyed off var.organization_id: providing it switches to the
+# org-level role automatically. The previous bug was creating only the
+# project-level role and trying to grant it at the org / on cross-project
+# bindings, which fails at apply time.
+# ---------------------------------------------------------------------------
+
+resource "google_organization_iam_custom_role" "nullify_cloud_connector" {
+  count       = local.use_org_custom_role ? 1 : 0
+  org_id      = var.organization_id
+  role_id     = "nullifyCloudConnector"
+  title       = "Nullify Cloud Connector (read-only)"
+  description = "Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
+  stage       = "GA"
+  permissions = local.custom_role_permissions
+}
+
+resource "google_project_iam_custom_role" "nullify_cloud_connector" {
+  count       = local.use_org_custom_role ? 0 : 1
+  project     = var.host_project_id
+  role_id     = "nullifyCloudConnector"
+  title       = "Nullify Cloud Connector (read-only)"
+  description = "Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
+  stage       = "GA"
+  permissions = local.custom_role_permissions
+}
+
+# ---------------------------------------------------------------------------
 # Service account that Nullify impersonates after the WIF token exchange.
 # ---------------------------------------------------------------------------
 
@@ -180,7 +253,7 @@ resource "google_iam_workload_identity_pool_provider" "nullify_aws" {
   # attribute condition runs after Google has validated the signed AWS STS
   # request, so a Nullify-account principal that is NOT this role will be
   # rejected.
-  attribute_condition = "attribute.aws_role == \"arn:aws:sts::${var.nullify_aws_account_id}:assumed-role/${replace(var.nullify_aws_principal_arn, "/^arn:aws:iam::[0-9]+:role\\//", "")}\""
+  attribute_condition = "attribute.aws_role == \"arn:aws:sts::${var.nullify_aws_account_id}:assumed-role/${local.nullify_aws_role_name}\""
 
   attribute_mapping = {
     "google.subject"     = "assertion.arn"
@@ -194,7 +267,7 @@ resource "google_iam_workload_identity_pool_provider" "nullify_aws" {
 resource "google_service_account_iam_member" "nullify_workload_identity_user" {
   service_account_id = google_service_account.nullify_cloud_connector.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.nullify.name}/attribute.aws_role/arn:aws:sts::${var.nullify_aws_account_id}:assumed-role/${replace(var.nullify_aws_principal_arn, "/^arn:aws:iam::[0-9]+:role\\//", "")}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.nullify.name}/attribute.aws_role/arn:aws:sts::${var.nullify_aws_account_id}:assumed-role/${local.nullify_aws_role_name}"
 }
 
 # ---------------------------------------------------------------------------
@@ -211,7 +284,31 @@ resource "google_organization_iam_member" "predefined" {
 resource "google_organization_iam_member" "custom" {
   count  = var.scope == "organization" ? 1 : 0
   org_id = var.organization_id
-  role   = google_project_iam_custom_role.nullify_cloud_connector.name
+  role   = local.custom_role_id
+  member = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
+}
+
+# ---------------------------------------------------------------------------
+# Role bindings — folder scope.
+#
+# Folder-scoped installs are common when an org carves its hierarchy into
+# functional folders (e.g. `security/`, `prod/`) and the customer wants
+# Nullify pinned to one of those without going org-wide. The custom role
+# must come from the org-level resource for this to apply, so org_id is
+# required when scope = "folder".
+# ---------------------------------------------------------------------------
+
+resource "google_folder_iam_member" "predefined" {
+  for_each = var.scope == "folder" ? toset(local.predefined_viewer_roles) : toset([])
+  folder   = var.folder_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
+}
+
+resource "google_folder_iam_member" "custom" {
+  count  = var.scope == "folder" ? 1 : 0
+  folder = var.folder_id
+  role   = local.custom_role_id
   member = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
 }
 
@@ -232,6 +329,6 @@ resource "google_project_iam_member" "predefined" {
 resource "google_project_iam_member" "custom" {
   for_each = var.scope == "projects" ? toset(var.project_ids) : toset([])
   project  = each.value
-  role     = google_project_iam_custom_role.nullify_cloud_connector.name
+  role     = local.custom_role_id
   member   = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
 }

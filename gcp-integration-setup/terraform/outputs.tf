@@ -10,7 +10,7 @@ output "workload_identity_provider" {
 
 output "next_steps" {
   description = "What to do after a successful terraform apply."
-  value = <<-EOT
+  value       = <<-EOT
 
     Nullify GCP integration provisioned successfully.
 
@@ -18,7 +18,7 @@ output "next_steps" {
       1. Open the Nullify console -> Settings -> Cloud Integrations -> GCP.
       2. Paste the service_account_email output above into "Impersonated Service Account".
       3. Paste the workload_identity_provider output above into "Workload Identity Provider".
-      4. Click "Verify". You should see a green check next to every project.
+      4. Click "Verify". For org or folder scope you should see a single green status; for project scope you should see a green check next to every project in the list.
       5. Click "Save".
 
     To revoke access at any time, run `terraform destroy` from this directory.

@@ -15,7 +15,7 @@ output "workload_identity_pool" {
 
 output "custom_role_id" {
   description = "Full ID of the custom role that grants the long-tail read permissions Nullify needs."
-  value       = google_project_iam_custom_role.nullify_cloud_connector.id
+  value       = local.custom_role_id
 }
 
 output "scope" {
@@ -23,6 +23,7 @@ output "scope" {
   value       = var.scope
 }
 
-data "google_project" "host" {
-  project_id = var.host_project_id
+output "next_steps" {
+  description = "Human-readable next steps. Surfaces in the apply output so customers don't have to dig through the Nullify docs."
+  value       = "Paste the service_account_email and workload_identity_provider outputs into the Nullify console under Settings -> Cloud Integrations -> GCP, then click Verify."
 }

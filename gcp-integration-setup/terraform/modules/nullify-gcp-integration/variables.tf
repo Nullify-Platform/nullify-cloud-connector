@@ -1,5 +1,5 @@
 variable "customer_name" {
-  description = "Short identifier for your organisation. Used as a label on every Nullify-managed resource for traceability."
+  description = "Short identifier for your organisation. Used by Nullify support to correlate console support requests with this install. Not currently embedded as a label on any resource (GCP IAM resources don't expose `labels`)."
   type        = string
   validation {
     condition     = length(var.customer_name) >= 2 && length(var.customer_name) <= 30
@@ -8,22 +8,32 @@ variable "customer_name" {
 }
 
 variable "host_project_id" {
-  description = "The GCP project that owns the workload identity pool, the Nullify service account and the IAM bindings. For org-wide installs this is typically a dedicated security project."
+  description = "The GCP project that owns the workload identity pool, the Nullify service account and (when no organization_id is provided) the project-level custom role. For org-wide installs this is typically a dedicated security project."
   type        = string
 }
 
 variable "scope" {
-  description = "Whether Nullify should be granted read access at the organization level (recommended for full coverage) or only on a list of specific projects."
+  description = "Whether Nullify should be granted read access at the organization level (recommended for full coverage), at the folder level, or only on a list of specific projects."
   type        = string
   default     = "organization"
   validation {
-    condition     = contains(["organization", "projects"], var.scope)
-    error_message = "scope must be either \"organization\" or \"projects\"."
+    condition     = contains(["organization", "folder", "projects"], var.scope)
+    error_message = "scope must be one of \"organization\", \"folder\", or \"projects\"."
   }
 }
 
 variable "organization_id" {
-  description = "GCP organization numeric ID. Required when scope = \"organization\"."
+  description = "GCP organization numeric ID. Required when scope = \"organization\". Strongly recommended for scope = \"folder\" and any scope = \"projects\" install whose project_ids span more than the host_project_id, because the long-tail custom role must be defined at the organisation to be assignable across projects."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.organization_id == "" || can(regex("^[0-9]+$", var.organization_id))
+    error_message = "organization_id, when set, must be a numeric organisation ID."
+  }
+}
+
+variable "folder_id" {
+  description = "GCP folder numeric ID (without the `folders/` prefix). Required when scope = \"folder\"."
   type        = string
   default     = ""
 }
@@ -38,6 +48,9 @@ variable "nullify_aws_principal_arn" {
   description = "The AWS IAM role ARN that Nullify uses to call your GCP environment via Workload Identity Federation. Provided in the Nullify console; never change this value yourself."
   type        = string
   validation {
+    # Allow paths in the role ARN — e.g. arn:aws:iam::000:role/path/to/Name.
+    # The friendly name (everything after the last "/") is what shows up in
+    # the assumed-role assertion and is what we pin the WIF condition on.
     condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.nullify_aws_principal_arn))
     error_message = "nullify_aws_principal_arn must be a valid AWS IAM role ARN."
   }
@@ -50,11 +63,6 @@ variable "nullify_aws_account_id" {
     condition     = can(regex("^[0-9]{12}$", var.nullify_aws_account_id))
     error_message = "nullify_aws_account_id must be a 12 digit AWS account ID."
   }
-}
-
-variable "tenant_external_id" {
-  description = "Per-tenant external identifier from the Nullify console. Embedded as a label on the WIF pool so Nullify can correlate inbound tokens with the right customer."
-  type        = string
 }
 
 variable "wif_pool_id" {
@@ -73,10 +81,4 @@ variable "service_account_name" {
   description = "Name of the customer-side service account that Nullify impersonates after the WIF token exchange."
   type        = string
   default     = "nullify-cloud-connector"
-}
-
-variable "labels" {
-  description = "Additional labels to apply to every resource created by this module."
-  type        = map(string)
-  default     = {}
 }

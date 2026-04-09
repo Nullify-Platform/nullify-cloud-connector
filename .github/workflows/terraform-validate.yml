@@ -1,0 +1,70 @@
+name: Terraform validate
+
+# Lints and validates the customer-facing Terraform modules so a regression
+# in either gcp-integration-setup or aws-integration-setup gets caught in CI
+# rather than at customer apply time. The historical incident this is meant
+# to prevent: a project-scoped custom role bound at the org level (#40) that
+# only blew up when a customer ran terraform apply.
+
+on:
+  pull_request:
+    paths:
+      - "gcp-integration-setup/**"
+      - "aws-integration-setup/**"
+      - ".github/workflows/terraform-validate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "gcp-integration-setup/**"
+      - "aws-integration-setup/**"
+      - ".github/workflows/terraform-validate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - gcp-integration-setup/terraform
+          - gcp-integration-setup/terraform/examples/organization
+          - gcp-integration-setup/terraform/examples/folder
+          - gcp-integration-setup/terraform/examples/single-project
+          - aws-integration-setup/terraform
+          - aws-integration-setup/terraform/examples/basic
+          - aws-integration-setup/terraform/examples/multi-cluster-complete
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.5
+          terraform_wrapper: false
+
+      - name: terraform fmt -check
+        working-directory: ${{ matrix.directory }}
+        run: terraform fmt -check -recursive
+
+      - name: terraform init -backend=false
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck install + run
+        run: |
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y shellcheck >/dev/null
+          shellcheck gcp-integration-setup/scripts/install.sh
+          shellcheck gcp-integration-setup/scripts/uninstall.sh
