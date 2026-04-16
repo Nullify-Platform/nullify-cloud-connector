@@ -2,11 +2,18 @@
 # Copy this file to values-production.yaml and fill in your actual values
 # DO NOT commit values-production.yaml to version control
 #
+# The file below shows the EKS (IRSA) setup. See the bottom of this file
+# for the equivalent GKE (Workload Identity) setup.
+#
 # REQUIRED VALUES (get these from Nullify configure page):
-#   - collector.clusterName: Your exact EKS cluster name
+#   - collector.clusterName: Your exact cluster name
 #   - collector.s3.bucket: S3 bucket name
 #   - collector.kms.keyArn: KMS key ARN
-#   - serviceAccount.annotations.eks.amazonaws.com/role-arn: IAM role ARN
+#   - EKS only: serviceAccount.annotations."eks.amazonaws.com/role-arn"
+#   - GKE only: collector.gke.nullifyAwsRoleArn
+#               serviceAccount.annotations."iam.gke.io/gcp-service-account"
+
+cloudProvider: aws
 
 collector:
   # AWS region (extract from your KMS key ARN)
@@ -66,3 +73,31 @@ tolerations:
 # Additional labels (optional)
 labels:
   environment: "production"
+
+# ---------------------------------------------------------------------------
+# GKE (Workload Identity) example
+# ---------------------------------------------------------------------------
+# Replace the section above with the block below for a GKE deployment.
+# See README.md for one-time onboarding steps (creating the GCP service
+# account, sharing its uniqueId with Nullify, and binding it to the
+# in-cluster ServiceAccount via Workload Identity).
+#
+# cloudProvider: gcp
+#
+# collector:
+#   aws:
+#     region: "us-east-1"          # AWS region of the Nullify S3 bucket
+#   clusterName: "my-gke-cluster"
+#   s3:
+#     bucket: "your-nullify-bucket"
+#     keyPrefix: "k8s-collector"
+#   kms:
+#     keyArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
+#   gke:
+#     # Provided by Nullify after you share the GCP service-account uniqueId.
+#     nullifyAwsRoleArn: "arn:aws:iam::123456789012:role/NullifyK8sCollectorRole"
+#
+# serviceAccount:
+#   annotations:
+#     iam.gke.io/gcp-service-account: "nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com"
+

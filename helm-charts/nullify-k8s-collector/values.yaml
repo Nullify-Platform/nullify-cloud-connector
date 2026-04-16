@@ -2,10 +2,25 @@
 # This is a YAML-formatted file.
 #
 # REQUIRED VALUES (must be configured before deployment):
-#   - collector.clusterName: Your exact EKS cluster name
+#   - collector.clusterName: Your exact cluster name
 #   - collector.s3.bucket: S3 bucket from Nullify configure page
 #   - collector.kms.keyArn: KMS key ARN from Nullify configure page
-#   - serviceAccount.annotations.eks.amazonaws.com/role-arn: IAM role ARN from Nullify configure page
+#
+# Provider-specific required values:
+#   - EKS: serviceAccount.annotations."eks.amazonaws.com/role-arn"
+#          (IAM role ARN from Nullify configure page)
+#   - GKE: collector.gke.nullifyAwsRoleArn
+#          (Nullify-owned federated AWS IAM role ARN, provided by Nullify
+#           after you share your GCP service-account unique ID)
+#          serviceAccount.annotations."iam.gke.io/gcp-service-account"
+#          (Your GCP service account email, bound to the in-cluster
+#           ServiceAccount via Workload Identity)
+
+# Which cluster platform the collector is running on.
+# Supported values: "aws" (EKS, default) | "gcp" (GKE).
+# - "aws" authenticates via IRSA (service account → AWS IAM role).
+# - "gcp" authenticates via GKE Workload Identity → sts:AssumeRoleWithWebIdentity.
+cloudProvider: aws
 
 # Cluster-level permissions
 clusterRole:
@@ -18,20 +33,20 @@ clusterRoleBinding:
 # Main collector configuration
 collector:
     enabled: true
-    
+
     # AWS region (extract from your KMS key ARN)
     aws:
         region: us-east-1
-    
-    # Must match your actual EKS cluster name exactly
+
+    # Must match your actual cluster name exactly
     clusterName: "YOUR-CLUSTER-NAME"
-    
+
     # Container image
     image:
         repository: public.ecr.aws/w4o2j2x4/integrations
         tag: k8s-collector-latest
         pullPolicy: Always
-    
+
     # Resource limits
     resources:
         limits:
@@ -40,23 +55,23 @@ collector:
         requests:
             cpu: 100m
             memory: 128Mi
-    
+
     # S3 configuration (from Nullify configure page)
     s3:
         bucket: "YOUR-NULLIFY-S3-BUCKET"
         keyPrefix: k8s-collector
-    
+
     # KMS configuration (from Nullify configure page)
     kms:
         keyArn: "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"
-    
+
     # Debug logging
     debug:
         enabled: false
-    
+
     # CronJob schedule (daily at midnight UTC)
     schedule: "0 0 * * *"
-    
+
     # Security context
     securityContext:
         allowPrivilegeEscalation: false
@@ -65,12 +80,30 @@ collector:
                 - ALL
         readOnlyRootFilesystem: true
         runAsNonRoot: true
-    
+
     # Data collection filters (optional)
     dataCollection:
         # excludeNamespaces: "kube-system,kube-public"
         # includeResources: "pods,services,deployments"
         # metadataOnly: true
+
+    # GKE-specific settings (only used when cloudProvider is "gcp").
+    gke:
+        # Nullify-owned federated AWS IAM role the collector assumes via
+        # sts:AssumeRoleWithWebIdentity. Supplied by Nullify after you share
+        # your GCP service-account unique ID during onboarding.
+        nullifyAwsRoleArn: ""
+
+        # Audience the projected GCP service-account token is minted with.
+        # AWS STS requires this to match the OIDC provider's client_id_list;
+        # "sts.amazonaws.com" is correct for all Nullify deployments and
+        # should not normally be changed.
+        audience: sts.amazonaws.com
+
+        # Path inside the pod where the Workload-Identity-projected token
+        # is mounted. The collector reads this file and forwards the token
+        # to AWS STS. Must match the `AWS_WEB_IDENTITY_TOKEN_FILE` env var.
+        webIdentityTokenPath: /var/run/secrets/tokens/gcp-sa-token
 
 # Helm chart naming
 fullnameOverride: ""
@@ -88,10 +121,22 @@ namespace:
 # Node selector
 nodeSelector: {}
 
-# Service account for IRSA (from Nullify configure page)
+# Service account annotations.
+#
+# The chart picks the right annotation based on `cloudProvider`:
+#   - aws: expects `eks.amazonaws.com/role-arn` (IRSA)
+#   - gcp: expects `iam.gke.io/gcp-service-account` (Workload Identity)
+#
+# Leave the other provider's annotation unset; the chart renders only the
+# one that applies. Extra annotations are passed through unchanged.
 serviceAccount:
     annotations:
+        # Used when cloudProvider=aws (EKS). IAM role ARN from the Nullify
+        # configure page.
         eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/ROLE-NAME"
+        # Used when cloudProvider=gcp (GKE). Your GCP service account email,
+        # e.g. nullify-k8s-collector@your-project.iam.gserviceaccount.com.
+        # iam.gke.io/gcp-service-account: "YOUR-GCP-SA-EMAIL"
     create: true
     name: nullify-k8s-collector-sa
     namespace: nullify

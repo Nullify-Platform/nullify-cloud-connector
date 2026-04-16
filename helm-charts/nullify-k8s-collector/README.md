@@ -7,27 +7,44 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - Kubernetes 1.16+
 - Helm 3.0+
 
+## Supported platforms
+
+The same chart runs on **EKS** and **GKE**. Select the platform via `cloudProvider`:
+
+| `cloudProvider` | Cluster  | How the collector authenticates to AWS              |
+| --------------- | -------- | --------------------------------------------------- |
+| `aws` (default) | EKS      | IRSA — ServiceAccount → AWS IAM role                |
+| `gcp`           | GKE      | Workload Identity → `sts:AssumeRoleWithWebIdentity` |
+
+In both cases the collector uploads cluster metadata to the same Nullify-managed
+S3 bucket. No long-lived AWS credential is stored in the customer cluster.
+
 ## Configuration
 
 The following table lists the configurable parameters of the chart and their default values.
 
-> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, and `serviceAccount.annotations.eks.amazonaws.com/role-arn` must be configured before deployment. Get these from the Nullify configure page.
+> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`.
+> Platform-specific required values are listed below. Get these from the Nullify configure page.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `cloudProvider` | Platform the collector runs on: `aws` (EKS) or `gcp` (GKE) | `aws` |
 | `serviceAccount.create` | If true, create a new service account | `true` |
-| `serviceAccount.annotations` | Annotations for the service account (IAM role ARN from Nullify configure page) | `eks.amazonaws.com/role-arn: YOUR-NULLIFY-READ-ONLY-ROLE-ARN` |
+| `serviceAccount.annotations` | Annotations for the service account. The chart renders only the annotation that matches `cloudProvider`. | See [values.yaml](./values.yaml) |
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
 | `collector.image.tag` | Image tag | `k8s-collector-latest` |
 | `collector.image.pullPolicy` | Pull policy | `Always` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
-| `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `nullify-death-star-dast-k8s` |
+| `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `YOUR-NULLIFY-S3-BUCKET` |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
-| `collector.aws.region` | AWS region | `ap-southeast-2` |
-| `collector.clusterName` | Cluster name (must match your actual EKS cluster name) | `YOUR-CLUSTER-NAME` |
+| `collector.aws.region` | AWS region | `us-east-1` |
+| `collector.clusterName` | Cluster name (must match your actual cluster name) | `YOUR-CLUSTER-NAME` |
 | `collector.kms.keyArn` | KMS key ARN for encryption (from Nullify configure page) | `""` |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
+| `collector.gke.nullifyAwsRoleArn` | **GKE only.** Nullify-owned federated AWS IAM role ARN. | `""` |
+| `collector.gke.audience` | **GKE only.** Token audience AWS STS checks against the OIDC provider. Do not change unless Nullify asks you to. | `sts.amazonaws.com` |
+| `collector.gke.webIdentityTokenPath` | **GKE only.** In-pod path of the projected Workload Identity token. | `/var/run/secrets/tokens/gcp-sa-token` |
 | `labels` | Additional labels for the collector resources | `null` |
 
 ## Security Context
@@ -79,9 +96,86 @@ serviceAccount:
     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/NullifyCollectorRole"
 ```
 
+### GKE with Workload Identity Federation
+
+For GKE clusters, the collector authenticates to AWS without any long-lived credential.
+The flow is:
+
+1. GKE projects a Google-signed ServiceAccount token into the collector pod.
+2. The collector forwards that token to AWS STS `AssumeRoleWithWebIdentity`.
+3. AWS validates the token against the Google OIDC provider and returns short-lived
+   credentials for a Nullify-owned IAM role scoped to your S3 prefix.
+
+#### One-time onboarding
+
+1. **Enable Workload Identity on the cluster** (skip if already enabled):
+
+   ```bash
+   gcloud container clusters update YOUR-CLUSTER \
+     --workload-pool=YOUR-PROJECT.svc.id.goog
+   ```
+
+2. **Create a GCP service account** dedicated to the collector. It does not need any
+   GCP IAM roles — its only job is to sign an OIDC token AWS STS will trust.
+
+   ```bash
+   gcloud iam service-accounts create nullify-k8s-collector \
+     --display-name "Nullify Kubernetes Collector"
+   ```
+
+3. **Send its unique ID to Nullify.** The `uniqueId` is a 21-digit number, not the
+   email. Nullify adds it to the federated IAM role's trust-policy allowlist and
+   gives you back the role ARN.
+
+   ```bash
+   gcloud iam service-accounts describe \
+     nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com \
+     --format='value(uniqueId)'
+   ```
+
+4. **Bind the in-cluster Kubernetes ServiceAccount to the GCP SA** via Workload
+   Identity. The Kubernetes SA name/namespace below must match `serviceAccount.name`
+   and `serviceAccount.namespace` in your Helm values.
+
+   ```bash
+   gcloud iam service-accounts add-iam-policy-binding \
+     nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com \
+     --role roles/iam.workloadIdentityUser \
+     --member "serviceAccount:YOUR-PROJECT.svc.id.goog[nullify/nullify-k8s-collector-sa]"
+   ```
+
+#### Helm values
+
+```yaml
+cloudProvider: gcp
+
+collector:
+  clusterName: "my-gke-cluster"
+  aws:
+    region: "us-east-1"   # AWS region of the Nullify S3 bucket
+  s3:
+    bucket: "your-nullify-bucket"
+  kms:
+    keyArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
+  gke:
+    # Provided by Nullify after step 3 of onboarding.
+    nullifyAwsRoleArn: "arn:aws:iam::123456789012:role/NullifyK8sCollectorRole"
+
+serviceAccount:
+  annotations:
+    iam.gke.io/gcp-service-account: "nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com"
+```
+
+Then install:
+
+```bash
+helm install nullify-k8s-collector ./nullify-k8s-collector -f values-gke.yaml
+```
+
 ### Other Kubernetes Clusters
 
-For non-EKS clusters, you'll need to provide AWS credentials through other means:
+For clusters outside EKS and GKE, you'll need to provide AWS credentials through
+other means:
 
 - Using AWS environment variables in the pod
 - Using instance profiles for nodes running on EC2

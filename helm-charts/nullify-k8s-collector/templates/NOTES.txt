@@ -7,7 +7,7 @@ about your cluster resources to help identify security vulnerabilities.
 This collector gathers information about your Kubernetes cluster and stores it in an S3 bucket.
 The data collected includes (but is not limited to):
 - Cluster metadata
-- Namespaces 
+- Namespaces
 - Workloads (Pods, Deployments, StatefulSets, DaemonSets, etc.)
 - Service configuration
 - Network policies
@@ -15,6 +15,7 @@ The data collected includes (but is not limited to):
 - PersistentVolumes and PersistentVolumeClaims
 
 ## Configuration
+- Cloud Provider: {{ .Values.cloudProvider | default "aws" }}
 - S3 Bucket: {{ .Values.collector.s3.bucket }}
 - S3 Key Prefix: {{ .Values.collector.s3.keyPrefix }}
 - AWS Region: {{ .Values.collector.aws.region }}
@@ -30,15 +31,30 @@ The data collected includes (but is not limited to):
 - Collection Mode: Full resource data
 {{- end }}
 
+{{- if eq (.Values.cloudProvider | default "aws") "gcp" }}
+
+## Authentication (GKE Workload Identity → AWS STS)
+- GCP Service Account: {{ index .Values.serviceAccount.annotations "iam.gke.io/gcp-service-account" | default "NOT SET — required for GKE" }}
+- Nullify AWS Role: {{ .Values.collector.gke.nullifyAwsRoleArn | default "NOT SET — ask Nullify for the role ARN" }}
+- Token Audience: {{ .Values.collector.gke.audience }}
+
+The collector exchanges the projected Google-signed ServiceAccount token for short-lived
+AWS credentials via sts:AssumeRoleWithWebIdentity. No long-lived AWS credential is
+stored in the cluster.
+{{- else }}
+
+## Authentication (EKS IRSA)
 {{- if (index .Values.serviceAccount.annotations "eks.amazonaws.com/role-arn") }}
 - IAM Role: {{ index .Values.serviceAccount.annotations "eks.amazonaws.com/role-arn" }}
 {{- else }}
-NOTE: No IAM role was specified for the ServiceAccount. Make sure the collector 
+NOTE: No IAM role was specified for the ServiceAccount. Make sure the collector
 has necessary AWS credentials through other means (instance profile, environment variables, etc.)
+{{- end }}
 {{- end }}
 
 ## Required AWS Permissions
-The IAM role or credentials used by the collector need these permissions(Will already be installed as a part of Nullify's IAM Resources):
+The IAM role or credentials used by the collector need these permissions (already granted
+when Nullify's IAM resources are installed):
 - s3:PutObject
 - s3:GetObject
 - s3:ListBucket
@@ -54,4 +70,4 @@ To check logs from the most recent job run:
   kubectl -n {{ .Values.serviceAccount.namespace }} logs job/$(kubectl -n {{ .Values.serviceAccount.namespace }} get jobs --sort-by=.metadata.creationTimestamp -l app.kubernetes.io/name={{ include "k8s-collector.name" . }} -o jsonpath="{.items[-1].metadata.name}")
 
 To run the job manually:
-  kubectl -n {{ .Values.serviceAccount.namespace }} create job --from=cronjob/{{ include "k8s-collector.name" . }} {{ include "k8s-collector.name" . }}-manual-$(date +%s) 
+  kubectl -n {{ .Values.serviceAccount.namespace }} create job --from=cronjob/{{ include "k8s-collector.name" . }} {{ include "k8s-collector.name" . }}-manual-$(date +%s)
