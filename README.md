@@ -29,6 +29,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 2. **CloudFormation** (`aws-integration-setup/cloudformation/`) - For AWS-centric infrastructure
 3. **Terraform** (`aws-integration-setup/terraform/`) - For infrastructure-as-code workflows with modular architecture
 4. **GCP Terraform** (`gcp-integration-setup/terraform/`) - For Google Cloud read-only integration via Workload Identity Federation
+5. **GKE Collector Terraform** (`gcp-integration-setup/terraform/modules/nullify-gke-collector/`) - For deploying the k8s-collector on GKE clusters
 
 ## 🚀 **Quick Start**
 
@@ -40,6 +41,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
 | **🔧 Terraform (AWS)** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
 | **☁️ Terraform (GCP)** | GCP environments, Workload Identity Federation | Terraform, `gcloud` auth on the host project, org or folder admin access |
+| **☁️ Terraform (GKE collector)** | GKE clusters running the Nullify k8s-collector | Terraform, GKE with Workload Identity enabled |
 
 ### **GCP Quick Start**
 
