@@ -9,9 +9,10 @@
 This repository provides comprehensive infrastructure-as-code templates for integrating Nullify's security platform with your cloud environment. It includes multiple deployment options to suit different infrastructure preferences and requirements.
 
 ### **What's Included**
-- ⚙️ **Helm Charts** - Production-ready Kubernetes deployment with IRSA support
+- ⚙️ **Helm Charts** - Production-ready Kubernetes deployment for **EKS (IRSA)** and **GKE (Workload Identity)**
 - 🏗️ **CloudFormation Templates** - AWS infrastructure setup with IAM roles and policies
 - 🔧 **Terraform Modules** - Modular infrastructure-as-code for AWS and multi-cluster EKS integration
+- ☁️ **GCP Terraform** - Read-only GCP integration via Workload Identity Federation
 - 🤖 **GitHub Actions** - Automated chart publishing and validation
 - 📚 **Documentation** - Comprehensive setup and security guides
 - ❌ **NO real sensitive data, bucket names, or account IDs**
@@ -35,7 +36,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 
 | Method | Best For | Prerequisites |
 |--------|----------|---------------|
-| **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS cluster, Helm 3.x, kubectl |
+| **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS or GKE cluster, Helm 3.x, kubectl |
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
 | **🔧 Terraform (AWS)** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
 | **☁️ Terraform (GCP)** | GCP environments, Workload Identity Federation | Terraform, `gcloud` auth on the host project, org or folder admin access |
@@ -59,7 +60,7 @@ See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terrafor
 
 1. **AWS Account** with appropriate permissions
 2. **Nullify Account** and dashboard access
-3. **EKS Cluster** (for Kubernetes deployments)
+3. **Kubernetes cluster** for Helm deployments — **EKS** (IRSA) or **GKE** (Workload Identity). See the [chart README](helm-charts/nullify-k8s-collector/README.md#supported-platforms) for per-platform onboarding steps.
 
 **Obtain Configuration Values from Nullify Configure Page:**
 
@@ -319,7 +320,7 @@ nullify-cloud-connector/
 
 | Component | Purpose | Use When |
 |-----------|---------|----------|
-| **🎯 Helm Charts** | Deploy K8s collector with IRSA | You have EKS and prefer K8s-native tools |
+| **🎯 Helm Charts** | Deploy K8s collector (EKS via IRSA, GKE via Workload Identity) | You have EKS or GKE and prefer K8s-native tools |
 | **🏗️ CloudFormation** | Set up AWS IAM roles and policies | You prefer AWS-native infrastructure |
 | **🔧 Terraform** | Modular infrastructure-as-code with multi-cluster support | You use Terraform for infrastructure |
 | **🤖 GitHub Actions** | Automated testing and publishing | You want CI/CD for chart updates |
