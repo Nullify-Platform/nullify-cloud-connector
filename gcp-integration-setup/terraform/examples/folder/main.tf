@@ -16,9 +16,9 @@ module "nullify" {
   organization_id = "123456789012"
   folder_id       = "987654321098"
 
-  # From the Nullify console.
-  nullify_aws_principal_arn = "arn:aws:iam::000000000000:role/nullify-cloud-connector"
-  nullify_aws_account_id    = "000000000000"
+  # From the Nullify console (Settings -> Cloud Integrations -> GCP).
+  nullify_oidc_issuer_uri = "https://gcp.nullify.ai"
+  nullify_tenant_id       = "Nullify-XXXXXXXXXXXX"
 }
 
 output "service_account_email" {

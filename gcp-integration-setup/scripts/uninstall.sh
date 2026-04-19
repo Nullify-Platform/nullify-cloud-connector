@@ -10,7 +10,7 @@ set -euo pipefail
 : "${NULLIFY_ORG_ID:?NULLIFY_ORG_ID is required}"
 
 POOL_ID="${NULLIFY_WIF_POOL_ID:-nullify-cloud-connector}"
-PROVIDER_ID="${NULLIFY_WIF_PROVIDER_ID:-nullify-aws}"
+PROVIDER_ID="${NULLIFY_WIF_PROVIDER_ID:-nullify-oidc}"
 SA_NAME="${NULLIFY_SA_NAME:-nullify-cloud-connector}"
 SA_EMAIL="${SA_NAME}@${NULLIFY_HOST_PROJECT}.iam.gserviceaccount.com"
 CUSTOM_ROLE_ID="nullifyCloudConnector"
@@ -18,7 +18,6 @@ CUSTOM_ROLE_ID="nullifyCloudConnector"
 ROLES=(
   roles/cloudasset.viewer
   roles/iam.securityReviewer
-  roles/viewer
   roles/compute.viewer
   roles/container.clusterViewer
   roles/cloudsql.viewer
