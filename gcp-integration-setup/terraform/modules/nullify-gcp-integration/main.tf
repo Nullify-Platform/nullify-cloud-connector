@@ -20,7 +20,7 @@
 #   - secret manager: secret metadata only, never secret payloads
 #   - bigquery: dataset metadata only, never table rows
 #
-# See modules/nullify-gcp-integration/README.md for the full permission list.
+# See ../../docs/permissions.md for the full permission list + rationale.
 
 # ---------------------------------------------------------------------------
 # Input validation that needs to look at multiple variables. Per-variable
@@ -220,7 +220,7 @@ resource "google_service_account" "nullify_cloud_connector" {
 }
 
 # ---------------------------------------------------------------------------
-# Workload Identity Pool + Provider trusting the Nullify AWS principal.
+# Workload Identity Pool + OIDC Provider trusting Nullify's OIDC issuer.
 # ---------------------------------------------------------------------------
 
 resource "google_iam_workload_identity_pool" "nullify" {

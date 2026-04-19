@@ -41,11 +41,28 @@ gcloud services enable \
   serviceusage.googleapis.com \
   --project="${NULLIFY_HOST_PROJECT}"
 
+# API enablement is documented as synchronous but the IAM API's "enabled"
+# state propagates eventually-consistent. On a fresh project the next
+# service-accounts call can still return 403 for 10-30s. Retry the first
+# IAM call a few times to absorb this, then every later gcloud iam call
+# reuses the same warmed state.
 echo "==> Creating service account ${SA_EMAIL}"
-gcloud iam service-accounts describe "${SA_EMAIL}" --project="${NULLIFY_HOST_PROJECT}" >/dev/null 2>&1 || \
-  gcloud iam service-accounts create "${SA_NAME}" \
-    --project="${NULLIFY_HOST_PROJECT}" \
-    --display-name="Nullify Cloud Connector"
+for attempt in 1 2 3 4 5; do
+  if gcloud iam service-accounts describe "${SA_EMAIL}" --project="${NULLIFY_HOST_PROJECT}" >/dev/null 2>&1; then
+    break
+  fi
+  if gcloud iam service-accounts create "${SA_NAME}" \
+      --project="${NULLIFY_HOST_PROJECT}" \
+      --display-name="Nullify Cloud Connector" 2>/dev/null; then
+    break
+  fi
+  if [ "${attempt}" -eq 5 ]; then
+    echo "ERROR: failed to create service account after 5 attempts (IAM API not yet usable on ${NULLIFY_HOST_PROJECT}?)" >&2
+    exit 1
+  fi
+  echo "    waiting for IAM API to propagate (attempt ${attempt}/5)..." >&2
+  sleep 10
+done
 
 echo "==> Creating workload identity pool ${POOL_ID}"
 gcloud iam workload-identity-pools describe "${POOL_ID}" \

@@ -38,11 +38,17 @@ The human / service identity running `terraform apply` needs, at minimum:
 
 - `roles/iam.workloadIdentityPoolAdmin` — create the WIF pool + provider
 - `roles/iam.serviceAccountAdmin` — create the Nullify service account
-- `roles/serviceusage.serviceUsageAdmin` — enable the required APIs
+- `roles/serviceusage.serviceUsageAdmin` — enable the required APIs (on
+  the host project)
 - `roles/iam.organizationRoleAdmin` — only when `scope` is `organization`
   or `folder` (the long-tail custom role must be defined at the org)
-- `roles/resourcemanager.organizationAdmin` or `roles/resourcemanager.folderAdmin` — only
-  when granting bindings at the org or folder
+- `roles/resourcemanager.organizationAdmin` or
+  `roles/resourcemanager.folderAdmin` — only when granting bindings at the
+  org or folder
+- `roles/resourcemanager.projectIamAdmin` — when `scope = "projects"`,
+  needed on **every** project listed in `project_ids` (not just
+  `host_project_id`) so the module can grant the viewer + custom role
+  bindings on each
 
 If you want a least-privilege one-off install, request these roles on the
 operator running the apply and revoke them afterwards.
