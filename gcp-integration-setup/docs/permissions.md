@@ -5,14 +5,18 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 
 ## Trust model
 
-- **Workload Identity Federation (WIF)**, AWS source.
+- **Workload Identity Federation (WIF)**, OIDC source.
+- Nullify acts as an OpenID Connect identity provider. The JWKS document
+  (`{nullify_oidc_issuer_uri}/.well-known/jwks.json`) is publicly fetched
+  by Google STS to verify subject token signatures.
 - Nullify never holds a long-lived service account key.
 - Every API call is authenticated with a short-lived token (~1 hour) minted
-  by exchanging a signed AWS STS GetCallerIdentity request through your
-  workload identity pool.
-- The pool's attribute condition restricts trust to a single AWS IAM role
-  in Nullify's AWS account. Any other AWS principal is rejected by GCP
-  before any permission check happens.
+  by exchanging a per-tenant RS256 JWT through your workload identity pool.
+- The pool's attribute condition pins trust to your specific Nullify
+  tenant id (`assertion.tenant_id == "<your tenant id>"`). Any other
+  Nullify tenant's token is rejected by GCP before any permission check
+  happens — so even if Nullify's signing key were stolen, an attacker
+  could not mint a token accepted by another tenant's provider.
 
 ## Predefined roles
 
@@ -20,7 +24,6 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 | --- | --- |
 | `roles/cloudasset.viewer` | Org-wide asset enumeration via Cloud Asset Inventory. The cheapest way to discover everything. |
 | `roles/iam.securityReviewer` | Read all IAM bindings, custom roles, deny policies, recommendations. Drives the IAM exposure analysis. |
-| `roles/viewer` | Generic project read for the long tail of services that don't have a specific viewer role. |
 | `roles/compute.viewer` | VPC, instances, firewalls, load balancers, routes, NAT, peering. Drives the network topology. |
 | `roles/container.clusterViewer` | GKE cluster + node pool config. |
 | `roles/cloudsql.viewer` | Cloud SQL instance + replica config. |

@@ -10,6 +10,12 @@ variable "customer_name" {
 variable "host_project_id" {
   description = "The GCP project that owns the workload identity pool, the Nullify service account and (when no organization_id is provided) the project-level custom role. For org-wide installs this is typically a dedicated security project."
   type        = string
+  validation {
+    # GCP project ID rules: 6-30 chars, start with letter, end with
+    # letter/digit, lowercase letters/digits/hyphens only.
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.host_project_id))
+    error_message = "host_project_id must be 6-30 chars, start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits, and hyphens."
+  }
 }
 
 variable "scope" {
@@ -44,24 +50,21 @@ variable "project_ids" {
   default     = []
 }
 
-variable "nullify_aws_principal_arn" {
-  description = "The AWS IAM role ARN that Nullify uses to call your GCP environment via Workload Identity Federation. Provided in the Nullify console; never change this value yourself."
+variable "nullify_oidc_issuer_uri" {
+  description = "Nullify's OIDC issuer URL (e.g. https://gcp.nullify.ai for prod, https://gcp.dev.nullify.ai for dev). Provided in the Nullify console under Settings -> Cloud Integrations -> GCP. Google STS fetches the JWKS document from `{issuer}/.well-known/jwks.json` to verify subject token signatures."
   type        = string
   validation {
-    # Allow paths in the role ARN — e.g. arn:aws:iam::000:role/path/to/Name.
-    # The friendly name (everything after the last "/") is what shows up in
-    # the assumed-role assertion and is what we pin the WIF condition on.
-    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.nullify_aws_principal_arn))
-    error_message = "nullify_aws_principal_arn must be a valid AWS IAM role ARN."
+    condition     = startswith(var.nullify_oidc_issuer_uri, "https://") && !endswith(var.nullify_oidc_issuer_uri, "/")
+    error_message = "nullify_oidc_issuer_uri must start with https:// and not end with a trailing slash."
   }
 }
 
-variable "nullify_aws_account_id" {
-  description = "The AWS account ID Nullify operates from. Used as the audience subject in the workload identity provider attribute condition. Provided in the Nullify console."
+variable "nullify_tenant_id" {
+  description = "Your Nullify tenant id. Provided in the Nullify console under Settings -> Cloud Integrations -> GCP. Embedded in the WIF provider's attribute_condition so the pool only accepts subject tokens minted for THIS tenant; this is the per-tenant isolation that makes the integration safe in a multi-tenant Nullify deployment."
   type        = string
   validation {
-    condition     = can(regex("^[0-9]{12}$", var.nullify_aws_account_id))
-    error_message = "nullify_aws_account_id must be a 12 digit AWS account ID."
+    condition     = length(var.nullify_tenant_id) > 0 && length(var.nullify_tenant_id) <= 100 && can(regex("^[A-Za-z0-9_-]+$", var.nullify_tenant_id))
+    error_message = "nullify_tenant_id must be 1-100 characters of [A-Za-z0-9_-]."
   }
 }
 
@@ -72,9 +75,9 @@ variable "wif_pool_id" {
 }
 
 variable "wif_provider_id" {
-  description = "ID for the Workload Identity Provider that trusts the Nullify AWS principal. Must be unique within the pool."
+  description = "ID for the Workload Identity Provider that trusts Nullify's OIDC issuer. Must be unique within the pool."
   type        = string
-  default     = "nullify-aws"
+  default     = "nullify-oidc"
 }
 
 variable "service_account_name" {

@@ -6,6 +6,10 @@ variable "customer_name" {
 variable "host_project_id" {
   description = "GCP project that owns the Nullify service account, workload identity pool and (when no organization_id is provided) the project-level custom role. Typically a dedicated security project."
   type        = string
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.host_project_id))
+    error_message = "host_project_id must be 6-30 chars, start with a lowercase letter, end with a lowercase letter or digit, and contain only lowercase letters, digits, and hyphens."
+  }
 }
 
 variable "scope" {
@@ -36,14 +40,22 @@ variable "project_ids" {
   default     = []
 }
 
-variable "nullify_aws_principal_arn" {
-  description = "AWS IAM role ARN that Nullify uses to call your GCP environment. Provided in the Nullify console under Settings -> Cloud Integrations -> GCP."
+variable "nullify_oidc_issuer_uri" {
+  description = "Nullify's OIDC issuer URL (e.g. https://gcp.nullify.ai for prod). Provided in the Nullify console under Settings -> Cloud Integrations -> GCP."
   type        = string
+  validation {
+    condition     = startswith(var.nullify_oidc_issuer_uri, "https://") && !endswith(var.nullify_oidc_issuer_uri, "/")
+    error_message = "nullify_oidc_issuer_uri must start with https:// and not end with a trailing slash."
+  }
 }
 
-variable "nullify_aws_account_id" {
-  description = "AWS account ID Nullify operates from. Provided in the Nullify console."
+variable "nullify_tenant_id" {
+  description = "Your Nullify tenant id. Provided in the Nullify console under Settings -> Cloud Integrations -> GCP. Pinned in the workload identity provider's attribute_condition so this pool only accepts subject tokens minted for this tenant."
   type        = string
+  validation {
+    condition     = length(var.nullify_tenant_id) > 0 && length(var.nullify_tenant_id) <= 100 && can(regex("^[A-Za-z0-9_-]+$", var.nullify_tenant_id))
+    error_message = "nullify_tenant_id must be 1-100 characters of [A-Za-z0-9_-]."
+  }
 }
 
 variable "wif_pool_id" {
@@ -55,7 +67,7 @@ variable "wif_pool_id" {
 variable "wif_provider_id" {
   description = "ID for the Workload Identity Provider."
   type        = string
-  default     = "nullify-aws"
+  default     = "nullify-oidc"
 }
 
 variable "service_account_name" {

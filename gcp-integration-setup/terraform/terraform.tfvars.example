@@ -24,6 +24,9 @@ organization_id = "123456789012"
 # project_ids     = ["acme-prod", "acme-staging"]
 # organization_id = "123456789012"  # required for multi-project installs
 
-# Values from the Nullify console — DO NOT change these manually.
-nullify_aws_principal_arn = "arn:aws:iam::000000000000:role/nullify-cloud-connector"
-nullify_aws_account_id    = "000000000000"
+# Values from the Nullify console (Settings -> Cloud Integrations -> GCP).
+# DO NOT change these manually.
+#   - Use https://gcp.nullify.ai for the prod Nullify environment.
+#   - Use https://gcp.dev.nullify.ai for the dev Nullify environment.
+nullify_oidc_issuer_uri = "https://gcp.nullify.ai"
+nullify_tenant_id       = "Nullify-XXXXXXXXXXXX"

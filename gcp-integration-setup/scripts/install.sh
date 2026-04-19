@@ -9,8 +9,8 @@
 # Usage:
 #   export NULLIFY_HOST_PROJECT="acme-security"
 #   export NULLIFY_ORG_ID="123456789012"
-#   export NULLIFY_AWS_PRINCIPAL_ARN="arn:aws:iam::000000000000:role/nullify-cloud-connector"
-#   export NULLIFY_AWS_ACCOUNT_ID="000000000000"
+#   export NULLIFY_OIDC_ISSUER_URI="https://gcp.nullify.ai"
+#   export NULLIFY_TENANT_ID="Nullify-XXXXXXXXXXXX"
 #   ./install.sh
 #
 # Re-running this script is idempotent — every gcloud command checks for
@@ -20,18 +20,26 @@ set -euo pipefail
 
 : "${NULLIFY_HOST_PROJECT:?NULLIFY_HOST_PROJECT is required}"
 : "${NULLIFY_ORG_ID:?NULLIFY_ORG_ID is required}"
-: "${NULLIFY_AWS_PRINCIPAL_ARN:?NULLIFY_AWS_PRINCIPAL_ARN is required}"
-: "${NULLIFY_AWS_ACCOUNT_ID:?NULLIFY_AWS_ACCOUNT_ID is required}"
+: "${NULLIFY_OIDC_ISSUER_URI:?NULLIFY_OIDC_ISSUER_URI is required (e.g. https://gcp.nullify.ai)}"
+: "${NULLIFY_TENANT_ID:?NULLIFY_TENANT_ID is required (copy from the Nullify console)}"
 
 POOL_ID="${NULLIFY_WIF_POOL_ID:-nullify-cloud-connector}"
-PROVIDER_ID="${NULLIFY_WIF_PROVIDER_ID:-nullify-aws}"
+PROVIDER_ID="${NULLIFY_WIF_PROVIDER_ID:-nullify-oidc}"
 SA_NAME="${NULLIFY_SA_NAME:-nullify-cloud-connector}"
 SA_EMAIL="${SA_NAME}@${NULLIFY_HOST_PROJECT}.iam.gserviceaccount.com"
 
-# Path-tolerant friendly name extraction. Mirrors the Terraform module's
-# `nullify_aws_role_name` local. Assumed-role assertions never include a
-# path so the WIF condition we pin must reference only the friendly name.
-NULLIFY_ROLE_NAME="${NULLIFY_AWS_PRINCIPAL_ARN##*/}"
+# Required APIs on the host project. Without these enabled, the WIF pool /
+# provider / service account creation calls fail with cryptic 403s. Mirrors
+# `apis.tf` in the Terraform module.
+echo "==> Enabling required Google Cloud APIs on ${NULLIFY_HOST_PROJECT}"
+gcloud services enable \
+  iam.googleapis.com \
+  iamcredentials.googleapis.com \
+  sts.googleapis.com \
+  cloudresourcemanager.googleapis.com \
+  cloudasset.googleapis.com \
+  serviceusage.googleapis.com \
+  --project="${NULLIFY_HOST_PROJECT}"
 
 echo "==> Creating service account ${SA_EMAIL}"
 gcloud iam service-accounts describe "${SA_EMAIL}" --project="${NULLIFY_HOST_PROJECT}" >/dev/null 2>&1 || \
@@ -46,30 +54,29 @@ gcloud iam workload-identity-pools describe "${POOL_ID}" \
     --project="${NULLIFY_HOST_PROJECT}" --location=global \
     --display-name="Nullify Cloud Connector"
 
-# Mirror the Terraform module's WIF attribute_condition: trust ONLY the
-# Nullify AWS role, not any principal in the Nullify AWS account. Without
-# this condition the pool would accept any caller from the Nullify AWS
-# account, which is meaningfully weaker than the Terraform path.
-ATTRIBUTE_CONDITION="attribute.aws_role == \"arn:aws:sts::${NULLIFY_AWS_ACCOUNT_ID}:assumed-role/${NULLIFY_ROLE_NAME}\""
+# Pin trust to this specific Nullify tenant. Nullify's OIDC issuer is
+# multi-tenant; the JWT carries a `tenant_id` custom claim. Without this
+# condition any Nullify tenant could exchange a token against this provider.
+ATTRIBUTE_CONDITION="assertion.tenant_id == \"${NULLIFY_TENANT_ID}\""
 
-echo "==> Creating workload identity provider ${PROVIDER_ID} (AWS source)"
+echo "==> Creating workload identity provider ${PROVIDER_ID} (OIDC source)"
 gcloud iam workload-identity-pools providers describe "${PROVIDER_ID}" \
   --project="${NULLIFY_HOST_PROJECT}" --location=global \
   --workload-identity-pool="${POOL_ID}" >/dev/null 2>&1 || \
-  gcloud iam workload-identity-pools providers create-aws "${PROVIDER_ID}" \
+  gcloud iam workload-identity-pools providers create-oidc "${PROVIDER_ID}" \
     --project="${NULLIFY_HOST_PROJECT}" --location=global \
     --workload-identity-pool="${POOL_ID}" \
-    --account-id="${NULLIFY_AWS_ACCOUNT_ID}" \
-    --attribute-mapping="google.subject=assertion.arn,attribute.account=assertion.account,attribute.aws_role=assertion.arn.contains(\"assumed-role\") ? assertion.arn.extract(\"{anything}assumed-role/\") + \"assumed-role/\" + assertion.arn.extract(\"assumed-role/{role}/\") : assertion.arn" \
+    --issuer-uri="${NULLIFY_OIDC_ISSUER_URI}" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.tenant_id=assertion.tenant_id" \
     --attribute-condition="${ATTRIBUTE_CONDITION}"
 
-echo "==> Allowing Nullify principal to impersonate the service account"
+echo "==> Allowing the Nullify tenant principal to impersonate the service account"
 POOL_NAME="$(gcloud iam workload-identity-pools describe "${POOL_ID}" \
   --project="${NULLIFY_HOST_PROJECT}" --location=global --format='value(name)')"
 gcloud iam service-accounts add-iam-policy-binding "${SA_EMAIL}" \
   --project="${NULLIFY_HOST_PROJECT}" \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/${POOL_NAME}/attribute.aws_role/arn:aws:sts::${NULLIFY_AWS_ACCOUNT_ID}:assumed-role/${NULLIFY_ROLE_NAME}"
+  --member="principalSet://iam.googleapis.com/${POOL_NAME}/attribute.tenant_id/${NULLIFY_TENANT_ID}"
 
 # Custom role for the long-tail permissions Nullify needs that are not
 # covered by predefined viewer roles. Mirrors locals.custom_role_permissions
@@ -103,7 +110,6 @@ echo "==> Granting predefined viewer roles at the organisation"
 ROLES=(
   roles/cloudasset.viewer
   roles/iam.securityReviewer
-  roles/viewer
   roles/compute.viewer
   roles/container.clusterViewer
   roles/cloudsql.viewer

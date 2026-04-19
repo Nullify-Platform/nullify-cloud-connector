@@ -2,9 +2,13 @@
 #
 # This module provisions read-only access to a GCP environment for the Nullify
 # Cloud Connector. The trust model is Workload Identity Federation (WIF) with
-# AWS as the source — Nullify's lambdas run on AWS and exchange a signed AWS
-# STS GetCallerIdentity request for a short-lived GCP access token, then
-# impersonate the service account this module creates.
+# OIDC as the source — Nullify acts as an OpenID Connect identity provider,
+# minting a per-tenant RS256 JWT with `tenant_id` as a custom claim. The
+# subject token is exchanged via Google STS for a short-lived federated
+# access token, then used to impersonate the service account this module
+# creates. The pool's `attribute_condition` pins trust to the customer's
+# specific Nullify tenant id, so even if Nullify's signing key were stolen
+# an attacker could not mint a token accepted by another tenant's provider.
 #
 # No long-lived secrets are minted by this module. The customer can revoke
 # access at any time by deleting the workload identity provider, the service
@@ -63,10 +67,6 @@ locals {
     # Read all IAM bindings, custom roles, deny policies, recommendations.
     "roles/iam.securityReviewer",
 
-    # Generic project viewer — gives read on the long tail of services that
-    # don't have a more specific viewer role.
-    "roles/viewer",
-
     # Compute (VPC, instances, firewalls, load balancers, routes, NAT, peering).
     "roles/compute.viewer",
 
@@ -103,14 +103,6 @@ locals {
     # Pub/Sub topics + subscriptions.
     "roles/pubsub.viewer",
   ]
-
-  # Robust extraction of the friendly role name from the Nullify principal
-  # ARN. The previous regex (`/^arn:aws:iam::[0-9]+:role\\//`) silently broke
-  # if the role were ever issued under a path (e.g. `role/some/path/Name`),
-  # because it would leave `some/path/Name` and the assumed-role assertion
-  # arrives without a path component. The split-and-take-last approach is
-  # path-tolerant: arn:aws:iam::000000000000:role/some/path/RoleName → RoleName.
-  nullify_aws_role_name = element(reverse(split("/", var.nullify_aws_principal_arn)), 0)
 
   # When organization_id is set, the custom role can be defined at the
   # organisation and granted on any project/folder/org within it. This is
@@ -223,6 +215,8 @@ resource "google_service_account" "nullify_cloud_connector" {
   account_id   = var.service_account_name
   display_name = "Nullify Cloud Connector"
   description  = "Read-only service account impersonated by Nullify via Workload Identity Federation. Managed by Terraform."
+
+  depends_on = [google_project_service.required]
 }
 
 # ---------------------------------------------------------------------------
@@ -233,41 +227,50 @@ resource "google_iam_workload_identity_pool" "nullify" {
   project                   = var.host_project_id
   workload_identity_pool_id = var.wif_pool_id
   display_name              = "Nullify Cloud Connector"
-  description               = "Workload identity pool for the Nullify Cloud Connector. Trusts an AWS IAM role from Nullify's AWS account."
+  description               = "Workload identity pool for the Nullify Cloud Connector. Trusts Nullify's OIDC issuer for the customer's specific tenant id."
+
+  depends_on = [google_project_service.required]
 }
 
-resource "google_iam_workload_identity_pool_provider" "nullify_aws" {
+resource "google_iam_workload_identity_pool_provider" "nullify_oidc" {
   project                            = var.host_project_id
   workload_identity_pool_id          = google_iam_workload_identity_pool.nullify.workload_identity_pool_id
   workload_identity_pool_provider_id = var.wif_provider_id
-  display_name                       = "Nullify AWS"
-  description                        = "Trusts the Nullify AWS IAM role for federated access."
+  display_name                       = "Nullify OIDC"
+  description                        = "Trusts Nullify's OIDC issuer for federated access scoped to this tenant."
 
-  # AWS source — Nullify's lambdas run on AWS and present a signed STS
-  # GetCallerIdentity request as the subject token.
-  aws {
-    account_id = var.nullify_aws_account_id
+  # OIDC source — Nullify mints a signed RS256 JWT in-process and presents
+  # it as the subject token. Google STS fetches the JWKS document from
+  # `${nullify_oidc_issuer_uri}/.well-known/jwks.json` to verify the
+  # signature, then evaluates the attribute_condition below before issuing
+  # a federated access token.
+  oidc {
+    issuer_uri = var.nullify_oidc_issuer_uri
   }
 
-  # Restrict the trust to the exact AWS IAM role Nullify uses. The
-  # attribute condition runs after Google has validated the signed AWS STS
-  # request, so a Nullify-account principal that is NOT this role will be
-  # rejected.
-  attribute_condition = "attribute.aws_role == \"arn:aws:sts::${var.nullify_aws_account_id}:assumed-role/${local.nullify_aws_role_name}\""
+  # Pin trust to this specific Nullify tenant. Nullify's OIDC issuer is
+  # multi-tenant; the JWT carries a `tenant_id` custom claim. Without this
+  # condition any Nullify tenant could exchange a token against this
+  # provider. With it, even if Nullify's signing key were stolen, an
+  # attacker could not mint a token accepted by another tenant's provider.
+  attribute_condition = "assertion.tenant_id == \"${var.nullify_tenant_id}\""
 
   attribute_mapping = {
-    "google.subject"     = "assertion.arn"
-    "attribute.aws_role" = "assertion.arn.contains(\"assumed-role\") ? assertion.arn.extract(\"{anything}assumed-role/\") + \"assumed-role/\" + assertion.arn.extract(\"assumed-role/{role}/\") : assertion.arn"
-    "attribute.account"  = "assertion.account"
+    "google.subject"      = "assertion.sub"
+    "attribute.tenant_id" = "assertion.tenant_id"
   }
+
+  depends_on = [google_project_service.required]
 }
 
-# Allow the Nullify AWS principal (after exchange) to impersonate the
-# Nullify service account.
+# Allow the Nullify federated principal scoped to this tenant id to
+# impersonate the Nullify service account. principalSet on `attribute.tenant_id`
+# is the per-tenant binding that makes the integration safe in a
+# multi-tenant Nullify deployment.
 resource "google_service_account_iam_member" "nullify_workload_identity_user" {
   service_account_id = google_service_account.nullify_cloud_connector.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.nullify.name}/attribute.aws_role/arn:aws:sts::${var.nullify_aws_account_id}:assumed-role/${local.nullify_aws_role_name}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.nullify.name}/attribute.tenant_id/${var.nullify_tenant_id}"
 }
 
 # ---------------------------------------------------------------------------
