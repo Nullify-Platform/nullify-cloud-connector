@@ -1,17 +1,12 @@
-# Nullify AWS Integration - Implementation Guide
+# Nullify Cloud Connector - Implementation Guide
 
-This guide is based on analysis of the real Nullify death-star-dast repository and provides production-ready templates for AWS integration.
+Production-ready templates for integrating Nullify's security platform with AWS and GCP environments.
 
-## Key Findings from Nullify Death-Star-DAST Repository
-
-### Configuration Values (Contact Nullify Support)
-- **Nullify AWS Account ID**: `NULLIFY-ACCOUNT-ID` (provided by Nullify support)
-- **Cross-account Role**: `NULLIFY-ROLE-NAME` (provided by Nullify support)
-- **External IDs**: 
-  - CloudFormation: `YOUR-CLOUDFORMATION-EXTERNAL-ID` (provided by Nullify support)
-  - Terraform: `YOUR-TERRAFORM-EXTERNAL-ID` (provided by Nullify support)
-- **Role Naming Convention**: `AWSIntegration-{CustomerName}-NullifyReadOnlyRole`
-- **S3 Bucket**: `NULLIFY-S3-BUCKET` (provided by Nullify support)
+### Configuration Values (from Nullify Console)
+- **Nullify Role ARN**: Provided in the Nullify configure page
+- **External ID**: Provided in the Nullify configure page
+- **S3 Bucket**: Provided in the Nullify configure page
+- **KMS Key ARN**: Provided in the Nullify configure page
 
 ### Architecture Overview
 
@@ -82,16 +77,16 @@ terraform apply -var="customer_name=mycompany" -var="external_id=your-external-i
 
 ### Option 4: CloudFormation
 
-Deploy using the **exact** Nullify CloudFormation template:
+Deploy using the Nullify CloudFormation template:
 
 ```bash
-cd cloudformation/
-aws cloudformation deploy \
-  --template-file nullify-integration-role.yaml \
+cd aws-integration-setup/cloudformation/
+aws cloudformation create-stack \
   --stack-name nullify-aws-integration \
-  --parameter-overrides \
-    CustomerName=mycompany \
-    ExternalID=your-external-id-from-nullify \
+  --template-body file://nullify-cloudformation-template.json \
+  --parameters \
+    ParameterKey=CustomerName,ParameterValue=mycompany \
+    ParameterKey=ExternalID,ParameterValue=your-external-id-from-nullify \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
@@ -103,17 +98,17 @@ The Helm chart deploys a CronJob-based collector similar to the real k8s-collect
 
 ```bash
 # Add the repository
-helm repo add nullify https://your-github-username.github.io/aws-integration-setup
+helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
+helm repo update
 
-# Install with real configuration
-helm install nullify-aws-integration nullify/nullify-aws-integration \
-  --set aws.roleArn="arn:aws:iam::YOUR-ACCOUNT:role/AWSIntegration-mycompany-NullifyReadOnlyRole" \
-  --set aws.externalId="your-external-id" \
-  --set nullify.apiToken="your-api-token" \
-  --set nullify.organizationId="your-org-id" \
+# Install with a values file (recommended)
+helm install nullify-collector nullify/nullify-k8s-collector \
+  -f values-production.yaml \
   --namespace nullify \
   --create-namespace
 ```
+
+See the [chart README](helm-charts/nullify-k8s-collector/README.md) for all configuration options and per-platform (EKS / GKE) onboarding steps.
 
 ### IRSA Configuration
 
