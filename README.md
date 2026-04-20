@@ -58,26 +58,22 @@ Then paste the `service_account_email` and `workload_identity_provider` outputs 
 
 See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terraform/README.md) for the full guide, the org / folder / project scope options, and the gcloud-only installer.
 
-### **Prerequisites (All Methods)**
+### **Prerequisites**
 
-1. **AWS Account** with appropriate permissions
-2. **Nullify Account** and dashboard access
-3. **Kubernetes cluster** for Helm deployments — **EKS** (IRSA) or **GKE** (Workload Identity). See the [chart README](helm-charts/nullify-k8s-collector/README.md#supported-platforms) for per-platform onboarding steps.
+**All methods:**
+1. **Nullify Account** and dashboard access
+2. Log in to **Configure > Integrations** to obtain provider-specific values
 
-**Obtain Configuration Values from Nullify Configure Page:**
+**AWS integration:**
+- AWS account with IAM permissions
+- Values from the Nullify console: Role ARN, External ID, S3 Bucket, KMS Key ARN
+- (Optional) EKS cluster for Kubernetes collector — see [chart README](helm-charts/nullify-k8s-collector/README.md)
 
-1. **Log in to your Nullify configure page**
-2. **Navigate to Configure > Integrations**
-3. **Select AWS integration** to begin setup
-4. **Note the provided values:**
-   - **Nullify Role ARN**: The ARN of Nullify's cross-account role
-   - **External ID**: Unique identifier for secure cross-account access
-   - **S3 Bucket Name**: For secure data transfer
-   - **KMS Key ARN**: For encryption operations
-
-> 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
-
-**Alternative**: Contact Nullify Support for assistance with configuration values.
+**GCP integration:**
+- GCP project with `gcloud` authenticated
+- Org or folder admin access (for WIF pool + IAM bindings)
+- Values from the Nullify console: OIDC issuer URI, Tenant ID
+- (Optional) GKE cluster with Workload Identity enabled for Kubernetes collector
 
 ---
 
@@ -262,7 +258,7 @@ nullify-cloud-connector/
 │
 ├── 🤖 .github/workflows/                 # CI/CD Automation
 │   ├── helm-release.yml                  # Auto-publish Helm charts to GitHub Pages
-│   ├── pr-validation.yml                 # PR validation and testing
+│   ├── terraform-validate.yml            # Terraform validation on PRs
 │   └── auto-tag.yml                      # Auto-tag releases on version changes
 │
 ├── ⚙️ helm-charts/                       # 🎯 KUBERNETES DEPLOYMENT
@@ -279,43 +275,35 @@ nullify-cloud-connector/
 │           ├── cronjob.yaml              # Main collector CronJob
 │           └── pre-install-job.yaml      # Pre-installation validation
 │
-└── aws-integration-setup/               # 🏗️ AWS INFRASTRUCTURE
-    │
-    ├── 🏗️ cloudformation/               # CloudFormation Templates
-    │   ├── nullify-cloudformation-template.json  # Main CF template
-    │   └── README.md                     # CloudFormation deployment guide
-    │
+├── aws-integration-setup/               # 🏗️ AWS INFRASTRUCTURE
+│   ├── 🏗️ cloudformation/               # CloudFormation Templates
+│   │   ├── nullify-cloudformation-template.json  # Main CF template
+│   │   └── README.md                     # CloudFormation deployment guide
+│   ├── 🔧 terraform/                     # Terraform Modules
+│   │   ├── modules/                      # Reusable Terraform modules
+│   │   │   ├── nullify-aws-integration/  # AWS IAM resources only
+│   │   │   └── k8s-resources/            # Kubernetes resources only
+│   │   ├── examples/                     # Example configurations
+│   │   ├── terraform.tfvars.example      # Example configuration
+│   │   └── README.md                     # Terraform documentation
+│   └── 🔧 scripts/                       # Utility Scripts
+│       ├── validate-deployment.sh        # Deployment validation
+│       ├── update-helm-repo.sh           # Update Helm repository
+│       ├── cleanup.sh                    # Clean removal script
+│       └── setup-aws-integration.sh      # AWS setup automation
+│
+└── gcp-integration-setup/               # ☁️ GCP INFRASTRUCTURE
     ├── 🔧 terraform/                     # Terraform Modules
-    │   ├── modules/                      # Reusable Terraform modules
-    │   │   ├── nullify-aws-integration/  # AWS IAM resources only
-    │   │   │   ├── main.tf               # Core infrastructure resources
-    │   │   │   ├── variables.tf          # Input variables
-    │   │   │   ├── data.tf               # Data sources and policies
-    │   │   │   ├── locals.tf             # Local values
-    │   │   │   └── outputs.tf            # Output values
-    │   │   └── k8s-resources/            # Kubernetes resources only
-    │   │       ├── main.tf               # Kubernetes resources
-    │   │       ├── variables.tf          # Input variables
-    │   │       └── outputs.tf            # Output values
-    │   ├── examples/                     # Example Terraform configurations
-    │   │   ├── basic/                    # AWS-only integration
-    │   │   └── multi-cluster-complete/   # Multi-cluster EKS integration
-    │   ├── main.tf                       # Root module instantiation
-    │   ├── variables.tf                  # Root input variables
-    │   ├── outputs.tf                    # Root outputs
+    │   ├── modules/
+    │   │   ├── nullify-gcp-integration/  # WIF pool, provider, SA, IAM bindings
+    │   │   └── nullify-gke-collector/    # GKE k8s-collector deployment
+    │   ├── examples/                     # Example configurations
     │   ├── terraform.tfvars.example      # Example configuration
-    │   └── README.md                     # Terraform documentation
-    │
-    ├── 📚 docs/                          # Additional Documentation
-    │   ├── README.md                     # Documentation index
-    │   ├── security-guidelines.md        # Security best practices
-    │   └── troubleshooting.md            # Common issues and solutions
-    │
+    │   └── README.md                     # GCP Terraform documentation
+    ├── 📚 docs/                          # GCP-specific documentation
+    │   └── permissions.md                # Required GCP permissions
     └── 🔧 scripts/                       # Utility Scripts
-        ├── validate-deployment.sh        # Deployment validation
-        ├── update-helm-repo.sh           # Update Helm repository
-        ├── cleanup.sh                    # Clean removal script
-        └── setup-aws-integration.sh      # AWS setup automation
+        └── uninstall.sh                  # Clean removal script
 ```
 
 ### **Component Overview**
@@ -439,11 +427,12 @@ kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nul
 
 | Document | Description |
 |----------|-------------|
-| [📖 IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
-| [📖 Chart README](helm-charts/nullify-k8s-collector/README.md) | Chart-specific documentation |
-| [🏗️ CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
-| [🔧 Terraform README](aws-integration-setup/terraform/README.md) | Terraform modules documentation |
-| [📚 Docs](aws-integration-setup/docs/README.md) | Additional documentation |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
+| [Chart README](helm-charts/nullify-k8s-collector/README.md) | Helm chart documentation (EKS + GKE) |
+| [CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
+| [AWS Terraform README](aws-integration-setup/terraform/README.md) | AWS Terraform modules documentation |
+| [GCP Terraform README](gcp-integration-setup/terraform/README.md) | GCP Terraform modules documentation |
+| [GCP Permissions](gcp-integration-setup/docs/permissions.md) | Required GCP permissions reference |
 
 ## 🐛 **Troubleshooting**
 
