@@ -9,9 +9,9 @@
 # Provider-specific required values:
 #   - EKS: serviceAccount.annotations."eks.amazonaws.com/role-arn"
 #          (IAM role ARN from Nullify configure page)
-#   - GKE: collector.gke.nullifyAwsRoleArn
+#   - GKE: collector.gke.awsRoleArn
 #          (Nullify-owned federated AWS IAM role ARN, provided by Nullify
-#           after you share your GCP service-account unique ID)
+#           after you register your cluster's OIDC issuer URL)
 #          serviceAccount.annotations."iam.gke.io/gcp-service-account"
 #          (Your GCP service account email, bound to the in-cluster
 #           ServiceAccount via Workload Identity)
@@ -90,8 +90,10 @@ collector:
     # GKE-specific settings (only used when cloudProvider is "gcp").
     gke:
         # Nullify-owned federated AWS IAM role the collector assumes via
-        # sts:AssumeRoleWithWebIdentity. Supplied by Nullify after you share
-        # your GCP service-account unique ID during onboarding.
+        # sts:AssumeRoleWithWebIdentity. Supplied by Nullify after you
+        # register your cluster's OIDC issuer URL during onboarding.
+        awsRoleArn: ""
+        # Deprecated: use awsRoleArn instead. Kept for backwards compat.
         nullifyAwsRoleArn: ""
 
         # Audience the projected GCP service-account token is minted with.
