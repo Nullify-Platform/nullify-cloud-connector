@@ -33,14 +33,13 @@ The data collected includes (but is not limited to):
 
 {{- if eq (.Values.cloudProvider | default "aws") "gcp" }}
 
-## Authentication (GKE Workload Identity → AWS STS)
-- GCP Service Account: {{ index .Values.serviceAccount.annotations "iam.gke.io/gcp-service-account" | default "NOT SET — required for GKE" }}
-- Nullify AWS Role: {{ .Values.collector.gke.nullifyAwsRoleArn | default "NOT SET — ask Nullify for the role ARN" }}
+## Authentication (GKE Projected SA Token → AWS STS)
+- Nullify AWS Role: {{ .Values.collector.gke.awsRoleArn | default "NOT SET — ask Nullify for the role ARN" }}
 - Token Audience: {{ .Values.collector.gke.audience }}
 
-The collector exchanges the projected Google-signed ServiceAccount token for short-lived
-AWS credentials via sts:AssumeRoleWithWebIdentity. No long-lived AWS credential is
-stored in the cluster.
+The collector uses a projected Kubernetes ServiceAccount token (signed by the
+cluster's OIDC issuer) to call AWS sts:AssumeRoleWithWebIdentity. No long-lived
+AWS credential is stored in the cluster. No GKE Workload Identity setup required.
 {{- else }}
 
 ## Authentication (EKS IRSA)

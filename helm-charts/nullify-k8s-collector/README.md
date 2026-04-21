@@ -42,9 +42,9 @@ The following table lists the configurable parameters of the chart and their def
 | `collector.clusterName` | Cluster name (must match your actual cluster name) | `YOUR-CLUSTER-NAME` |
 | `collector.kms.keyArn` | KMS key ARN for encryption (from Nullify configure page) | `""` |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
-| `collector.gke.nullifyAwsRoleArn` | **GKE only.** Nullify-owned federated AWS IAM role ARN. | `""` |
-| `collector.gke.audience` | **GKE only.** Token audience AWS STS checks against the OIDC provider. Do not change unless Nullify asks you to. | `sts.amazonaws.com` |
-| `collector.gke.webIdentityTokenPath` | **GKE only.** In-pod path of the projected Workload Identity token. | `/var/run/secrets/tokens/gcp-sa-token` |
+| `collector.gke.awsRoleArn` | **GKE only.** Nullify-owned federated AWS IAM role ARN (provided after cluster registration). | `""` |
+| `collector.gke.audience` | **GKE only.** Token audience for the projected SA token. Do not change unless Nullify asks you to. | `sts.amazonaws.com` |
+| `collector.gke.webIdentityTokenPath` | **GKE only.** In-pod path of the projected SA token. | `/var/run/secrets/tokens/gcp-sa-token` |
 | `labels` | Additional labels for the collector resources | `null` |
 
 ## Security Context
@@ -108,41 +108,21 @@ The flow is:
 
 #### One-time onboarding
 
-1. **Enable Workload Identity on the cluster** (skip if already enabled):
+1. **Get your cluster's OIDC issuer URL** and share it with Nullify:
 
    ```bash
-   gcloud container clusters update YOUR-CLUSTER \
-     --workload-pool=YOUR-PROJECT.svc.id.goog
+   gcloud container clusters describe YOUR-CLUSTER --zone YOUR-ZONE \
+     --format='value(selfLink)'
    ```
 
-2. **Create a GCP service account** dedicated to the collector. It does not need any
-   GCP IAM roles — its only job is to sign an OIDC token AWS STS will trust.
+   This outputs something like:
+   `https://container.googleapis.com/v1/projects/my-project/locations/us-central1-a/clusters/prod`
 
-   ```bash
-   gcloud iam service-accounts create nullify-k8s-collector \
-     --display-name "Nullify Kubernetes Collector"
-   ```
+2. **Share the OIDC issuer URL with Nullify** (via the configure page or support).
+   Nullify registers it and gives you back the **role ARN** to use in the Helm values.
 
-3. **Send its unique ID to Nullify.** The `uniqueId` is a 21-digit number, not the
-   email. Nullify adds it to the federated IAM role's trust-policy allowlist and
-   gives you back the role ARN.
-
-   ```bash
-   gcloud iam service-accounts describe \
-     nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com \
-     --format='value(uniqueId)'
-   ```
-
-4. **Bind the in-cluster Kubernetes ServiceAccount to the GCP SA** via Workload
-   Identity. The Kubernetes SA name/namespace below must match `serviceAccount.name`
-   and `serviceAccount.namespace` in your Helm values.
-
-   ```bash
-   gcloud iam service-accounts add-iam-policy-binding \
-     nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com \
-     --role roles/iam.workloadIdentityUser \
-     --member "serviceAccount:YOUR-PROJECT.svc.id.goog[nullify/nullify-k8s-collector-sa]"
-   ```
+No GCP service accounts, Workload Identity bindings, or special cluster configuration required.
+The chart uses a projected Kubernetes ServiceAccount token signed by the cluster's OIDC issuer.
 
 #### Helm values
 
@@ -158,12 +138,8 @@ collector:
   kms:
     keyArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
   gke:
-    # Provided by Nullify after step 3 of onboarding.
-    nullifyAwsRoleArn: "arn:aws:iam::123456789012:role/NullifyK8sCollectorRole"
-
-serviceAccount:
-  annotations:
-    iam.gke.io/gcp-service-account: "nullify-k8s-collector@YOUR-PROJECT.iam.gserviceaccount.com"
+    # Provided by Nullify after you register the cluster.
+    awsRoleArn: "arn:aws:iam::123456789012:role/NullifyK8sCollectorRole"
 ```
 
 Then install:

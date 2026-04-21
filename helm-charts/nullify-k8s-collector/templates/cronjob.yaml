@@ -39,10 +39,10 @@ spec:
               value: "{{ .Values.collector.clusterName }}"
             {{- if $isGKE }}
             # GKE → AWS federation via sts:AssumeRoleWithWebIdentity.
-            # The collector reads AWS_WEB_IDENTITY_TOKEN_FILE, forwards the
-            # Google-signed SA token to AWS STS, and assumes NULLIFY_AWS_ROLE_ARN.
-            - name: NULLIFY_AWS_ROLE_ARN
-              value: "{{ .Values.collector.gke.nullifyAwsRoleArn }}"
+            # The SDK default credential chain picks up AWS_ROLE_ARN +
+            # AWS_WEB_IDENTITY_TOKEN_FILE and handles the token exchange.
+            - name: AWS_ROLE_ARN
+              value: "{{ .Values.collector.gke.awsRoleArn | default .Values.collector.gke.nullifyAwsRoleArn }}"
             - name: AWS_WEB_IDENTITY_TOKEN_FILE
               value: "{{ .Values.collector.gke.webIdentityTokenPath }}"
             {{- end }}
