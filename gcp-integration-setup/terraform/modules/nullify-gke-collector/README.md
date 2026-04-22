@@ -1,56 +1,56 @@
 # Nullify GKE Collector — Terraform Module
 
-Creates the GCP-side resources needed to deploy the [Nullify Kubernetes collector](../../../helm-charts/nullify-k8s-collector/) on a GKE cluster.
+> **This module is optional.** Most customers do not need it. See the standard flow below.
+
+## Standard flow (no Terraform needed)
+
+The Nullify k8s-collector on GKE uses a projected Kubernetes ServiceAccount token signed by the cluster's own OIDC issuer. No GCP service account, no Workload Identity binding, no special cluster configuration required.
+
+1. Get your cluster's OIDC issuer URL:
+
+   ```bash
+   gcloud container clusters describe CLUSTER --zone ZONE \
+     --format='value(selfLink)'
+   ```
+
+2. Paste the URL into the Nullify console under **Settings → Cloud Integrations → GCP → GKE Clusters**.
+
+3. Nullify returns the **role ARN**. Deploy the Helm chart:
+
+   ```yaml
+   cloudProvider: gcp
+
+   collector:
+     clusterName: "my-gke-cluster"
+     aws:
+       region: "us-east-1"
+     s3:
+       bucket: "your-nullify-bucket"
+     gke:
+       awsRoleArn: "arn:aws:iam::123456789012:role/..."  # from Nullify
+   ```
+
+   ```bash
+   helm install nullify-collector nullify/nullify-k8s-collector -f values-gke.yaml
+   ```
+
+**Prerequisites:** Any GKE cluster, K8s 1.22+. No GKE Workload Identity setup required.
+
+## When to use this module
+
+This module creates a GCP service account with a Workload Identity binding. It is only needed if:
+
+- Your cluster does not support projected service account tokens (K8s < 1.22, extremely rare on GKE)
+- You need the GCP metadata endpoint auth path instead of the projected token path
+
+For all other cases, use the standard flow above.
 
 ## What this module creates
 
 | Resource | Purpose |
 |---|---|
-| `google_service_account` | OIDC identity anchor — the collector pod impersonates this SA via Workload Identity. **No GCP IAM roles are needed**; the SA only signs tokens that AWS STS validates. |
-| `google_service_account_iam_member` | Workload Identity binding (`roles/iam.workloadIdentityUser`) that lets the in-cluster Kubernetes ServiceAccount impersonate the GCP SA. |
-
-## Prerequisites
-
-- **GKE Workload Identity** must be enabled on the cluster (`--workload-pool=PROJECT.svc.id.goog`). This module does not enable it — it's a cluster-level setting.
-- **Terraform** >= 1.3 with the `google` provider >= 4.0.
-
-## Usage
-
-```hcl
-module "nullify_gke_collector" {
-  source     = "./modules/nullify-gke-collector"
-  project_id = "my-gcp-project"
-}
-```
-
-After `terraform apply`:
-
-1. Share the `service_account_unique_id` output with Nullify. Nullify adds it to the federated IAM role's trust-policy allowlist and returns the AWS role ARN.
-2. Deploy the Helm chart:
-
-```yaml
-# values-gke.yaml
-cloudProvider: gcp
-
-collector:
-  clusterName: "my-gke-cluster"
-  aws:
-    region: "us-east-1"           # Region of the Nullify S3 bucket
-  s3:
-    bucket: "your-nullify-bucket" # Provided by Nullify
-  kms:
-    keyArn: "arn:aws:kms:..."     # Provided by Nullify
-  gke:
-    nullifyAwsRoleArn: "arn:aws:iam::123456789012:role/..." # Provided by Nullify
-
-serviceAccount:
-  annotations:
-    iam.gke.io/gcp-service-account: "<service_account_email output>"
-```
-
-```bash
-helm install nullify-k8s-collector ./nullify-k8s-collector -f values-gke.yaml
-```
+| `google_service_account` | OIDC identity anchor for the collector pod. No GCP IAM roles needed. |
+| `google_service_account_iam_member` | Workload Identity binding (`roles/iam.workloadIdentityUser`). |
 
 ## Inputs
 
@@ -65,5 +65,5 @@ helm install nullify-k8s-collector ./nullify-k8s-collector -f values-gke.yaml
 
 | Name | Description |
 |---|---|
-| `service_account_email` | GCP SA email — use as the `iam.gke.io/gcp-service-account` annotation in Helm values |
-| `service_account_unique_id` | 21-digit SA unique ID — share with Nullify for the AWS trust-policy allowlist |
+| `service_account_email` | GCP SA email |
+| `service_account_unique_id` | 21-digit SA unique ID |
