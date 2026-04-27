@@ -1,0 +1,45 @@
+# Nullify AWS Integration - Example Configuration
+# Copy this file to terraform.tfvars and fill in your values.
+# Values marked REQUIRED must be provided. Others have sensible defaults.
+
+# REQUIRED: Customer name (provided by Nullify)
+customer_name = "acme-corp"
+
+# REQUIRED: External ID for cross-account role assumption (provided by Nullify)
+external_id = "your-external-id-from-nullify"
+
+# REQUIRED: Nullify cross-account role ARN (provided by Nullify)
+nullify_role_arn = "arn:aws:iam::123456789012:role/NullifyRole"
+
+# AWS region where resources are deployed
+aws_region = "ap-southeast-2"
+
+# S3 bucket name for storing scan results (optional, provided by Nullify if needed)
+# s3_bucket_name = "nullify-scan-results-acme-corp"
+
+# KMS key ARN for encryption (optional, provided by Nullify if needed)
+# kms_key_arn = "arn:aws:kms:ap-southeast-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+
+# Enable Kubernetes integration (set to true if you have EKS clusters)
+enable_kubernetes_integration = false
+
+# EKS cluster ARNs (required when enable_kubernetes_integration = true)
+# eks_cluster_arns = [
+#   "arn:aws:eks:ap-southeast-2:123456789012:cluster/my-cluster"
+# ]
+
+# Kubernetes namespace for Nullify resources
+# kubernetes_namespace = "nullify"
+
+# Kubernetes service account name
+# service_account_name = "nullify-k8s-collector-sa"
+
+# Cron schedule for the collector (default: daily at midnight)
+# cronjob_schedule = "0 0 * * *"
+
+# Tags to apply to all AWS resources
+tags = {
+  ManagedBy   = "Terraform"
+  Purpose     = "NullifyIntegration"
+  Environment = "production"
+}
