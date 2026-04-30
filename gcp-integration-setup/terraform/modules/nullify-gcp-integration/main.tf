@@ -116,23 +116,12 @@ locals {
   # custom-role resources actually exists.
   custom_role_id = local.use_org_custom_role ? google_organization_iam_custom_role.nullify_cloud_connector[0].id : google_project_iam_custom_role.nullify_cloud_connector[0].id
 
-  # The full set of permissions Nullify needs above and beyond the predefined
-  # viewer roles. Strict allowlist of *.get / *.list only — no mutations and
-  # no data-plane reads.
-  custom_role_permissions = [
+  # Permissions valid in both org- and project-scoped custom roles. Strict
+  # allowlist of *.get / *.list only — no mutations and no data-plane reads.
+  custom_role_permissions_common = [
     # Cloud Armor security policies (ingress WAF rules).
     "compute.securityPolicies.get",
     "compute.securityPolicies.list",
-
-    # VPC Service Controls perimeters and access policies.
-    "accesscontextmanager.accessPolicies.get",
-    "accesscontextmanager.accessPolicies.list",
-    "accesscontextmanager.servicePerimeters.get",
-    "accesscontextmanager.servicePerimeters.list",
-
-    # Organisation policies.
-    "orgpolicy.policies.list",
-    "orgpolicy.policy.get",
 
     # AlloyDB clusters + instances.
     "alloydb.clusters.get",
@@ -167,6 +156,22 @@ locals {
     "apigateway.apiconfigs.get",
     "apigateway.apiconfigs.list",
   ]
+
+  # Permissions only includable in an org-scoped custom role. GCP rejects
+  # these in a project-scoped custom role with "Permission ... is not valid"
+  # because the underlying resources (VPC SC access policies / perimeters,
+  # org policies) live at organisation scope.
+  custom_role_permissions_org_only = [
+    # VPC Service Controls perimeters and access policies.
+    "accesscontextmanager.accessPolicies.get",
+    "accesscontextmanager.accessPolicies.list",
+    "accesscontextmanager.servicePerimeters.get",
+    "accesscontextmanager.servicePerimeters.list",
+
+    # Organisation policies.
+    "orgpolicy.policies.list",
+    "orgpolicy.policy.get",
+  ]
 }
 
 # ---------------------------------------------------------------------------
@@ -193,7 +198,7 @@ resource "google_organization_iam_custom_role" "nullify_cloud_connector" {
   title       = "Nullify Cloud Connector (read-only)"
   description = "Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
   stage       = "GA"
-  permissions = local.custom_role_permissions
+  permissions = concat(local.custom_role_permissions_common, local.custom_role_permissions_org_only)
 }
 
 resource "google_project_iam_custom_role" "nullify_cloud_connector" {
@@ -203,7 +208,13 @@ resource "google_project_iam_custom_role" "nullify_cloud_connector" {
   title       = "Nullify Cloud Connector (read-only)"
   description = "Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
   stage       = "GA"
-  permissions = local.custom_role_permissions
+  permissions = local.custom_role_permissions_common
+
+  # iam.googleapis.com must be enabled before a custom role can be created.
+  # Other resources in this module already declare this dependency; the
+  # project-scoped custom role was the odd one out and could race the API
+  # enable on a fresh project.
+  depends_on = [google_project_service.required]
 }
 
 # ---------------------------------------------------------------------------
