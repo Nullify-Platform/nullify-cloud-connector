@@ -45,15 +45,17 @@ Strict allowlist of `*.get` / `*.list` only.
 | Permission | Purpose |
 | --- | --- |
 | `compute.securityPolicies.get/list` | Cloud Armor WAF rule discovery. |
-| `accesscontextmanager.accessPolicies.get/list` | VPC Service Controls access policies. |
-| `accesscontextmanager.servicePerimeters.get/list` | VPC Service Controls perimeters. |
-| `orgpolicy.policies.list` + `orgpolicy.policy.get` | Organisation policy discovery. |
+| `accesscontextmanager.accessPolicies.get/list` * | VPC Service Controls access policies. |
+| `accesscontextmanager.servicePerimeters.get/list` * | VPC Service Controls perimeters. |
+| `orgpolicy.policies.list` + `orgpolicy.policy.get` * | Organisation policy discovery. |
 | `alloydb.clusters.get/list` + `alloydb.instances.get/list` | AlloyDB topology. |
 | `file.instances.get/list` | Filestore instance config. |
 | `redis.instances.get/list` + `memcache.instances.get/list` | Memorystore instance config. |
 | `artifactregistry.repositories.get/list` | Artifact Registry repo metadata (no image content). |
 | `dns.managedZones.get/list` + `dns.resourceRecordSets.list` | Cloud DNS zone + record discovery. |
 | `apigateway.gateways.get/list` + `apigateway.apis.get/list` + `apigateway.apiconfigs.get/list` | API Gateway topology. |
+
+\* Permissions marked with an asterisk are only includable in **organisation-scoped** custom roles — GCP rejects them in a project-scoped custom role because the underlying resources live at the organisation. They are silently omitted when this module is deployed without `organization_id` (single-project installs); a single-project install simply has no VPC SC or org-policy data to read.
 
 ## What Nullify cannot do
 
