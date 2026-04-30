@@ -18,7 +18,11 @@
 # and network-topology metadata. There are NO data-plane permissions:
 #   - storage: bucket metadata only, never object data
 #   - secret manager: secret metadata only, never secret payloads
-#   - bigquery: dataset metadata only, never table rows
+#   - bigquery: schema/IAM only, never table rows
+#   - workflows: workflow definitions only, never execution inputs/outputs
+#   - firestore: database list only, never document contents
+#   - vertex ai: endpoint config only, never inference inputs/outputs
+#   - security command center: source config only, never finding contents
 #
 # See ../../docs/permissions.md for the full permission list + rationale.
 
@@ -166,6 +170,62 @@ locals {
     "apigateway.apis.list",
     "apigateway.apiconfigs.get",
     "apigateway.apiconfigs.list",
+
+    # Cloud Storage bucket settings + bucket-level IAM (no object data —
+    # storage.objects.* is intentionally not granted).
+    "storage.buckets.get",
+    "storage.buckets.list",
+    "storage.buckets.getIamPolicy",
+
+    # Secret Manager: secret name, labels, replication policy, rotation
+    # config (no secretmanager.versions.access — payloads are never read).
+    "secretmanager.secrets.get",
+    "secretmanager.secrets.list",
+
+    # BigQuery dataset/table/routine schema + IAM. No bigquery.tables.getData
+    # (row data) and no bigquery.jobs.create (no query execution / billing).
+    "bigquery.datasets.get",
+    "bigquery.datasets.list",
+    "bigquery.tables.get",
+    "bigquery.tables.list",
+    "bigquery.routines.get",
+    "bigquery.routines.list",
+
+    # Cloud Build trigger config (repo binding, file filter, substitutions).
+    # No build logs, artifacts, or source contents.
+    "cloudbuild.buildTriggers.get",
+    "cloudbuild.buildTriggers.list",
+
+    # Cloud Batch job spec. No task logs or output artifacts.
+    "batch.jobs.get",
+    "batch.jobs.list",
+
+    # Cloud Workflows: workflow definitions only. workflows.executions.* and
+    # workflows.stepEntries.* are intentionally NOT granted — execution
+    # arguments and step inputs/outputs are runtime data.
+    "workflows.workflows.get",
+    "workflows.workflows.list",
+
+    # Firestore: database list + metadata. datastore.entities.* is
+    # intentionally NOT granted — document contents are runtime data.
+    # (Note: GCP uses the datastore.* IAM family for Firestore in both
+    # Native and Datastore modes; firestore.* may be added later as GCP
+    # migrates the IAM surface.)
+    "datastore.databases.getMetadata",
+    "datastore.databases.list",
+
+    # Vertex AI: endpoint deployment config only. aiplatform.endpoints.predict
+    # / computeTokens and all dataset/featurestore/model perms are
+    # intentionally NOT granted.
+    "aiplatform.endpoints.get",
+    "aiplatform.endpoints.list",
+
+    # Security Command Center: source config (which detection sources are
+    # wired up). securitycenter.findings.* and securitycenter.assets.* are
+    # intentionally NOT granted — finding contents are runtime data.
+    # Org-scope only — at project scope these calls return empty harmlessly.
+    "securitycenter.sources.get",
+    "securitycenter.sources.list",
   ]
 }
 
