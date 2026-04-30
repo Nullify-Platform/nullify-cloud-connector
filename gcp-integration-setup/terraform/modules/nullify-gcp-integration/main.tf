@@ -57,6 +57,32 @@ resource "terraform_data" "input_validation" {
   }
 }
 
+# ---------------------------------------------------------------------------
+# Soft warning for project-scoped installs without organization_id. The apply
+# still succeeds — single-project is a legitimate POC mode — but the user
+# should know up front that some org-level data won't appear in inventory at
+# this scope. `check` blocks emit warnings without failing the plan.
+# ---------------------------------------------------------------------------
+
+check "single_project_org_data_visibility" {
+  assert {
+    condition     = !(var.scope == "projects" && var.organization_id == "")
+    error_message = <<-EOT
+      Heads up: this install is project-scoped without organization_id, so the
+      Nullify Cloud Connector will not see VPC Service Controls perimeters /
+      access policies or organization policies inherited from the org. Those
+      resources live at organisation scope and the corresponding GCP APIs
+      return empty results when queried at project scope.
+
+      Compute, GKE, Cloud Run, IAM bindings, Cloud SQL, and the rest of the
+      project-scoped inventory are unaffected. To include VPC SC and
+      org-policy data, set organization_id (the long-tail custom role then
+      gets created at the organisation) and re-apply, or switch to
+      scope = "organization" / "folder".
+    EOT
+  }
+}
+
 locals {
   # Predefined viewer roles granted to the Nullify service account. Each role
   # is named here so an auditor can trace why each binding exists.
