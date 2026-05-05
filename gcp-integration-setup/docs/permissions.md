@@ -54,6 +54,15 @@ Strict allowlist of `*.get` / `*.list` only.
 | `artifactregistry.repositories.get/list` | Artifact Registry repo metadata (no image content). |
 | `dns.managedZones.get/list` + `dns.resourceRecordSets.list` | Cloud DNS zone + record discovery. |
 | `apigateway.gateways.get/list` + `apigateway.apis.get/list` + `apigateway.apiconfigs.get/list` | API Gateway topology. |
+| `storage.buckets.get/list` + `storage.buckets.getIamPolicy` | Cloud Storage bucket settings + bucket-level IAM. No `storage.objects.*`. |
+| `secretmanager.secrets.get/list` | Secret Manager: secret name, labels, replication policy, rotation config. No `secretmanager.versions.access` (payloads). |
+| `bigquery.datasets.get/list` + `bigquery.tables.get/list` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
+| `cloudbuild.buildTriggers.get/list` | Cloud Build trigger config (repo binding, file filter, substitutions). No build logs or artifacts. |
+| `batch.jobs.get/list` | Cloud Batch job spec. No task logs or output artifacts. |
+| `workflows.workflows.get/list` | Cloud Workflows: workflow definitions only. **Not** `workflows.executions.*` or `workflows.stepEntries.*` — execution arguments and step inputs/outputs are runtime data. |
+| `datastore.databases.list` + `datastore.databases.getMetadata` | Firestore database list + metadata. **Not** `datastore.entities.*` — document contents are runtime data. (Firestore in Native and Datastore modes share the `datastore.*` IAM family.) |
+| `aiplatform.endpoints.get/list` | Vertex AI endpoint deployment config. No `aiplatform.endpoints.predict` (inference) and no model/dataset/featurestore reads. |
+| `securitycenter.sources.get/list` | Security Command Center source config (which detection sources are wired up). **Not** `securitycenter.findings.*` or `securitycenter.assets.*` — finding contents are runtime data. Org-scope only; harmless no-op at project scope. |
 
 \* Permissions marked with an asterisk are only includable in **organisation-scoped** custom roles — GCP rejects them in a project-scoped custom role because the underlying resources live at the organisation. They are silently omitted when this module is deployed without `organization_id` (single-project installs); a single-project install simply has no VPC SC or org-policy data to read.
 
@@ -61,9 +70,16 @@ Strict allowlist of `*.get` / `*.list` only.
 
 | Capability | Granted? | Why not |
 | --- | --- | --- |
-| Read object data from Cloud Storage | No | `roles/storage.objectViewer` is intentionally **not** granted. We only see bucket metadata. |
-| Read secret payloads from Secret Manager | No | `roles/secretmanager.secretAccessor` is intentionally **not** granted. We only see secret names and metadata. |
-| Read BigQuery table rows | No | `roles/bigquery.dataViewer` is intentionally **not** granted. We only see dataset metadata. |
+| Read object data from Cloud Storage | No | `roles/storage.objectViewer` is intentionally **not** granted. We only see bucket settings + bucket IAM. |
+| Read secret payloads from Secret Manager | No | `roles/secretmanager.secretAccessor` is intentionally **not** granted. We only see secret names, labels, replication policy. |
+| Read BigQuery table rows | No | `roles/bigquery.dataViewer` is intentionally **not** granted. We only see dataset/table schema + IAM. |
+| Run BigQuery queries | No | `bigquery.jobs.create` is **not** granted. No query execution and no billable jobs. |
+| Read Workflow execution payloads | No | `workflows.executions.*` and `workflows.stepEntries.*` are **not** granted. We only see workflow definitions, never the inputs/outputs of an execution. The predefined `roles/workflows.viewer` is **not** used because it would expose execution payloads. |
+| Read Firestore document contents | No | `datastore.entities.*` is **not** granted. We only see the database list. The predefined `roles/datastore.viewer` is **not** used because it grants document reads. |
+| Run Vertex AI inference | No | `aiplatform.endpoints.predict` and `computeTokens` are **not** granted. We see endpoint config only — not models, datasets, or featurestores. The broader `roles/aiplatform.viewer` is **not** used. |
+| Read SCC findings | No | `securitycenter.findings.*` and `securitycenter.assets.*` are **not** granted. We only see which detection sources are configured. |
+| Read Cloud Build logs or artifacts | No | Trigger config only. No build logs, artifacts, or source contents. |
+| Read Cloud Batch task logs | No | Job spec only. No task logs or output artifacts. |
 | Modify your environment | No | Every role above is read-only. There are no write/admin roles. |
 | Run code or workloads | No | No `roles/run.invoker`, `roles/cloudfunctions.invoker` etc. |
 
