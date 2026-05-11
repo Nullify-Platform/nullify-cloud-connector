@@ -52,6 +52,12 @@ Strict allowlist of `*.get` / `*.list` only.
 | `file.instances.get/list` | Filestore instance config. |
 | `redis.instances.get/list` + `memcache.instances.get/list` | Memorystore instance config. |
 | `artifactregistry.repositories.get/list` | Artifact Registry repo metadata (no image content). |
+| `artifactregistry.dockerimages.get/list` + `artifactregistry.tags.get/list` + `artifactregistry.versions.get/list` | Image digest, tag, and version metadata for correlating repository artifacts with deployed images. Layer bytes (`downloadArtifacts`) are intentionally excluded. |
+| `container.deployments.get/list` + `container.statefulSets.get/list` + `container.daemonSets.get/list` + `container.jobs.get/list` + `container.cronJobs.get/list` + `container.pods.get/list` | GKE workload discovery (controllers + pods) via the GKE control-plane proxy. |
+| `container.services.get/list` + `container.ingresses.get/list` + `container.networkPolicies.get/list` | GKE network topology: cluster-IP/LoadBalancer services, ingress rules, NetworkPolicy posture. |
+| `container.serviceAccounts.get/list` + `container.roles.get/list` + `container.roleBindings.get/list` + `container.clusterRoles.get/list` + `container.clusterRoleBindings.get/list` | GKE RBAC — workload→ServiceAccount→role mapping for privilege-escalation analysis. |
+| `container.configMaps.get/list` | ConfigMap discovery. **ConfigMap values are read.** Kubernetes Secret values (`container.secrets.*`) are not requested. |
+| `container.namespaces.get/list` + `container.nodes.get/list` | Namespace and node enumeration. |
 | `dns.managedZones.get/list` + `dns.resourceRecordSets.list` | Cloud DNS zone + record discovery. |
 | `apigateway.gateways.get/list` + `apigateway.apis.get/list` + `apigateway.apiconfigs.get/list` | API Gateway topology. |
 
