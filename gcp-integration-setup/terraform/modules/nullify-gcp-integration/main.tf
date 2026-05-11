@@ -143,6 +143,55 @@ locals {
     "artifactregistry.repositories.get",
     "artifactregistry.repositories.list",
 
+    # Artifact Registry image metadata: digests, tags, version history.
+    # Layer bytes (downloadArtifacts) are intentionally not included.
+    "artifactregistry.dockerimages.get",
+    "artifactregistry.dockerimages.list",
+    "artifactregistry.tags.get",
+    "artifactregistry.tags.list",
+    "artifactregistry.versions.get",
+    "artifactregistry.versions.list",
+
+    # GKE workload metadata — read via the GKE control-plane proxy, no in-
+    # cluster collector required. Strict allowlist of get/list verbs only.
+    # Kubernetes Secret values (container.secrets.*) are intentionally NOT
+    # included; ConfigMap values are included and called out separately in
+    # docs/permissions.md.
+    "container.deployments.get",
+    "container.deployments.list",
+    "container.statefulSets.get",
+    "container.statefulSets.list",
+    "container.daemonSets.get",
+    "container.daemonSets.list",
+    "container.jobs.get",
+    "container.jobs.list",
+    "container.cronJobs.get",
+    "container.cronJobs.list",
+    "container.pods.get",
+    "container.pods.list",
+    "container.services.get",
+    "container.services.list",
+    "container.ingresses.get",
+    "container.ingresses.list",
+    "container.networkPolicies.get",
+    "container.networkPolicies.list",
+    "container.serviceAccounts.get",
+    "container.serviceAccounts.list",
+    "container.roles.get",
+    "container.roles.list",
+    "container.roleBindings.get",
+    "container.roleBindings.list",
+    "container.clusterRoles.get",
+    "container.clusterRoles.list",
+    "container.clusterRoleBindings.get",
+    "container.clusterRoleBindings.list",
+    "container.configMaps.get",
+    "container.configMaps.list",
+    "container.namespaces.get",
+    "container.namespaces.list",
+    "container.nodes.get",
+    "container.nodes.list",
+
     # Cloud DNS managed zones + record sets.
     "dns.managedZones.get",
     "dns.managedZones.list",
