@@ -173,10 +173,14 @@ locals {
 
     # BigQuery dataset/table/routine schema + IAM. No bigquery.tables.getData
     # (row data) and no bigquery.jobs.create (no query execution / billing).
+    # tables.getIamPolicy is broken out separately from tables.get because
+    # roles/bigquery.dataViewer would also grant row reads — we want only
+    # the IAM-policy surface, never table data.
     "bigquery.datasets.get",
     "bigquery.datasets.list",
     "bigquery.tables.get",
     "bigquery.tables.list",
+    "bigquery.tables.getIamPolicy",
     "bigquery.routines.get",
     "bigquery.routines.list",
 
@@ -215,6 +219,12 @@ locals {
     # Org-scope only — at project scope these calls return empty harmlessly.
     "securitycenter.sources.get",
     "securitycenter.sources.list",
+
+    # Pub/Sub topic-level IAM. The predefined roles/pubsub.viewer role
+    # already grants topic/subscription metadata listing; this adds the
+    # IAM-policy surface so CSPM can detect topics bound to allUsers /
+    # allAuthenticatedUsers. No pubsub.topics.publish or subscriptions.consume.
+    "pubsub.topics.getIamPolicy",
   ]
 
   # Permissions only includable in an org-scoped custom role. GCP rejects
