@@ -56,7 +56,8 @@ Strict allowlist of `*.get` / `*.list` only.
 | `apigateway.gateways.get/list` + `apigateway.apis.get/list` + `apigateway.apiconfigs.get/list` | API Gateway topology. |
 | `storage.buckets.get/list` + `storage.buckets.getIamPolicy` | Cloud Storage bucket settings + bucket-level IAM. No `storage.objects.*`. |
 | `secretmanager.secrets.get/list` | Secret Manager: secret name, labels, replication policy, rotation config. No `secretmanager.versions.access` (payloads). |
-| `bigquery.datasets.get/list` + `bigquery.tables.get/list` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
+| `bigquery.datasets.get/list` + `bigquery.tables.get/list` + `bigquery.tables.getIamPolicy` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. `bigquery.tables.getIamPolicy` is granted explicitly (separate from `bigquery.dataViewer`, which we **do not** grant because it would also expose row data). No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
+| `pubsub.topics.getIamPolicy` | Pub/Sub topic-level IAM (detects topics bound to `allUsers` / `allAuthenticatedUsers`). The predefined `roles/pubsub.viewer` already grants metadata listing; this adds only the IAM-policy surface. No `pubsub.topics.publish` or `subscriptions.consume`. |
 | `cloudbuild.buildTriggers.get/list` | Cloud Build trigger config (repo binding, file filter, substitutions). No build logs or artifacts. |
 | `batch.jobs.get/list` | Cloud Batch job spec. No task logs or output artifacts. |
 | `workflows.workflows.get/list` | Cloud Workflows: workflow definitions only. **Not** `workflows.executions.*` or `workflows.stepEntries.*` — execution arguments and step inputs/outputs are runtime data. |
