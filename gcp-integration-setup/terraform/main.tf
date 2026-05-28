@@ -12,4 +12,5 @@ module "nullify_gcp_integration" {
   wif_pool_id             = var.wif_pool_id
   wif_provider_id         = var.wif_provider_id
   service_account_name    = var.service_account_name
+  enable_firestore_api    = var.enable_firestore_api
 }

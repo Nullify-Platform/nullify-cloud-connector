@@ -75,3 +75,9 @@ variable "service_account_name" {
   type        = string
   default     = "nullify-cloud-connector"
 }
+
+variable "enable_firestore_api" {
+  description = "When true, enable firestore.googleapis.com so Nullify can discover Firestore / Datastore-mode databases. Off by default; datastore.* read permissions are granted regardless."
+  type        = bool
+  default     = false
+}

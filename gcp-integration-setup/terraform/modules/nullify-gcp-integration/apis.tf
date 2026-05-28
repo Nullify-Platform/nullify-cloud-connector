@@ -21,3 +21,16 @@ resource "google_project_service" "required" {
   service            = each.value
   disable_on_destroy = false
 }
+
+# Optional scan-target API. Firestore / Datastore-mode database discovery
+# (datastore.databases.list/getMetadata) requires the Firestore API to be
+# enabled on the project. Gated behind a flag and off by default so the
+# connector never turns on an API for a service the customer may not use —
+# the datastore.* read permissions are granted regardless. Set
+# enable_firestore_api = true to opt in.
+resource "google_project_service" "firestore" {
+  count              = var.enable_firestore_api ? 1 : 0
+  project            = var.host_project_id
+  service            = "firestore.googleapis.com"
+  disable_on_destroy = false
+}
