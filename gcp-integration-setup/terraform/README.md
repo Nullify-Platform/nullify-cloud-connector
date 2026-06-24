@@ -22,6 +22,10 @@ secrets.
 - IAM bindings granting the Nullify service account a curated set of
   predefined viewer roles plus the custom role above. Bound at organisation
   scope by default; folder and per-project scopes are also supported.
+- **`roles/browser` (read-only hierarchy browse)** — granted only when
+  `scope = "organization"` or `scope = "folder"`. This lets Nullify
+  enumerate the projects under your chosen scope. It grants no access to
+  resource data (no objects, secrets, rows, or any other payload).
 - The required Google Cloud APIs on the host project
   (`iam`, `iamcredentials`, `sts`, `cloudresourcemanager`, `cloudasset`,
   `serviceusage`).
@@ -33,6 +37,18 @@ secrets.
   Nullify can list BigQuery datasets but cannot read table rows.
 - No write permissions. Nullify cannot modify your environment.
 - No long-lived secrets. Revoke at any time with `terraform destroy`.
+
+## Deployment modes
+
+| Mode | `scope` value | What to set | Coverage |
+|---|---|---|---|
+| **Organisation-wide** _(recommended)_ | `"organization"` | `organization_id` | Every project in the organisation, including projects created after `terraform apply`. No need to re-run Terraform when projects are added. |
+| **Folder** | `"folder"` | `organization_id` + `folder_id` | Every project under the specified folder, including projects added to that folder later. |
+| **Specific projects** | `"projects"` | `project_ids` (list) | Only the projects you list explicitly. New projects are **not** covered automatically — update `project_ids` and re-run `terraform apply` to add them. |
+
+For most organisations, the **organisation-wide mode is the easiest to
+operate**: deploy once and Nullify automatically covers current and future
+projects without any further Terraform changes.
 
 ## Prerequisites
 
