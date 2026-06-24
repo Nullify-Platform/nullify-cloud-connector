@@ -227,6 +227,12 @@ locals {
     "pubsub.topics.getIamPolicy",
   ]
 
+  # Read-only hierarchy-browse role granted only for org/folder installs so
+  # Nullify can enumerate the projects under the chosen scope (auto-enrollment
+  # of current + future projects). Not granted for scope = "projects" — there
+  # the customer enumerates projects explicitly, so discovery is unnecessary.
+  discovery_roles = ["roles/browser"]
+
   # Permissions only includable in an org-scoped custom role. GCP rejects
   # these in a project-scoped custom role with "Permission ... is not valid"
   # because the underlying resources (VPC SC access policies / perimeters,
@@ -372,6 +378,16 @@ resource "google_organization_iam_member" "custom" {
   member = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
 }
 
+# Project-discovery binding — organisation scope. Lets Nullify enumerate every
+# project under the org so org-wide installs auto-cover current + future
+# projects. roles/browser is hierarchy-browse only (no resource data).
+resource "google_organization_iam_member" "discovery" {
+  for_each = var.scope == "organization" ? toset(local.discovery_roles) : toset([])
+  org_id   = var.organization_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
+}
+
 # ---------------------------------------------------------------------------
 # Role bindings — folder scope.
 #
@@ -394,6 +410,14 @@ resource "google_folder_iam_member" "custom" {
   folder = var.folder_id
   role   = local.custom_role_id
   member = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
+}
+
+# Project-discovery binding — folder scope.
+resource "google_folder_iam_member" "discovery" {
+  for_each = var.scope == "folder" ? toset(local.discovery_roles) : toset([])
+  folder   = var.folder_id
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.nullify_cloud_connector.email}"
 }
 
 # ---------------------------------------------------------------------------
