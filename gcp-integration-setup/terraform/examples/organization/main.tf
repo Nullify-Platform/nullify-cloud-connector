@@ -1,4 +1,9 @@
-# Example: organisation-wide install (recommended).
+# Example: organisation-wide install (recommended, one-shot deployment).
+#
+# Set scope = "organization" to cover every project in the organisation with a
+# single terraform apply. Nullify automatically discovers current projects and
+# any projects created later — no need to update this configuration or re-run
+# Terraform when new projects are added to the organisation.
 
 module "nullify" {
   source = "../../"
