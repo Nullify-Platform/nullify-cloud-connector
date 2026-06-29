@@ -13,7 +13,7 @@ secrets.
 - A custom role with read-only permissions on the long-tail services that
   don't have a suitable predefined viewer role (Cloud Armor, VPC Service
   Controls, AlloyDB, Filestore, Memorystore, Cloud DNS, API Gateway,
-  Artifact Registry, Cloud Storage, Secret Manager, BigQuery, Cloud Build,
+  Artifact Registry, Cloud Storage, Secret Manager, BigQuery,
   Cloud Batch, Cloud Workflows, Firestore, Vertex AI, Security Command
   Center). Defined at the org for `scope = "organization" | "folder"`,
   at the project for `scope = "projects"`. Strict allowlist of `*.get` /

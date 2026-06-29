@@ -45,7 +45,6 @@ Strict allowlist of `*.get` / `*.list` only.
 | Permission | Purpose |
 | --- | --- |
 | `compute.securityPolicies.get/list` | Cloud Armor WAF rule discovery. |
-| `accesscontextmanager.accessPolicies.get/list` * | VPC Service Controls access policies. |
 | `accesscontextmanager.servicePerimeters.get/list` * | VPC Service Controls perimeters. |
 | `orgpolicy.policies.list` + `orgpolicy.policy.get` * | Organisation policy discovery. |
 | `alloydb.clusters.get/list` + `alloydb.instances.get/list` | AlloyDB topology. |
@@ -56,9 +55,8 @@ Strict allowlist of `*.get` / `*.list` only.
 | `apigateway.gateways.get/list` + `apigateway.apis.get/list` + `apigateway.apiconfigs.get/list` | API Gateway topology. |
 | `storage.buckets.get/list` + `storage.buckets.getIamPolicy` | Cloud Storage bucket settings + bucket-level IAM. No `storage.objects.*`. |
 | `secretmanager.secrets.get/list` | Secret Manager: secret name, labels, replication policy, rotation config. No `secretmanager.versions.access` (payloads). |
-| `bigquery.datasets.get/list` + `bigquery.tables.get/list` + `bigquery.tables.getIamPolicy` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. `bigquery.tables.getIamPolicy` is granted explicitly (separate from `bigquery.dataViewer`, which we **do not** grant because it would also expose row data). No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
+| `bigquery.datasets.get` + `bigquery.tables.get/list` + `bigquery.tables.getIamPolicy` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. `bigquery.tables.getIamPolicy` is granted explicitly (separate from `bigquery.dataViewer`, which we **do not** grant because it would also expose row data). No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
 | `pubsub.topics.getIamPolicy` | Pub/Sub topic-level IAM (detects topics bound to `allUsers` / `allAuthenticatedUsers`). The predefined `roles/pubsub.viewer` already grants metadata listing; this adds only the IAM-policy surface. No `pubsub.topics.publish` or `subscriptions.consume`. |
-| `cloudbuild.buildTriggers.get/list` | Cloud Build trigger config (repo binding, file filter, substitutions). No build logs or artifacts. |
 | `batch.jobs.get/list` | Cloud Batch job spec. No task logs or output artifacts. |
 | `workflows.workflows.get/list` | Cloud Workflows: workflow definitions only. **Not** `workflows.executions.*` or `workflows.stepEntries.*` — execution arguments and step inputs/outputs are runtime data. |
 | `datastore.databases.list` + `datastore.databases.getMetadata` | Firestore database list + metadata. **Not** `datastore.entities.*` — document contents are runtime data. (Firestore in Native and Datastore modes share the `datastore.*` IAM family.) |
@@ -79,7 +77,7 @@ Strict allowlist of `*.get` / `*.list` only.
 | Read Firestore document contents | No | `datastore.entities.*` is **not** granted. We only see the database list. The predefined `roles/datastore.viewer` is **not** used because it grants document reads. |
 | Run Vertex AI inference | No | `aiplatform.endpoints.predict` and `computeTokens` are **not** granted. We see endpoint config only — not models, datasets, or featurestores. The broader `roles/aiplatform.viewer` is **not** used. |
 | Read SCC findings | No | `securitycenter.findings.*` and `securitycenter.assets.*` are **not** granted. We only see which detection sources are configured. |
-| Read Cloud Build logs or artifacts | No | Trigger config only. No build logs, artifacts, or source contents. |
+| Read any Cloud Build config, logs, or artifacts | No | No Cloud Build permission is granted at all. The `cloudbuild.buildTriggers.*` IAM family does not exist, and `cloudbuild.builds.*` would expose execution data, so Cloud Build visibility is omitted. |
 | Read Cloud Batch task logs | No | Job spec only. No task logs or output artifacts. |
 | Modify your environment | No | Every role above is read-only. There are no write/admin roles. |
 | Run code or workloads | No | No `roles/run.invoker`, `roles/cloudfunctions.invoker` etc. |

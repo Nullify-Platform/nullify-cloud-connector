@@ -177,17 +177,15 @@ locals {
     # roles/bigquery.dataViewer would also grant row reads — we want only
     # the IAM-policy surface, never table data.
     "bigquery.datasets.get",
-    "bigquery.datasets.list",
     "bigquery.tables.get",
     "bigquery.tables.list",
     "bigquery.tables.getIamPolicy",
     "bigquery.routines.get",
     "bigquery.routines.list",
 
-    # Cloud Build trigger config (repo binding, file filter, substitutions).
-    # No build logs, artifacts, or source contents.
-    "cloudbuild.buildTriggers.get",
-    "cloudbuild.buildTriggers.list",
+    # Cloud Build: there is no buildTriggers.* IAM permission family, and the
+    # builds.* permissions expose execution data (logs/artifacts) which we
+    # intentionally avoid. Trigger-config visibility is therefore not granted.
 
     # Cloud Batch job spec. No task logs or output artifacts.
     "batch.jobs.get",
@@ -238,9 +236,9 @@ locals {
   # because the underlying resources (VPC SC access policies / perimeters,
   # org policies) live at organisation scope.
   custom_role_permissions_org_only = [
-    # VPC Service Controls perimeters and access policies.
-    "accesscontextmanager.accessPolicies.get",
-    "accesscontextmanager.accessPolicies.list",
+    # VPC Service Controls perimeters. accessPolicies.* is not grantable in a
+    # custom role (use the predefined roles/accesscontextmanager.policyReader
+    # for access-policy enumeration if needed).
     "accesscontextmanager.servicePerimeters.get",
     "accesscontextmanager.servicePerimeters.list",
 
