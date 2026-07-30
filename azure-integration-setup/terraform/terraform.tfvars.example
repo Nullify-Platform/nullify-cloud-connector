@@ -1,0 +1,18 @@
+# Copy to terraform.tfvars and fill in. Values in the Nullify console under
+# Settings -> Cloud Integrations -> Azure.
+
+customer_name = "acme-corp"
+
+# Recommended: grant Reader across a whole management group.
+scope               = "management_group"
+management_group_id = "acme-root-mg"
+
+# Alternative: grant Reader on specific subscriptions only.
+# scope            = "subscriptions"
+# subscription_ids = ["00000000-0000-0000-0000-000000000000"]
+
+# From the Nullify console. Use https://gcp.dev.nullify.ai for a dev stack.
+nullify_oidc_issuer_url = "https://gcp.nullify.ai"
+
+# RAW Nullify tenant id -- the module adds the nullify-tenant: prefix.
+nullify_tenant_id = "GitHub-XXXXXXXXX"

@@ -1,16 +1,17 @@
 name: Terraform validate
 
 # Lints and validates the customer-facing Terraform modules so a regression
-# in either gcp-integration-setup or aws-integration-setup gets caught in CI
-# rather than at customer apply time. The historical incident this is meant
-# to prevent: a project-scoped custom role bound at the org level (#40) that
-# only blew up when a customer ran terraform apply.
+# in gcp-integration-setup, aws-integration-setup, or azure-integration-setup
+# gets caught in CI rather than at customer apply time. The historical incident
+# this is meant to prevent: a project-scoped custom role bound at the org level
+# (#40) that only blew up when a customer ran terraform apply.
 
 on:
   pull_request:
     paths:
       - "gcp-integration-setup/**"
       - "aws-integration-setup/**"
+      - "azure-integration-setup/**"
       - ".github/workflows/terraform-validate.yml"
   push:
     branches:
@@ -18,6 +19,7 @@ on:
     paths:
       - "gcp-integration-setup/**"
       - "aws-integration-setup/**"
+      - "azure-integration-setup/**"
       - ".github/workflows/terraform-validate.yml"
 
 permissions:
@@ -37,6 +39,9 @@ jobs:
           - aws-integration-setup/terraform
           - aws-integration-setup/terraform/examples/basic
           - aws-integration-setup/terraform/examples/multi-cluster-complete
+          - azure-integration-setup/terraform
+          - azure-integration-setup/terraform/examples/management-group
+          - azure-integration-setup/terraform/examples/subscriptions
     steps:
       - uses: actions/checkout@v4
 
