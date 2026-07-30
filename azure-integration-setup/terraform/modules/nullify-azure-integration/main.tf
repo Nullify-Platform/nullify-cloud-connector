@@ -2,24 +2,14 @@
 #
 # This module provisions read-only access to an Azure environment for the
 # Nullify Cloud Connector. The trust model is Workload Identity Federation
-# (WIF) with OIDC as the source -- Nullify acts as an OpenID Connect identity
+# (WIF) with OIDC as the source. Nullify acts as an OpenID Connect identity
 # provider, minting a per-tenant RS256 JWT whose `sub` claim is
 # `nullify-tenant:<tenant_id>`. Entra exchanges that subject token for a
 # short-lived access token on the application this module creates, then that
 # token is used with the built-in Reader role to enumerate resources.
-#
-# No client secret or certificate is minted by this module. The only trust
-# anchor is the federated identity credential, which is pinned to Nullify's
-# OIDC issuer AND to this customer's specific Nullify tenant id via the
-# subject. Unlike GCP's provider there is no separate attribute-condition
-# layer: Entra matches the token `sub` against the credential `subject`
-# EXACTLY, so the subject IS the per-tenant isolation. A wrong or unprefixed
-# subject is a silent auth failure, never a security downgrade.
-#
-# Access is read-only: the single role granted is the built-in Reader role,
-# which carries no data-plane permissions (no blob contents, no key vault
-# secret values, no database rows). The customer can revoke access at any time
-# by deleting the application, the federated credential, or the role
+
+# Access is read-only and can be revoked at any time by deleting
+# the application, the federated credential, or the role
 # assignment (`terraform destroy` removes all three).
 
 locals {
