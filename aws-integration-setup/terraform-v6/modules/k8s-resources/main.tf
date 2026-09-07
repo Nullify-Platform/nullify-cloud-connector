@@ -40,20 +40,17 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     resources = [
       "pods",
       "services",
-      "endpoints",
       "namespaces",
       "nodes",
+      "serviceaccounts",
+      "configmaps",
+      "secrets",
+      "resourcequotas",
+      "limitranges",
       "persistentvolumes",
       "persistentvolumeclaims",
-      "serviceaccounts",
     ]
     verbs = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["networking.k8s.io"]
-    resources  = ["ingresses", "networkpolicies"]
-    verbs      = ["get", "list"]
   }
 
   rule {
@@ -62,26 +59,9 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "deployments",
       "replicasets",
       "statefulsets",
-      "daemonsets"
+      "daemonsets",
     ]
     verbs = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["rbac.authorization.k8s.io"]
-    resources = [
-      "roles",
-      "rolebindings",
-      "clusterroles",
-      "clusterrolebindings"
-    ]
-    verbs = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["storage.k8s.io"]
-    resources  = ["storageclasses"]
-    verbs      = ["get", "list"]
   }
 
   rule {
@@ -100,6 +80,74 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     api_groups = ["policy"]
     resources  = ["poddisruptionbudgets"]
     verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources = [
+      "ingresses",
+      "ingressclasses",
+      "networkpolicies",
+    ]
+    verbs = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["discovery.k8s.io"]
+    resources  = ["endpointslices"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["rbac.authorization.k8s.io"]
+    resources = [
+      "roles",
+      "rolebindings",
+      "clusterroles",
+      "clusterrolebindings",
+    ]
+    verbs = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["storage.k8s.io"]
+    resources  = ["storageclasses", "csidrivers"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["node.k8s.io"]
+    resources  = ["runtimeclasses"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["scheduling.k8s.io"]
+    resources  = ["priorityclasses"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["flowcontrol.apiserver.k8s.io"]
+    resources  = ["flowschemas"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["certificates.k8s.io"]
+    resources  = ["certificatesigningrequests"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["admissionregistration.k8s.io"]
+    resources = [
+      "validatingwebhookconfigurations",
+      "mutatingwebhookconfigurations",
+      "validatingadmissionpolicies",
+      "validatingadmissionpolicybindings",
+    ]
+    verbs = ["get", "list"]
   }
 
   rule {

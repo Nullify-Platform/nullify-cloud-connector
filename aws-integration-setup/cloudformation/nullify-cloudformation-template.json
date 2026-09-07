@@ -511,6 +511,7 @@
                   "lambda:List*",
                   "lambda:Get*",
                   "ec2:Describe*",
+                  "ec2:GetEbsEncryptionByDefault",
                   "ec2:GetTransitGateway*",
                   "ec2:SearchTransitGateway*"
                 ],
@@ -744,6 +745,7 @@
                   "waf:List*",
                   "wafv2:CheckCapacity",
                   "wafv2:Describe*",
+                  "wafv2:Get*",
                   "wafv2:List*",
                   "wellarchitected:ExportLens",
                   "wellarchitected:Get*",

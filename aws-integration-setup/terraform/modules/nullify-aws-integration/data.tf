@@ -269,6 +269,7 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "lambda:Get*",
       "lambda:List*",
       "ec2:Describe*",
+      "ec2:GetEbsEncryptionByDefault",
       "ec2:GetTransitGateway*",
       "ec2:SearchTransitGateway*"
     ]
@@ -490,6 +491,7 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "waf:List*",
       "wafv2:CheckCapacity",
       "wafv2:Describe*",
+      "wafv2:Get*",
       "wafv2:List*",
       "wellarchitected:ExportLens",
       "wellarchitected:Get*",
