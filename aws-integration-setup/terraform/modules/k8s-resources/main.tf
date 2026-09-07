@@ -50,7 +50,7 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "persistentvolumes",
       "persistentvolumeclaims",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
@@ -61,25 +61,25 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "statefulsets",
       "daemonsets",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
     api_groups = ["batch"]
     resources  = ["jobs", "cronjobs"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
     api_groups = ["autoscaling"]
     resources  = ["horizontalpodautoscalers"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
     api_groups = ["policy"]
     resources  = ["poddisruptionbudgets"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
@@ -89,13 +89,13 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "ingressclasses",
       "networkpolicies",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
     api_groups = ["discovery.k8s.io"]
     resources  = ["endpointslices"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
@@ -106,37 +106,37 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "clusterroles",
       "clusterrolebindings",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
     api_groups = ["storage.k8s.io"]
     resources  = ["storageclasses", "csidrivers"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
     api_groups = ["node.k8s.io"]
     resources  = ["runtimeclasses"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
     api_groups = ["scheduling.k8s.io"]
     resources  = ["priorityclasses"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
     api_groups = ["flowcontrol.apiserver.k8s.io"]
     resources  = ["flowschemas"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
     api_groups = ["certificates.k8s.io"]
     resources  = ["certificatesigningrequests"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
   }
 
   rule {
@@ -147,13 +147,18 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "validatingadmissionpolicies",
       "validatingadmissionpolicybindings",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
     api_groups = ["apiextensions.k8s.io"]
     resources  = ["customresourcedefinitions"]
-    verbs      = ["get", "list"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    non_resource_urls = ["/version"]
+    verbs             = ["get"]
   }
 }
 
@@ -251,6 +256,16 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
                 content {
                   name  = "ENABLE_DEBUG_LOG"
                   value = "true"
+                }
+              }
+
+              security_context {
+                allow_privilege_escalation = false
+                read_only_root_filesystem  = true
+                run_as_non_root            = true
+
+                capabilities {
+                  drop = ["ALL"]
                 }
               }
 
