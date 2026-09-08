@@ -85,7 +85,30 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "dynamodb:Describe*",
       "dynamodb:GetResourcePolicy",
       "dynamodb:List*",
-      "ec2:Describe*",
+      "ec2:DescribeAddresses",
+      "ec2:DescribeFlowLogs",
+      "ec2:DescribeImages",
+      "ec2:DescribeInstances",
+      "ec2:DescribeInternetGateways",
+      "ec2:DescribeLaunchTemplateVersions",
+      "ec2:DescribeLaunchTemplates",
+      "ec2:DescribeManagedPrefixLists",
+      "ec2:DescribeNatGateways",
+      "ec2:DescribeNetworkAcls",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeRegions",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSnapshotAttribute",
+      "ec2:DescribeSnapshots",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeTransitGatewayAttachments",
+      "ec2:DescribeTransitGatewayRouteTables",
+      "ec2:DescribeTransitGateways",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeVpcEndpoints",
+      "ec2:DescribeVpcPeeringConnections",
+      "ec2:DescribeVpcs",
       "ec2:GetEbsEncryptionByDefault",
       "ec2:GetManagedPrefixListEntries",
       "ec2:GetSnapshotBlockPublicAccessState",
@@ -109,8 +132,7 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "globalaccelerator:List*",
       "glue:GetCrawlers",
       "glue:GetDataCatalogEncryptionSettings",
-      "glue:GetDevEndpoints",
-      "glue:GetJobs"
+      "glue:GetDevEndpoints"
     ]
     resources = ["*"]
   }
@@ -120,12 +142,35 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
   statement {
     effect = "Allow"
     actions = [
+      "glue:GetJobs",
       "glue:GetSecurityConfigurations",
       "guardduty:GetDetector",
       "guardduty:List*",
       "iam:GenerateCredentialReport",
-      "iam:Get*",
-      "iam:List*",
+      "iam:GetAccessKeyLastUsed",
+      "iam:GetAccountPasswordPolicy",
+      "iam:GetAccountSummary",
+      "iam:GetCredentialReport",
+      "iam:GetGroupPolicy",
+      "iam:GetOpenIDConnectProvider",
+      "iam:GetPolicyVersion",
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:GetUserPolicy",
+      "iam:ListAccessKeys",
+      "iam:ListAttachedGroupPolicies",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListAttachedUserPolicies",
+      "iam:ListGroupPolicies",
+      "iam:ListGroups",
+      "iam:ListGroupsForUser",
+      "iam:ListMFADevices",
+      "iam:ListOpenIDConnectProviders",
+      "iam:ListPolicies",
+      "iam:ListRolePolicies",
+      "iam:ListRoles",
+      "iam:ListUserPolicies",
+      "iam:ListUsers",
       "kafka:List*",
       "kinesis:Describe*",
       "kinesis:List*",
@@ -336,8 +381,34 @@ data "aws_iam_policy_document" "deny_actions_policy" {
       "workmail:ListAliases",
       "workmail:ListUsers",
       "workspaces:DescribeWorkspaces",
+      "ec2:DescribeClientVpnAuthorizationRules",
+      "ec2:DescribeClientVpnConnections",
+      "ec2:DescribeInstanceAttribute",
+      "ec2:DescribeVpnConnections",
+      "eks:DescribeIdentityProviderConfig",
+      "iam:GetAccountAuthorizationDetails",
+      "iam:GetLoginProfile",
+      "iam:GetOrganizationsAccessReport",
+      "iam:GetSAMLProvider",
+      "iam:GetServiceLastAccessedDetails",
+      "iam:GetServiceLastAccessedDetailsWithEntities",
+      "iam:ListPoliciesGrantingServiceAccess",
+      "kms:ListGrants",
+      "ssm:DescribeSessions",
+      "states:ListExecutions",
       "workmailmessageflow:GetRawMessageContent"
     ]
     resources = ["*"]
+  }
+
+  statement {
+    effect  = "Deny"
+    actions = ["apigateway:GET"]
+    resources = [
+      "arn:aws:apigateway:*::/apikeys",
+      "arn:aws:apigateway:*::/apikeys/*",
+      "arn:aws:apigateway:*::/usageplans",
+      "arn:aws:apigateway:*::/usageplans/*",
+    ]
   }
 }
