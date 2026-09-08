@@ -44,7 +44,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "nodes",
       "serviceaccounts",
       "configmaps",
-      "secrets",
       "resourcequotas",
       "limitranges",
       "persistentvolumes",

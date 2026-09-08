@@ -8,7 +8,7 @@ metadata:
 rules:
   # Access for collecting cluster information
   - apiGroups: [""]
-    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "secrets", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
+    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
