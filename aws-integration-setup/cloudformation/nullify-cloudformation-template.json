@@ -47,10 +47,17 @@
       },
       "NullifyKMSKeyArn": {
         "Type": "String",
-        "Description": "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed).",
+        "Description": "Optional. Use the KMS key ARN shown on the Nullify configure page: arn:aws:kms:<region>:<account>:key/<key-id> (multi-Region key/mrk-... keys are accepted). An alias ARN (arn:aws:kms:<region>:<account>:alias/<name>) is still accepted for this release only. IAM cannot name a key by alias, so for an alias the policy grants the KMS actions on key/* in Nullify's KMS account and region instead. Nullify's key policy remains the real gate either way: this role can only use Nullify keys whose key policy allows it.",
         "Default": "",
-        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+))?$",
-        "ConstraintDescription": "Must be a valid KMS key ARN (key ID or alias) or empty string."
+        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+))?$",
+        "ConstraintDescription": "Must be empty or a KMS key ARN (arn:aws:kms:<region>:<account>:key/<key-id>). Alias ARNs are accepted for this release only."
+      },
+      "NullifyS3AccessPointArn": {
+        "Type": "String",
+        "Description": "Optional. The S3 access point ARN Nullify provides as your Kubernetes collector upload target (arn:aws:s3:<region>:<account>:accesspoint/<name>). Use this value for the Helm chart's collector.s3.bucket. When set, the S3 access policy also allows uploads through this access point; the NullifyS3Bucket grants stay for backwards compatibility.",
+        "Default": "",
+        "AllowedPattern": "^(arn:aws:s3:[a-z0-9-]+:[0-9]{12}:accesspoint/[a-z0-9-]{3,50})?$",
+        "ConstraintDescription": "Must be empty or an S3 access point ARN (arn:aws:s3:<region>:<account>:accesspoint/<name>)."
       }
     },
     "Conditions": {
@@ -100,6 +107,61 @@
             "Fn::Equals": [
               {
                 "Ref": "NullifyKMSKeyArn"
+              },
+              ""
+            ]
+          }
+        ]
+      },
+      "KMSIsAlias": {
+        "Fn::And": [
+          {
+            "Condition": "KMSKeyProvided"
+          },
+          {
+            "Fn::Equals": [
+              {
+                "Fn::Select": [
+                  0,
+                  {
+                    "Fn::Split": [
+                      "/",
+                      {
+                        "Fn::Select": [
+                          5,
+                          {
+                            "Fn::Split": [
+                              ":",
+                              {
+                                "Fn::Join": [
+                                  "",
+                                  [
+                                    {
+                                      "Ref": "NullifyKMSKeyArn"
+                                    },
+                                    ":::::x"
+                                  ]
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "alias"
+            ]
+          }
+        ]
+      },
+      "S3AccessPointProvided": {
+        "Fn::Not": [
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "NullifyS3AccessPointArn"
               },
               ""
             ]
@@ -784,14 +846,33 @@
                   "s3:ListBucket",
                   "s3:PutObjectAcl"
                 ],
-                "Resource": [
-                  {
-                    "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
-                  },
-                  {
-                    "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
-                  }
-                ],
+                "Resource": {
+                  "Fn::If": [
+                    "S3AccessPointProvided",
+                    [
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
+                      },
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
+                      },
+                      {
+                        "Ref": "NullifyS3AccessPointArn"
+                      },
+                      {
+                        "Fn::Sub": "${NullifyS3AccessPointArn}/object/*"
+                      }
+                    ],
+                    [
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
+                      },
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
+                      }
+                    ]
+                  ]
+                },
                 "Condition": {}
               }
             ]
@@ -819,7 +900,61 @@
                   "kms:ReEncryptTo"
                 ],
                 "Resource": {
-                  "Ref": "NullifyKMSKeyArn"
+                  "Fn::If": [
+                    "KMSIsAlias",
+                    {
+                      "Fn::Sub": [
+                        "arn:${AWS::Partition}:kms:${KmsRegion}:${KmsAccount}:key/*",
+                        {
+                          "KmsRegion": {
+                            "Fn::Select": [
+                              3,
+                              {
+                                "Fn::Split": [
+                                  ":",
+                                  {
+                                    "Fn::Join": [
+                                      "",
+                                      [
+                                        {
+                                          "Ref": "NullifyKMSKeyArn"
+                                        },
+                                        ":::::x"
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          "KmsAccount": {
+                            "Fn::Select": [
+                              4,
+                              {
+                                "Fn::Split": [
+                                  ":",
+                                  {
+                                    "Fn::Join": [
+                                      "",
+                                      [
+                                        {
+                                          "Ref": "NullifyKMSKeyArn"
+                                        },
+                                        ":::::x"
+                                      ]
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "Ref": "NullifyKMSKeyArn"
+                    }
+                  ]
                 },
                 "Condition": {}
               }
@@ -835,6 +970,86 @@
           "Fn::GetAtt": [
             "IAMViewOnlyRole",
             "Arn"
+          ]
+        }
+      },
+      "RoleArn": {
+        "Description": "ARN of the Nullify read-only IAM role (same value as IAMRoleArn).",
+        "Value": {
+          "Fn::GetAtt": [
+            "IAMViewOnlyRole",
+            "Arn"
+          ]
+        }
+      },
+      "RoleName": {
+        "Description": "Name of the Nullify read-only IAM role. nullify-eks-managed-scan-access.json derives this name from CustomerName, so pass the same CustomerName there.",
+        "Value": {
+          "Ref": "IAMViewOnlyRole"
+        }
+      },
+      "KubernetesGroupName": {
+        "Description": "Default Kubernetes group for the managed EKS scan: the KubernetesGroupName default of nullify-eks-managed-scan-access.json, bound by manifests/nullify-readonly-rbac.yaml.",
+        "Value": "nullify-readonly"
+      },
+      "KMSPolicyResource": {
+        "Condition": "KMSKeyProvided",
+        "Description": "Resource of the KMS access policy. A key/* value means NullifyKMSKeyArn is an alias ARN; switch to the key ARN.",
+        "Value": {
+          "Fn::If": [
+            "KMSIsAlias",
+            {
+              "Fn::Sub": [
+                "arn:${AWS::Partition}:kms:${KmsRegion}:${KmsAccount}:key/*",
+                {
+                  "KmsRegion": {
+                    "Fn::Select": [
+                      3,
+                      {
+                        "Fn::Split": [
+                          ":",
+                          {
+                            "Fn::Join": [
+                              "",
+                              [
+                                {
+                                  "Ref": "NullifyKMSKeyArn"
+                                },
+                                ":::::x"
+                              ]
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "KmsAccount": {
+                    "Fn::Select": [
+                      4,
+                      {
+                        "Fn::Split": [
+                          ":",
+                          {
+                            "Fn::Join": [
+                              "",
+                              [
+                                {
+                                  "Ref": "NullifyKMSKeyArn"
+                                },
+                                ":::::x"
+                              ]
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "Ref": "NullifyKMSKeyArn"
+            }
           ]
         }
       }
