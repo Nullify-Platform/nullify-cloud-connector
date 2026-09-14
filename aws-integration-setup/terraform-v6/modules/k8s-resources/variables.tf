@@ -1,6 +1,42 @@
+variable "enable_collector" {
+  type        = bool
+  description = "Deploy the in-cluster collector: namespace, IRSA service account, RBAC and CronJob"
+  default     = true
+}
+
+variable "enable_managed_scan_rbac" {
+  type        = bool
+  description = "Create the list-only ClusterRole and ClusterRoleBinding for Nullify's managed EKS scan, bound to managed_scan_kubernetes_group. Pair it with the eks-managed-scan-access module in rbac mode. Applying it needs rights to grant every listed permission, which in practice means cluster-admin"
+  default     = false
+}
+
+variable "managed_scan_kubernetes_group" {
+  type        = string
+  description = "Kubernetes group on the Nullify access entry that the managed-scan ClusterRole is bound to"
+  default     = "nullify-readonly"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$", var.managed_scan_kubernetes_group))
+    error_message = "Lowercase letters, digits, '.' and '-' only (max 63 characters). ':' is not allowed, which excludes system: groups."
+  }
+}
+
+variable "managed_scan_cluster_role_name" {
+  type        = string
+  description = "Name of the managed-scan ClusterRole. The default matches the nullify-k8s-readonly-access Helm chart and manifests/nullify-readonly-rbac.yaml"
+  default     = "nullify-readonly"
+}
+
+variable "managed_scan_cluster_role_binding_name" {
+  type        = string
+  description = "Name of the managed-scan ClusterRoleBinding"
+  default     = "nullify-readonly"
+}
+
 variable "iam_role_arn" {
   type        = string
-  description = "The ARN of the IAM role for the service account annotation"
+  description = "The ARN of the IAM role for the collector service account annotation (required when enable_collector is true)"
+  default     = ""
 }
 
 variable "service_account_name" {

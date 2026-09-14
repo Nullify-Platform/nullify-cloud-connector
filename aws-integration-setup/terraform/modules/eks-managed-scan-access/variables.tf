@@ -1,0 +1,63 @@
+variable "principal_arn" {
+  type        = string
+  description = "ARN of the Nullify read-only role (module.nullify_aws_integration.role_arn). Nullify assumes it in the cluster's own account, so it must be in the same account as the clusters"
+
+  validation {
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.principal_arn))
+    error_message = "principal_arn must be an IAM role ARN: arn:aws:iam::<account-id>:role/<name>"
+  }
+}
+
+variable "principal_unique_id" {
+  type        = string
+  description = "unique_id of the role (module.nullify_aws_integration.role_unique_id). EKS ties an access entry to the role's ID, so a recreated role with the same ARN is not authorized by the old entry; when this value changes, the entries are replaced"
+  default     = ""
+}
+
+variable "cluster_arns" {
+  type        = list(string)
+  description = "ARNs of the EKS clusters Nullify scans, all in this module's AWS provider region. AWS provider v5 has no per-resource region, so instantiate the module once per region with providers = { aws = aws.<region> }"
+
+  validation {
+    condition     = length(var.cluster_arns) > 0 && alltrue([for arn in var.cluster_arns : can(regex("^arn:aws:eks:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9][A-Za-z0-9_-]*$", arn))])
+    error_message = "Provide at least one EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>"
+  }
+}
+
+variable "authorization" {
+  type        = string
+  description = "How Kubernetes authorizes the access entry. rbac (recommended): the entry carries kubernetes_group_name; bind it to the list-only nullify-readonly ClusterRole with k8s-resources (enable_managed_scan_rbac), the nullify-k8s-readonly-access Helm chart or manifests/nullify-readonly-rbac.yaml. admin_view_policy: associates AmazonEKSAdminViewPolicy at cluster scope and needs no Kubernetes objects. WARNING: AmazonEKSAdminViewPolicy grants get, list and watch on every resource, including Secrets, custom resources and pods/log; on EKS 1.34 and earlier get pods/exec is enough to exec into pods; and its grants do not show in kubectl auth can-i --list"
+  default     = "rbac"
+
+  validation {
+    condition     = contains(["rbac", "admin_view_policy"], var.authorization)
+    error_message = "authorization must be rbac or admin_view_policy. AmazonEKSViewPolicy is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects."
+  }
+}
+
+variable "kubernetes_group_name" {
+  type        = string
+  description = "Kubernetes group on the access entry when authorization is rbac"
+  default     = "nullify-readonly"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$", var.kubernetes_group_name))
+    error_message = "Lowercase letters, digits, '.' and '-' only (max 63 characters). ':' is not allowed, which excludes system: groups."
+  }
+}
+
+variable "nullify_region" {
+  type        = string
+  description = "Your Nullify region, shown on the Nullify configure page. It selects the egress IPs the cluster's public endpoint must admit: ap-southeast-2, eu-central-1 or us-east-2"
+
+  validation {
+    condition     = contains(["ap-southeast-2", "eu-central-1", "us-east-2"], var.nullify_region)
+    error_message = "nullify_region must be ap-southeast-2, eu-central-1 or us-east-2"
+  }
+}
+
+variable "tags" {
+  type        = map(string)
+  description = "Tags to apply to the access entries"
+  default     = {}
+}
