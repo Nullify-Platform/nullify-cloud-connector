@@ -80,7 +80,7 @@ locals {
   endpoints = {
     for key, cluster in data.aws_eks_cluster.this : key => {
       public_access = cluster.vpc_config[0].endpoint_public_access
-      cidrs         = cluster.vpc_config[0].public_access_cidrs
+      cidrs         = tolist(cluster.vpc_config[0].public_access_cidrs)
       missing_cidrs = [for cidr in local.nullify_egress_cidrs : cidr if !contains(cluster.vpc_config[0].public_access_cidrs, cidr) && !contains(cluster.vpc_config[0].public_access_cidrs, "0.0.0.0/0")]
     }
   }
