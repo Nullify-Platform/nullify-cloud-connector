@@ -1,15 +1,30 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_region" "current" {}
+
+locals {
+  lookup_eks_clusters = var.enable_kubernetes_integration && length(var.eks_oidc_issuer_urls) == 0
+}
+
 data "aws_eks_cluster" "clusters" {
-  count = var.enable_kubernetes_integration ? length(var.eks_cluster_arns) : 0
+  count = local.lookup_eks_clusters ? length(var.eks_cluster_arns) : 0
   name  = element(split("/", var.eks_cluster_arns[count.index]), length(split("/", var.eks_cluster_arns[count.index])) - 1)
+
+  lifecycle {
+    precondition {
+      condition     = split(":", var.eks_cluster_arns[count.index])[3] == data.aws_region.current.name
+      error_message = "EKS cluster ${var.eks_cluster_arns[count.index]} is outside this module's AWS provider region (${data.aws_region.current.name}), and AWS provider v5 can only look clusters up in the provider's region. Set eks_oidc_issuer_urls from a data.aws_eks_cluster read through a provider in the cluster's region (see examples/multi-cluster-complete), or use terraform-v6, which looks each cluster up in its own region."
+    }
+  }
 }
 
 locals {
+  eks_oidc_issuer_urls = local.lookup_eks_clusters ? [for cluster in data.aws_eks_cluster.clusters : cluster.identity[0].oidc[0].issuer] : var.eks_oidc_issuer_urls
+
   all_clusters_info = var.enable_kubernetes_integration ? [
-    for i, cluster in data.aws_eks_cluster.clusters : {
-      oidc_id = split("/", cluster.identity[0].oidc[0].issuer)[4]
-      region  = split(":", var.eks_cluster_arns[i])[3] # Extract region from ARN
+    for i, issuer in local.eks_oidc_issuer_urls : {
+      oidc_id = split("/", issuer)[4]
+      region  = try(split(":", var.eks_cluster_arns[i])[3], "")
     }
   ] : []
 
@@ -21,6 +36,23 @@ locals {
 }
 
 data "aws_iam_policy_document" "assume_role_policy" {
+  lifecycle {
+    precondition {
+      condition     = !var.enable_kubernetes_integration || length(var.eks_cluster_arns) > 0
+      error_message = "When Kubernetes integration is enabled, you must provide at least one cluster ARN in eks_cluster_arns"
+    }
+
+    precondition {
+      condition     = length(var.eks_oidc_issuer_urls) == 0 || length(var.eks_oidc_issuer_urls) == length(var.eks_cluster_arns)
+      error_message = "eks_oidc_issuer_urls must have one entry per cluster in eks_cluster_arns, in the same order"
+    }
+
+    precondition {
+      condition     = alltrue([for i, url in var.eks_oidc_issuer_urls : split("/", url)[2] == "oidc.eks.${try(split(":", var.eks_cluster_arns[i])[3], "")}.amazonaws.com"])
+      error_message = "Each eks_oidc_issuer_urls entry must be in the same region as the eks_cluster_arns entry at the same position"
+    }
+  }
+
   statement {
     effect = "Allow"
     principals {
@@ -512,17 +544,32 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
 data "aws_iam_policy_document" "s3_access_policy" {
   count = local.enable_s3_access ? 1 : 0
 
-  statement {
-    effect = "Allow"
-    actions = [
-      "s3:PutObject",
-      "s3:ListBucket",
-      "s3:PutObjectAcl"
-    ]
-    resources = [
-      local.s3_bucket_arn,
-      "${local.s3_bucket_arn}/*"
-    ]
+  dynamic "statement" {
+    for_each = var.s3_bucket_name != "" ? [local.s3_bucket_arn] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "s3:PutObject",
+        "s3:ListBucket",
+        "s3:PutObjectAcl"
+      ]
+      resources = [
+        statement.value,
+        "${statement.value}/*"
+      ]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.nullify_s3_access_point_arn != "" ? [var.nullify_s3_access_point_arn] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "s3:PutObject",
+        "s3:PutObjectAcl"
+      ]
+      resources = ["${statement.value}/object/k8s-collector/*"]
+    }
   }
 }
 
@@ -538,7 +585,7 @@ data "aws_iam_policy_document" "kms_access_policy" {
       "kms:ReEncryptFrom",
       "kms:ReEncryptTo"
     ]
-    resources = [var.kms_key_arn]
+    resources = local.kms_policy_resources
   }
 }
 

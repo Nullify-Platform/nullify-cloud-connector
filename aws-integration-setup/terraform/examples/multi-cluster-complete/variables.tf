@@ -22,11 +22,11 @@ variable "nullify_role_arn" {
 
 variable "eks_cluster_arns" {
   type        = list(string)
-  description = "List of ARNs of EKS clusters to integrate with (can be from different regions)"
+  description = "ARNs of exactly two EKS clusters, primary first (they can be in different regions). This example wires one Kubernetes provider per cluster; add a provider and module block per extra cluster"
 
   validation {
-    condition     = length(var.eks_cluster_arns) > 0
-    error_message = "You must provide at least one cluster ARN."
+    condition     = length(var.eks_cluster_arns) == 2
+    error_message = "This example deploys to exactly two clusters. For one cluster, use the k8s-resources module with a single Kubernetes provider."
   }
 }
 
@@ -39,6 +39,12 @@ variable "aws_region" {
 variable "s3_bucket_name" {
   type        = string
   description = "The name of the S3 bucket for storing scan results (optional)"
+  default     = ""
+}
+
+variable "nullify_s3_access_point_arn" {
+  type        = string
+  description = "The S3 access point ARN Nullify provides as the collector upload target (optional). When set, the collectors upload through it"
   default     = ""
 }
 
@@ -56,8 +62,8 @@ variable "cronjob_schedule" {
 
 variable "collector_image" {
   type        = string
-  description = "Docker image for the Kubernetes collector"
-  default     = "nullify/k8s-collector:latest"
+  description = "Container image for the Kubernetes collector"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0"
 }
 
 variable "tags" {
@@ -72,6 +78,6 @@ variable "tags" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed)"
+  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
   default     = ""
 }

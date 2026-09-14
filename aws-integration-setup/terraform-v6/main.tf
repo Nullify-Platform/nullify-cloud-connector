@@ -9,11 +9,11 @@ module "nullify_aws_integration" {
   # Optional variables with defaults
   aws_region                    = var.aws_region
   s3_bucket_name                = var.s3_bucket_name
+  nullify_s3_access_point_arn   = var.nullify_s3_access_point_arn
   kms_key_arn                   = var.kms_key_arn
   enable_kubernetes_integration = var.enable_kubernetes_integration
   eks_cluster_arns              = var.eks_cluster_arns
   kubernetes_namespace          = var.kubernetes_namespace
   service_account_name          = var.service_account_name
-  cronjob_schedule              = var.cronjob_schedule
   tags                          = var.tags
 }

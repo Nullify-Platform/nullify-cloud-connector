@@ -1,15 +1,16 @@
 data "aws_caller_identity" "current" {}
 
 data "aws_eks_cluster" "clusters" {
-  count = var.enable_kubernetes_integration ? length(var.eks_cluster_arns) : 0
-  name  = element(split("/", var.eks_cluster_arns[count.index]), length(split("/", var.eks_cluster_arns[count.index])) - 1)
+  count  = var.enable_kubernetes_integration ? length(var.eks_cluster_arns) : 0
+  region = split(":", var.eks_cluster_arns[count.index])[3]
+  name   = element(split("/", var.eks_cluster_arns[count.index]), length(split("/", var.eks_cluster_arns[count.index])) - 1)
 }
 
 locals {
   all_clusters_info = var.enable_kubernetes_integration ? [
     for i, cluster in data.aws_eks_cluster.clusters : {
       oidc_id = split("/", cluster.identity[0].oidc[0].issuer)[4]
-      region  = split(":", var.eks_cluster_arns[i])[3] # Extract region from ARN
+      region  = split(":", var.eks_cluster_arns[i])[3]
     }
   ] : []
 
@@ -21,6 +22,13 @@ locals {
 }
 
 data "aws_iam_policy_document" "assume_role_policy" {
+  lifecycle {
+    precondition {
+      condition     = !var.enable_kubernetes_integration || length(var.eks_cluster_arns) > 0
+      error_message = "When Kubernetes integration is enabled, you must provide at least one cluster ARN in eks_cluster_arns"
+    }
+  }
+
   statement {
     effect = "Allow"
     principals {
@@ -512,17 +520,32 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
 data "aws_iam_policy_document" "s3_access_policy" {
   count = local.enable_s3_access ? 1 : 0
 
-  statement {
-    effect = "Allow"
-    actions = [
-      "s3:PutObject",
-      "s3:ListBucket",
-      "s3:PutObjectAcl"
-    ]
-    resources = [
-      local.s3_bucket_arn,
-      "${local.s3_bucket_arn}/*"
-    ]
+  dynamic "statement" {
+    for_each = var.s3_bucket_name != "" ? [local.s3_bucket_arn] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "s3:PutObject",
+        "s3:ListBucket",
+        "s3:PutObjectAcl"
+      ]
+      resources = [
+        statement.value,
+        "${statement.value}/*"
+      ]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.nullify_s3_access_point_arn != "" ? [var.nullify_s3_access_point_arn] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "s3:PutObject",
+        "s3:PutObjectAcl"
+      ]
+      resources = ["${statement.value}/object/k8s-collector/*"]
+    }
   }
 }
 
@@ -538,7 +561,7 @@ data "aws_iam_policy_document" "kms_access_policy" {
       "kms:ReEncryptFrom",
       "kms:ReEncryptTo"
     ]
-    resources = [var.kms_key_arn]
+    resources = local.kms_policy_resources
   }
 }
 

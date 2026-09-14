@@ -13,26 +13,38 @@ terraform {
   }
 }
 
+locals {
+  primary_name     = element(split("/", var.eks_cluster_arns[0]), length(split("/", var.eks_cluster_arns[0])) - 1)
+  primary_region   = split(":", var.eks_cluster_arns[0])[3]
+  secondary_name   = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[1])) - 1)
+  secondary_region = split(":", var.eks_cluster_arns[1])[3]
+
+  collector_upload_target = var.nullify_s3_access_point_arn != "" ? var.nullify_s3_access_point_arn : var.s3_bucket_name
+}
+
 provider "aws" {
   region = var.aws_region
 }
 
 data "aws_eks_cluster" "primary" {
-  name = element(split("/", var.eks_cluster_arns[0]), length(split("/", var.eks_cluster_arns[0])) - 1)
+  region = local.primary_region
+  name   = local.primary_name
 }
 
-# aws_eks_cluster_auth was removed as a data source in AWS provider v6.
-# Use the ephemeral resource instead (requires Terraform >= 1.10).
+# The ephemeral token stays out of plan and state (Terraform >= 1.10).
 ephemeral "aws_eks_cluster_auth" "primary" {
-  name = element(split("/", var.eks_cluster_arns[0]), length(split("/", var.eks_cluster_arns[0])) - 1)
+  region = local.primary_region
+  name   = local.primary_name
 }
 
 data "aws_eks_cluster" "secondary" {
-  name = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[1])) - 1)
+  region = local.secondary_region
+  name   = local.secondary_name
 }
 
 ephemeral "aws_eks_cluster_auth" "secondary" {
-  name = element(split("/", var.eks_cluster_arns[1]), length(split("/", var.eks_cluster_arns[1])) - 1)
+  region = local.secondary_region
+  name   = local.secondary_name
 }
 
 provider "kubernetes" {
@@ -50,15 +62,15 @@ provider "kubernetes" {
 }
 
 module "nullify_aws_integration" {
-  source           = "../../modules/nullify-aws-integration"
-  customer_name    = var.customer_name
-  external_id      = var.external_id
-  nullify_role_arn = var.nullify_role_arn
-  aws_region       = var.aws_region
-  s3_bucket_name   = var.s3_bucket_name
-  kms_key_arn      = var.kms_key_arn
+  source                      = "../../modules/nullify-aws-integration"
+  customer_name               = var.customer_name
+  external_id                 = var.external_id
+  nullify_role_arn            = var.nullify_role_arn
+  aws_region                  = var.aws_region
+  s3_bucket_name              = var.s3_bucket_name
+  nullify_s3_access_point_arn = var.nullify_s3_access_point_arn
+  kms_key_arn                 = var.kms_key_arn
 
-  # Multiple Kubernetes Clusters Configuration
   enable_kubernetes_integration = true
   eks_cluster_arns              = var.eks_cluster_arns
   kubernetes_namespace          = var.kubernetes_namespace
@@ -71,7 +83,7 @@ module "k8s_resources_primary" {
     kubernetes = kubernetes.primary
   }
   iam_role_arn         = module.nullify_aws_integration.role_arn
-  s3_bucket_name       = var.s3_bucket_name
+  s3_bucket_name       = local.collector_upload_target
   kms_key_arn          = var.kms_key_arn
   aws_region           = var.aws_region
   kubernetes_namespace = var.kubernetes_namespace
@@ -85,7 +97,7 @@ module "k8s_resources_secondary" {
     kubernetes = kubernetes.secondary
   }
   iam_role_arn         = module.nullify_aws_integration.role_arn
-  s3_bucket_name       = var.s3_bucket_name
+  s3_bucket_name       = local.collector_upload_target
   kms_key_arn          = var.kms_key_arn
   aws_region           = var.aws_region
   kubernetes_namespace = var.kubernetes_namespace
