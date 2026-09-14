@@ -1,88 +1,118 @@
-name: Release Helm Chart
+name: Helm charts
 
 on:
-  push:
-    branches: [ main ]
+  pull_request:
     paths:
-      - 'helm-charts/**'
-      - '.github/workflows/helm-release.yml'
+      - "helm-charts/**"
+      - "manifests/**"
+      - "scripts/publish-helm-repo.sh"
+      - "scripts/test-helm-charts.sh"
+      - "tests/helm/**"
+      - ".github/workflows/helm-release.yml"
+  push:
+    branches: [main]
+    paths:
+      - "helm-charts/**"
+      - "manifests/**"
+      - "scripts/publish-helm-repo.sh"
+      - "scripts/test-helm-charts.sh"
+      - "tests/helm/**"
+      - ".github/workflows/helm-release.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('helm-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  HELM_VERSION: v3.22.0
+  HELM_REPO_URL: https://nullify-platform.github.io/nullify-cloud-connector/
 
 jobs:
-  release:
+  charts:
     runs-on: ubuntu-latest
+    outputs:
+      charts: ${{ steps.list.outputs.charts }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v4
 
-    - name: Configure Git
-      run: |
-        git config user.name "$GITHUB_ACTOR"
-        git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
-    - name: Install Helm
-      uses: azure/setup-helm@v4
-      with:
-        version: v3.14.0
-
-    - name: Get Chart Version
-      id: version
-      run: |
-        VERSION=$(grep '^version:' helm-charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Using Chart.yaml version: $VERSION"
-
-    - name: Add Helm repos (if chart has dependencies)
-      run: |
-        helm repo add bitnami https://charts.bitnami.com/bitnami || true
-        helm repo update || true
-
-    - name: Package Helm Chart
-      run: |
-        # Create docs directory if it doesn't exist
-        mkdir -p docs
-        
-        # Package the chart
-        helm package helm-charts/nullify-k8s-collector -d docs/
-        
-        # Generate/update the index
-        helm repo index docs/ --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
-
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: ./docs
-
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+      - name: List charts
+        id: list
+        run: |
+          charts="$(find helm-charts -mindepth 2 -maxdepth 2 -name Chart.yaml -printf '%h\n' | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          echo "charts=$charts" >> "$GITHUB_OUTPUT"
+          echo "$charts"
 
   validate:
+    needs: charts
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: ${{ fromJSON(needs.charts.outputs.charts) }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Helm
-      uses: azure/setup-helm@v4
-      with:
-        version: v3.14.0
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
 
-    - name: Validate Helm Chart
-      run: |
-        helm lint helm-charts/nullify-k8s-collector
-        helm template helm-charts/nullify-k8s-collector --debug
+      - name: Lint and render
+        run: scripts/test-helm-charts.sh "${{ matrix.chart }}"
+
+  release:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Build Helm repository
+        run: scripts/publish-helm-repo.sh _site
+
+      - uses: actions/configure-pages@v4
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+
+      - name: Tag and release newly published chart versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while read -r name version; do
+            [ -n "$name" ] || continue
+            tag="${name}-v${version}"
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
+              echo "tag ${tag} already exists"
+              continue
+            fi
+            notes="$(printf '%s\n' \
+              "Chart \`${name}\` version \`${version}\`, published to ${HELM_REPO_URL}" \
+              "" \
+              '```bash' \
+              "helm repo add nullify ${HELM_REPO_URL}" \
+              "helm repo update" \
+              "helm show readme nullify/${name} --version ${version}" \
+              '```' \
+              "" \
+              "Chart README: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/helm-charts/${name}/README.md")"
+            gh release create "${tag}" "_site/${name}-${version}.tgz" \
+              --target "${GITHUB_SHA}" \
+              --title "${name} ${version}" \
+              --notes "${notes}"
+          done < published.txt
