@@ -26,6 +26,13 @@ Required:
 
 Options (CloudFormation):
   --stack-name NAME     CloudFormation stack name (default: nullify-integration)
+  --eks-access-regions R1,R2
+                        Regions holding a managed EKS scan access stack
+                        (nullify-eks-managed-scan-access.json). They are deleted
+                        before the role stack, so no access entry outlives the role.
+  --eks-access-stack-name NAME
+                        Access stack name in each region
+                        (default: nullify-eks-managed-scan-access)
 
 Options (Helm):
   --release NAME        Helm release name (default: nullify-collector)
@@ -43,6 +50,8 @@ EOF
 
 METHOD=""
 STACK_NAME="nullify-integration"
+EKS_ACCESS_REGIONS=""
+EKS_ACCESS_STACK_NAME="nullify-eks-managed-scan-access"
 RELEASE_NAME="nullify-collector"
 NAMESPACE="nullify"
 TF_DIR="${REPO_ROOT}/aws-integration-setup/terraform"
@@ -52,6 +61,8 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --method) METHOD="$2"; shift 2 ;;
     --stack-name) STACK_NAME="$2"; shift 2 ;;
+    --eks-access-regions) EKS_ACCESS_REGIONS="$2"; shift 2 ;;
+    --eks-access-stack-name) EKS_ACCESS_STACK_NAME="$2"; shift 2 ;;
     --release) RELEASE_NAME="$2"; shift 2 ;;
     --namespace) NAMESPACE="$2"; shift 2 ;;
     --tf-dir) TF_DIR="$2"; shift 2 ;;
@@ -78,9 +89,33 @@ confirm() {
   fi
 }
 
+delete_eks_access_stacks() {
+  local region
+  local -a regions
+  IFS=',' read -r -a regions <<< "$EKS_ACCESS_REGIONS"
+  for region in "${regions[@]}"; do
+    if ! aws cloudformation describe-stacks --region "$region" --stack-name "$EKS_ACCESS_STACK_NAME" &>/dev/null; then
+      echo -e "${YELLOW}No stack '${EKS_ACCESS_STACK_NAME}' in ${region}; skipping.${NC}"
+      continue
+    fi
+    echo -e "${BLUE}Deleting EKS access stack '${EKS_ACCESS_STACK_NAME}' in ${region}...${NC}"
+    aws cloudformation delete-stack --region "$region" --stack-name "$EKS_ACCESS_STACK_NAME"
+    if ! aws cloudformation wait stack-delete-complete --region "$region" --stack-name "$EKS_ACCESS_STACK_NAME"; then
+      echo -e "${RED}Deleting '${EKS_ACCESS_STACK_NAME}' in ${region} failed or timed out; the role stack was not deleted.${NC}"
+      exit 1
+    fi
+    echo -e "${GREEN}Stack '${EKS_ACCESS_STACK_NAME}' in ${region} deleted.${NC}"
+  done
+}
+
 case $METHOD in
   cloudformation)
     echo -e "${BLUE}${BOLD}Removing CloudFormation stack: ${STACK_NAME}${NC}"
+
+    if [[ -z "$EKS_ACCESS_REGIONS" ]]; then
+      echo -e "${YELLOW}No --eks-access-regions given. If you deployed nullify-eks-managed-scan-access.json, pass its regions so those stacks are deleted first; access entries are not removed with the role.${NC}"
+      echo -e "${YELLOW}Access entries created by setup-eks-managed-scan.sh need its 'remove' action.${NC}"
+    fi
 
     if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" &>/dev/null 2>&1; then
       echo -e "${YELLOW}Stack '${STACK_NAME}' not found. Nothing to clean up.${NC}"
@@ -88,6 +123,10 @@ case $METHOD in
     fi
 
     confirm
+
+    if [[ -n "$EKS_ACCESS_REGIONS" ]]; then
+      delete_eks_access_stacks
+    fi
 
     echo -e "${BLUE}Deleting stack...${NC}"
     aws cloudformation delete-stack --stack-name "$STACK_NAME"
