@@ -2,12 +2,14 @@
 
 This directory mirrors `../terraform/` but targets **AWS Terraform provider v6** (`~> 6.0`). Use this if your project has already upgraded to AWS provider v6.
 
-For AWS provider v5, use `../terraform/` instead. `../terraform/README.md` documents the modules, variables and outputs; this file covers what differs.
+For AWS provider v5, use `../terraform/` instead. `../terraform/README.md` documents the modules, variables, outputs, the managed EKS scan and its prerequisites; this file covers what differs.
 
 ## What Differs from v5
 
-- **Per-resource `region`.** AWS provider v6 accepts a `region` argument on most resources and data sources. `nullify-aws-integration` reads each EKS cluster in the region from its ARN, so `eks_cluster_arns` can mix regions with one provider. There is no `eks_oidc_issuer_urls` variable here.
-- **Ephemeral EKS token.** `examples/multi-cluster-complete` reads the cluster token with `ephemeral "aws_eks_cluster_auth"`, which keeps it out of plan and state and needs Terraform >= 1.10:
+- **Per-resource `region`.** AWS provider v6 accepts a `region` argument on most resources and data sources.
+  - `nullify-aws-integration` reads each EKS cluster in the region from its ARN, so `eks_cluster_arns` can mix regions with one provider. There is no `eks_oidc_issuer_urls` variable here.
+  - `eks-managed-scan-access` creates each access entry in its cluster's region, so one module instance covers every region. `managed_scan_cluster_arns` in the root can mix regions.
+- **Ephemeral EKS token.** The `multi-cluster-complete` and `managed-scan` examples read the cluster token with `ephemeral "aws_eks_cluster_auth"`, which keeps it out of plan and state and needs Terraform >= 1.10:
 
 ```hcl
 ephemeral "aws_eks_cluster_auth" "primary" {
@@ -19,9 +21,9 @@ token = ephemeral.aws_eks_cluster_auth.primary.token
 
 ## Requirements
 
-- Terraform >= 1.5 (>= 1.10 for `examples/multi-cluster-complete`)
+- Terraform >= 1.5 (>= 1.10 for the `multi-cluster-complete` and `managed-scan` examples)
 - AWS provider ~> 6.0
-- Kubernetes provider ~> 2.20 (only `modules/k8s-resources` and `examples/multi-cluster-complete`)
+- Kubernetes provider ~> 2.20 (only `modules/k8s-resources` and the `multi-cluster-complete` and `managed-scan` examples)
 
 ## Architecture
 
@@ -29,20 +31,13 @@ token = ephemeral.aws_eks_cluster_auth.primary.token
 terraform-v6/
 ├── modules/
 │   ├── nullify-aws-integration/    # AWS IAM resources only
-│   │   ├── versions.tf             # AWS provider ~> 6.0
-│   │   ├── variables.tf
-│   │   ├── locals.tf
-│   │   ├── data.tf
-│   │   ├── main.tf
-│   │   └── outputs.tf
-│   └── k8s-resources/              # Kubernetes resources only
-│       ├── providers.tf
-│       ├── variables.tf
-│       ├── main.tf
-│       └── outputs.tf
+│   ├── eks-managed-scan-access/    # EKS access entries for the managed scan
+│   └── k8s-resources/              # Collector and/or managed-scan RBAC
+│   (each module has a tests/ terraform test suite)
 ├── examples/
 │   ├── basic/                      # AWS IAM only example
-│   └── multi-cluster-complete/     # Two-cluster EKS example
+│   ├── managed-scan/               # One cluster, managed scan, no in-cluster agent
+│   └── multi-cluster-complete/     # Two clusters, collector and/or managed scan
 ├── versions.tf                     # AWS ~> 6.0
 ├── variables.tf
 ├── main.tf
@@ -63,14 +58,41 @@ cp terraform.tfvars.example terraform.tfvars
 terraform init && terraform apply
 ```
 
-### 2. Multi-Cluster EKS Integration
+### 2. Managed EKS Scan (no in-cluster agent)
+
+```bash
+cd examples/managed-scan/
+cp terraform.tfvars.example terraform.tfvars
+# Edit with your cluster ARN and Nullify region
+terraform init && terraform apply
+```
+
+### 3. Multi-Cluster EKS Integration
 
 ```bash
 cd examples/multi-cluster-complete/
 cp terraform.tfvars.example terraform.tfvars
-# Edit with your cluster ARNs and values
+# Edit with your cluster ARNs and values; set scan_mode for the managed scan
 terraform init && terraform apply
 ```
+
+## Managed EKS scan in one module instance
+
+```hcl
+module "nullify_eks_access" {
+  source = "./modules/eks-managed-scan-access"
+
+  principal_arn       = module.nullify_aws_integration.role_arn
+  principal_unique_id = module.nullify_aws_integration.role_unique_id
+  nullify_region      = "eu-central-1"
+  cluster_arns = [
+    "arn:aws:eks:eu-west-1:123456789012:cluster/prod",
+    "arn:aws:eks:us-east-1:123456789012:cluster/us-prod",
+  ]
+}
+```
+
+The default `authorization = "rbac"` needs the list-only `nullify-readonly` ClusterRole on each cluster (`k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true`, or the `nullify-k8s-readonly-access` Helm chart). `admin_view_policy` is a warned opt-in; see `../terraform/README.md`.
 
 ## Required Variables
 
@@ -86,6 +108,7 @@ terraform init && terraform apply
 - `kms_key_arn`: KMS key ARN or alias ARN from the Nullify configure page (optional); see "KMS" in `../terraform/README.md`
 - `enable_kubernetes_integration`: Set to `true` for EKS integration
 - `eks_cluster_arns`: List of EKS cluster ARNs to integrate with, in any region
+- `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization`, `managed_scan_kubernetes_group`: managed EKS scan
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `service_account_name`: Collector service account name (default: nullify-k8s-collector-sa)
 - `tags`: Resource tags
