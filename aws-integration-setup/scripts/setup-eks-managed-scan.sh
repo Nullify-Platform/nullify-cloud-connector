@@ -1,0 +1,679 @@
+#!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
+#
+# Nullify Cloud Connector - managed EKS scan setup (no in-cluster agent).
+#
+# Lets Nullify's read-only integration role list Kubernetes resources in one
+# EKS cluster through the cluster's public API endpoint:
+#   1. an authentication mode that supports access entries
+#   2. an EKS access entry for the role
+#   3. Kubernetes RBAC for group nullify-readonly, or AmazonEKSAdminViewPolicy
+#   4. Nullify's egress IPs merged into publicAccessCidrs
+#
+# The script never assumes the Nullify role. Run with --help for usage.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=lib/cidr-merge.sh
+source "$SCRIPT_DIR/lib/cidr-merge.sh"
+
+readonly MANAGED_BY_TAG_KEY="ManagedBy"
+readonly MANAGED_BY_TAG_VALUE="nullify-connector"
+readonly ADDED_CIDRS_TAG_KEY="nullify-added-cidrs"
+readonly DEFAULT_GROUP="nullify-readonly"
+readonly RBAC_CLUSTER_ROLE="nullify-readonly"
+readonly ADMIN_VIEW_POLICY_ARN="arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+readonly ADMIN_VIEW_WARNING="AmazonEKSAdminViewPolicy grants get, list and watch on every resource, including Secrets, custom resources and pods/log, and on EKS 1.34 and earlier get pods/exec is enough to exec into pods. Its grants do not show in kubectl auth can-i --list."
+readonly VERIFY_USER="nullify-verify"
+readonly UPDATE_POLL_SECONDS=15
+readonly UPDATE_POLL_ATTEMPTS=80
+
+RBAC_RESOURCES=(
+  nodes namespaces pods services persistentvolumeclaims persistentvolumes
+  configmaps secrets resourcequotas limitranges serviceaccounts
+  deployments.apps daemonsets.apps statefulsets.apps replicasets.apps
+  ingresses.networking.k8s.io networkpolicies.networking.k8s.io
+  endpointslices.discovery.k8s.io
+  roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io
+  clusterroles.rbac.authorization.k8s.io clusterrolebindings.rbac.authorization.k8s.io
+  validatingwebhookconfigurations.admissionregistration.k8s.io
+  mutatingwebhookconfigurations.admissionregistration.k8s.io
+  validatingadmissionpolicies.admissionregistration.k8s.io
+  validatingadmissionpolicybindings.admissionregistration.k8s.io
+)
+
+ACTION=""
+CLUSTER=""
+REGION=""
+CUSTOMER_NAME=""
+ROLE_ARN=""
+NULLIFY_REGION=""
+AUTHORIZATION="rbac"
+GROUP="$DEFAULT_GROUP"
+ALLOW_AUTH_MODE_CHANGE=false
+KUBE_CONTEXT=""
+RBAC_MANIFEST="$REPO_ROOT/manifests/nullify-readonly-rbac.yaml"
+SKIP_ACCESS_ENTRY=false
+SKIP_RBAC=false
+SKIP_NETWORK=false
+DRY_RUN=false
+
+CLUSTER_ARN=""
+NULLIFY_CIDRS=""
+KUBECONFIG_TMP=""
+KUBECTL=()
+VERIFY_FAILURES=0
+
+log() { printf '%s\n' "$*" >&2; }
+info() { log "[INFO] $*"; }
+warn() { log "[WARN] $*"; }
+die() {
+  log "[ERROR] $*"
+  exit 1
+}
+
+usage() {
+  local name
+  name="$(basename "$0")"
+  cat <<EOF
+Usage: ${name} <plan|apply|verify|remove> [options]
+
+Give Nullify's managed EKS scan read-only access to one cluster.
+
+Actions:
+  plan     Print every change apply would make and make none. Read-only
+           describe calls still run so the printed commands are concrete.
+  apply    Make the changes: authentication mode (only with
+           --allow-auth-mode-change), access entry, RBAC, publicAccessCidrs.
+  verify   Check the access entry, RBAC (kubectl auth can-i) and publicAccessCidrs.
+  remove   Undo apply: RBAC manifest objects, access entries tagged
+           ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}, and the CIDRs recorded in
+           the ${ADDED_CIDRS_TAG_KEY} cluster tag.
+
+Required:
+  --cluster NAME             EKS cluster name
+  --region REGION            Cluster region
+  --customer-name NAME       CustomerName of the Nullify CloudFormation stack; the
+                             role is AWSIntegration-<NAME>-NullifyReadOnlyRole in
+                             the caller's account
+    or --role-arn ARN        Nullify read-only role ARN
+  --nullify-region REGION    Nullify region serving your tenant, which selects the
+                             egress IPs: ap-southeast-2, eu-central-1 or us-east-2.
+                             Not needed for remove or with --skip-network.
+
+Options:
+  --authorization MODE       rbac (default): the access entry carries --group, bound
+                             by manifests/nullify-readonly-rbac.yaml.
+                             admin-view: associate AmazonEKSAdminViewPolicy instead.
+                             WARNING: ${ADMIN_VIEW_WARNING}
+  --group NAME               Kubernetes group for rbac mode (default: ${DEFAULT_GROUP})
+  --allow-auth-mode-change   Switch a CONFIG_MAP cluster to API_AND_CONFIG_MAP.
+                             This is one-way: EKS cannot switch back.
+  --kube-context NAME        Use this kubeconfig context instead of a temporary
+                             kubeconfig written by aws eks update-kubeconfig
+  --rbac-manifest PATH|URL   RBAC manifest (default: manifests/nullify-readonly-rbac.yaml
+                             in this repository). Pin URLs to a commit SHA.
+  --skip-access-entry        The access entry is owned by the CloudFormation stack
+                             nullify-eks-managed-scan-access.json
+  --skip-rbac                RBAC is applied elsewhere (Helm chart
+                             nullify-k8s-readonly-access, GitOps)
+  --skip-network             Do not read or change publicAccessCidrs
+  --dry-run                  With apply or remove: print the changes, make none
+  -h, --help                 Show this help
+
+Examples:
+  ${name} plan   --cluster prod --region eu-west-1 --customer-name acme --nullify-region eu-central-1
+  ${name} apply  --cluster prod --region eu-west-1 --customer-name acme --nullify-region eu-central-1
+  ${name} verify --cluster prod --region eu-west-1 --customer-name acme --nullify-region eu-central-1
+  ${name} remove --cluster prod --region eu-west-1 --customer-name acme
+EOF
+}
+
+need_value() {
+  if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
+    die "$1 needs a value"
+  fi
+}
+
+parse_args() {
+  if [[ $# -eq 0 ]]; then
+    usage >&2
+    exit 2
+  fi
+  case "$1" in
+    plan | apply | verify | remove)
+      ACTION="$1"
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      die "unknown action '$1'"
+      ;;
+  esac
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --cluster) need_value "$@"; CLUSTER="$2"; shift 2 ;;
+      --region) need_value "$@"; REGION="$2"; shift 2 ;;
+      --customer-name) need_value "$@"; CUSTOMER_NAME="$2"; shift 2 ;;
+      --role-arn) need_value "$@"; ROLE_ARN="$2"; shift 2 ;;
+      --nullify-region) need_value "$@"; NULLIFY_REGION="$2"; shift 2 ;;
+      --authorization) need_value "$@"; AUTHORIZATION="$2"; shift 2 ;;
+      --group) need_value "$@"; GROUP="$2"; shift 2 ;;
+      --kube-context) need_value "$@"; KUBE_CONTEXT="$2"; shift 2 ;;
+      --rbac-manifest) need_value "$@"; RBAC_MANIFEST="$2"; shift 2 ;;
+      --allow-auth-mode-change) ALLOW_AUTH_MODE_CHANGE=true; shift ;;
+      --skip-access-entry) SKIP_ACCESS_ENTRY=true; shift ;;
+      --skip-rbac) SKIP_RBAC=true; shift ;;
+      --skip-network) SKIP_NETWORK=true; shift ;;
+      --dry-run) DRY_RUN=true; shift ;;
+      -h | --help) usage; exit 0 ;;
+      *) die "unknown option '$1' (see --help)" ;;
+    esac
+  done
+
+  if [[ "$ACTION" == plan ]]; then
+    DRY_RUN=true
+  fi
+
+  if [[ -z "$CLUSTER" ]]; then
+    die "--cluster is required"
+  fi
+  if [[ ! "$CLUSTER" =~ ^[0-9A-Za-z][A-Za-z0-9_-]{0,99}$ ]]; then
+    die "invalid cluster name '$CLUSTER'"
+  fi
+  if [[ -z "$REGION" ]]; then
+    die "--region is required"
+  fi
+  if [[ ! "$REGION" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]+$ ]]; then
+    die "invalid region '$REGION'"
+  fi
+  if [[ -n "$CUSTOMER_NAME" && -n "$ROLE_ARN" ]]; then
+    die "pass --customer-name or --role-arn, not both"
+  fi
+  if [[ -z "$CUSTOMER_NAME" && -z "$ROLE_ARN" ]]; then
+    die "--customer-name or --role-arn is required"
+  fi
+  if [[ -n "$CUSTOMER_NAME" && ! "$CUSTOMER_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_-]{0,9}$ ]]; then
+    die "invalid --customer-name '$CUSTOMER_NAME' (must match the CloudFormation CustomerName: letter first, max 10 characters)"
+  fi
+  if [[ -n "$ROLE_ARN" && ! "$ROLE_ARN" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]]; then
+    die "invalid --role-arn '$ROLE_ARN'"
+  fi
+  case "$AUTHORIZATION" in
+    rbac | admin-view) ;;
+    *) die "--authorization must be rbac or admin-view" ;;
+  esac
+  if [[ ! "$GROUP" =~ ^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$ ]]; then
+    die "invalid --group '$GROUP' (lowercase letters, digits, '.' and '-'; system: groups are not allowed)"
+  fi
+  if [[ "$ACTION" != remove && "$SKIP_NETWORK" != true ]]; then
+    if [[ -z "$NULLIFY_REGION" ]]; then
+      die "--nullify-region is required (or pass --skip-network)"
+    fi
+    NULLIFY_CIDRS="$(nullify_egress_cidrs "$NULLIFY_REGION")" || die "cannot select Nullify egress IPs"
+  fi
+}
+
+# mutate runs a command that changes AWS or Kubernetes state, or only prints it
+# under plan / --dry-run. The command line goes to stderr so callers can capture
+# its stdout.
+mutate() {
+  local rendered
+  printf -v rendered '%q ' "$@"
+  if [[ "$DRY_RUN" == true ]]; then
+    log "[would run] ${rendered% }"
+    return 0
+  fi
+  log "[run] ${rendered% }"
+  "$@"
+}
+
+cluster_query() {
+  aws eks describe-cluster --name "$CLUSTER" --region "$REGION" --query "cluster.$1" --output text
+}
+
+resolve_role_arn() {
+  local caller_arn account partition
+  if [[ -n "$ROLE_ARN" ]]; then
+    return 0
+  fi
+  caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+  account="$(aws sts get-caller-identity --query Account --output text)"
+  partition="${caller_arn#arn:}"
+  partition="${partition%%:*}"
+  ROLE_ARN="arn:${partition}:iam::${account}:role/AWSIntegration-${CUSTOMER_NAME}-NullifyReadOnlyRole"
+}
+
+preflight() {
+  local status
+  if ! command -v aws >/dev/null 2>&1; then
+    die "the AWS CLI v2 is required"
+  fi
+  resolve_role_arn
+  CLUSTER_ARN="$(cluster_query arn)"
+  status="$(cluster_query status)"
+  info "cluster: $CLUSTER_ARN (status $status)"
+  info "principal: $ROLE_ARN"
+  if [[ "$ACTION" != verify && "$status" != ACTIVE ]]; then
+    die "cluster status is $status; wait until it is ACTIVE"
+  fi
+}
+
+wait_for_update() {
+  local update_id="$1" status attempt=0
+  if [[ "$DRY_RUN" == true ]]; then
+    return 0
+  fi
+  while true; do
+    status="$(aws eks describe-update --name "$CLUSTER" --region "$REGION" --update-id "$update_id" --query update.status --output text)"
+    case "$status" in
+      Successful)
+        info "update $update_id succeeded"
+        return 0
+        ;;
+      Failed | Cancelled)
+        aws eks describe-update --name "$CLUSTER" --region "$REGION" --update-id "$update_id" --query update.errors --output json >&2 || true
+        die "update $update_id finished with status $status"
+        ;;
+    esac
+    attempt=$((attempt + 1))
+    if ((attempt >= UPDATE_POLL_ATTEMPTS)); then
+      die "timed out waiting for update $update_id (last status: $status)"
+    fi
+    info "update $update_id is $status; waiting ${UPDATE_POLL_SECONDS}s"
+    sleep "$UPDATE_POLL_SECONDS"
+  done
+}
+
+setup_kubectl() {
+  if [[ -n "$KUBE_CONTEXT" ]]; then
+    KUBECTL=(kubectl --context "$KUBE_CONTEXT")
+    return 0
+  fi
+  if [[ "$DRY_RUN" == true ]]; then
+    KUBECTL=(kubectl --kubeconfig "${TMPDIR:-/tmp}/nullify-eks-kubeconfig")
+    mutate aws eks update-kubeconfig --name "$CLUSTER" --region "$REGION" --kubeconfig "${KUBECTL[2]}"
+    return 0
+  fi
+  if ! command -v kubectl >/dev/null 2>&1; then
+    die "kubectl is required (or pass --skip-rbac)"
+  fi
+  KUBECONFIG_TMP="$(mktemp "${TMPDIR:-/tmp}/nullify-eks-kubeconfig.XXXXXX")"
+  trap 'rm -f "$KUBECONFIG_TMP"' EXIT
+  log "[run] aws eks update-kubeconfig --name $CLUSTER --region $REGION --kubeconfig $KUBECONFIG_TMP"
+  aws eks update-kubeconfig --name "$CLUSTER" --region "$REGION" --kubeconfig "$KUBECONFIG_TMP" >/dev/null
+  KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_TMP")
+}
+
+rbac_in_scope() {
+  [[ "$AUTHORIZATION" == rbac && "$SKIP_RBAC" != true ]]
+}
+
+check_rbac_manifest() {
+  case "$RBAC_MANIFEST" in
+    https://*)
+      if [[ ! "$RBAC_MANIFEST" =~ /[0-9a-f]{40}/ ]]; then
+        warn "--rbac-manifest URL is not pinned to a commit SHA; review what it applies before running apply"
+      fi
+      ;;
+    http://*)
+      die "--rbac-manifest must use https"
+      ;;
+    *)
+      if [[ ! -f "$RBAC_MANIFEST" ]]; then
+        die "RBAC manifest not found: $RBAC_MANIFEST. Pass --rbac-manifest <path|url>, or install the nullify-k8s-readonly-access Helm chart and re-run with --skip-rbac"
+      fi
+      ;;
+  esac
+}
+
+ensure_auth_mode() {
+  local mode update_id
+  mode="$(cluster_query accessConfig.authenticationMode)"
+  case "$mode" in
+    API | API_AND_CONFIG_MAP)
+      info "authentication mode: $mode (supports access entries)"
+      ;;
+    CONFIG_MAP)
+      if [[ "$ALLOW_AUTH_MODE_CHANGE" != true ]]; then
+        local message="authentication mode is CONFIG_MAP, which cannot hold access entries. Switching to API_AND_CONFIG_MAP keeps aws-auth working but is one-way: EKS cannot switch back. Re-run with --allow-auth-mode-change to switch."
+        if [[ "$DRY_RUN" == true ]]; then
+          warn "$message"
+          return 0
+        fi
+        die "$message"
+      fi
+      warn "switching authentication mode CONFIG_MAP -> API_AND_CONFIG_MAP (one-way)"
+      update_id="$(mutate aws eks update-cluster-config --name "$CLUSTER" --region "$REGION" \
+        --access-config authenticationMode=API_AND_CONFIG_MAP --query update.id --output text)"
+      wait_for_update "$update_id"
+      ;;
+    *)
+      die "unexpected authentication mode '$mode'"
+      ;;
+  esac
+}
+
+access_entry_exists() {
+  local found
+  found="$(aws eks list-access-entries --cluster-name "$CLUSTER" --region "$REGION" \
+    --query "accessEntries[?@ == '${ROLE_ARN}']" --output text)"
+  [[ -n "$found" && "$found" != None ]]
+}
+
+access_entry_owner() {
+  aws eks describe-access-entry --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
+    --query "accessEntry.tags.${MANAGED_BY_TAG_KEY}" --output text
+}
+
+ensure_access_entry() {
+  local owner
+  local -a create
+  if [[ "$SKIP_ACCESS_ENTRY" == true ]]; then
+    info "access entry: skipped (--skip-access-entry)"
+    return 0
+  fi
+  if access_entry_exists; then
+    owner="$(access_entry_owner)"
+    if [[ "$owner" != "$MANAGED_BY_TAG_VALUE" ]]; then
+      warn "access entry for $ROLE_ARN exists and is not tagged ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE} (found: $owner); leaving it unchanged"
+      return 0
+    fi
+    info "access entry: already exists (created by this script)"
+  else
+    create=(aws eks create-access-entry --cluster-name "$CLUSTER" --region "$REGION"
+      --principal-arn "$ROLE_ARN" --type STANDARD
+      --tags "${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}")
+    if [[ "$AUTHORIZATION" == rbac ]]; then
+      create+=(--kubernetes-groups "$GROUP")
+    fi
+    mutate "${create[@]}" >/dev/null
+  fi
+  if [[ "$AUTHORIZATION" == admin-view ]]; then
+    warn "$ADMIN_VIEW_WARNING"
+    mutate aws eks associate-access-policy --cluster-name "$CLUSTER" --region "$REGION" \
+      --principal-arn "$ROLE_ARN" --policy-arn "$ADMIN_VIEW_POLICY_ARN" --access-scope type=cluster >/dev/null
+  fi
+}
+
+apply_rbac() {
+  if [[ "$AUTHORIZATION" != rbac ]]; then
+    info "rbac: not needed (authorization admin-view)"
+    return 0
+  fi
+  if [[ "$SKIP_RBAC" == true ]]; then
+    info "rbac: skipped (--skip-rbac)"
+    return 0
+  fi
+  check_rbac_manifest
+  mutate "${KUBECTL[@]}" apply -f "$RBAC_MANIFEST"
+  if [[ "$GROUP" != "$DEFAULT_GROUP" ]]; then
+    warn "the manifest binds group $DEFAULT_GROUP. Bind ClusterRole $RBAC_CLUSTER_ROLE to group $GROUP yourself: kubectl create clusterrolebinding ${RBAC_CLUSTER_ROLE}-${GROUP} --clusterrole=${RBAC_CLUSTER_ROLE} --group=${GROUP}"
+  fi
+}
+
+current_public_cidrs() {
+  local raw
+  raw="$(cidr_normalise "$(cluster_query resourcesVpcConfig.publicAccessCidrs)")"
+  if [[ "$raw" == None ]]; then
+    raw=""
+  fi
+  echo "$raw"
+}
+
+added_cidrs_tag() {
+  local raw
+  raw="$(cluster_query "tags.\"${ADDED_CIDRS_TAG_KEY}\"")"
+  if [[ "$raw" == None ]]; then
+    raw=""
+  fi
+  cidr_normalise "$raw"
+}
+
+endpoint_private_access_json() {
+  local private
+  private="$(cluster_query resourcesVpcConfig.endpointPrivateAccess)"
+  case "$private" in
+    True) echo true ;;
+    False) echo false ;;
+    *) die "could not read endpointPrivateAccess (got '$private')" ;;
+  esac
+}
+
+# update_public_cidrs DESIRED EXPECTED_CURRENT
+# Re-reads publicAccessCidrs immediately before the update and aborts if it no
+# longer matches what the caller planned against. All three endpoint fields are
+# sent so private access is preserved.
+update_public_cidrs() {
+  local desired="$1" expected="$2" latest private vpc_config update_id
+  latest="$(current_public_cidrs)"
+  if [[ "$latest" != "$expected" ]]; then
+    die "publicAccessCidrs changed while this script ran (was: ${expected:-empty}, now: ${latest:-empty}); re-run"
+  fi
+  private="$(endpoint_private_access_json)"
+  vpc_config="$(printf '{"endpointPublicAccess":true,"endpointPrivateAccess":%s,"publicAccessCidrs":%s}' \
+    "$private" "$(cidr_json_array "$desired")")"
+  update_id="$(mutate aws eks update-cluster-config --name "$CLUSTER" --region "$REGION" \
+    --resources-vpc-config "$vpc_config" --query update.id --output text)"
+  wait_for_update "$update_id"
+}
+
+ensure_network() {
+  local public current merged added recorded
+  if [[ "$SKIP_NETWORK" == true ]]; then
+    info "network: skipped (--skip-network)"
+    return 0
+  fi
+  public="$(cluster_query resourcesVpcConfig.endpointPublicAccess)"
+  if [[ "$public" != True ]]; then
+    die "cluster $CLUSTER has no public endpoint. Private-only clusters are not supported by the managed scan: enable the public endpoint restricted to Nullify's egress IPs, or use the in-cluster collector"
+  fi
+  current="$(current_public_cidrs)"
+  if ! merged="$(cidr_merge "$current" "$NULLIFY_CIDRS")"; then
+    die "cannot add Nullify egress IPs ($NULLIFY_CIDRS) to publicAccessCidrs (${current:-empty})"
+  fi
+  added="$(cidr_missing "$current" "$merged")"
+  if [[ -z "$added" ]]; then
+    info "network: publicAccessCidrs already admits Nullify (${current})"
+    return 0
+  fi
+  recorded="$(added_cidrs_tag)"
+  info "network: adding $added to publicAccessCidrs"
+  mutate aws eks tag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" \
+    --tags "$(printf '{"%s":"%s"}' "$ADDED_CIDRS_TAG_KEY" "$(cidr_union "$recorded" "$added")")"
+  update_public_cidrs "$merged" "$current"
+}
+
+remove_rbac() {
+  if ! rbac_in_scope; then
+    info "rbac: nothing to remove (authorization admin-view or --skip-rbac)"
+    return 0
+  fi
+  check_rbac_manifest
+  mutate "${KUBECTL[@]}" delete --ignore-not-found -f "$RBAC_MANIFEST"
+}
+
+remove_access_entry() {
+  local owner
+  if [[ "$SKIP_ACCESS_ENTRY" == true ]]; then
+    info "access entry: skipped (--skip-access-entry)"
+    return 0
+  fi
+  if ! access_entry_exists; then
+    info "access entry: none for $ROLE_ARN"
+    return 0
+  fi
+  owner="$(access_entry_owner)"
+  if [[ "$owner" != "$MANAGED_BY_TAG_VALUE" ]]; then
+    warn "access entry for $ROLE_ARN is not tagged ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE} (found: $owner); leaving it. Delete the CloudFormation access stack if it owns the entry."
+    return 0
+  fi
+  mutate aws eks delete-access-entry --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN"
+}
+
+remove_network() {
+  local recorded current remaining
+  if [[ "$SKIP_NETWORK" == true ]]; then
+    info "network: skipped (--skip-network)"
+    return 0
+  fi
+  recorded="$(added_cidrs_tag)"
+  if [[ -z "$recorded" ]]; then
+    info "network: no ${ADDED_CIDRS_TAG_KEY} tag; publicAccessCidrs left unchanged"
+    return 0
+  fi
+  current="$(current_public_cidrs)"
+  if ! remaining="$(cidr_remove "$current" "$recorded")"; then
+    die "removing $recorded would leave publicAccessCidrs empty. Add the CIDRs you want to keep, or disable the public endpoint, then re-run"
+  fi
+  if [[ "$remaining" != "$current" ]]; then
+    info "network: removing $recorded from publicAccessCidrs"
+    update_public_cidrs "$remaining" "$current"
+  else
+    info "network: the recorded CIDRs are no longer in publicAccessCidrs"
+  fi
+  mutate aws eks untag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" --tag-keys "$ADDED_CIDRS_TAG_KEY"
+}
+
+check_pass() { log "[PASS] $*"; }
+check_fail() {
+  log "[FAIL] $*"
+  VERIFY_FAILURES=$((VERIFY_FAILURES + 1))
+}
+
+verify_access_entry() {
+  local mode groups scope
+  mode="$(cluster_query accessConfig.authenticationMode)"
+  case "$mode" in
+    API | API_AND_CONFIG_MAP) check_pass "authentication mode $mode supports access entries" ;;
+    *) check_fail "authentication mode $mode does not support access entries" ;;
+  esac
+  if ! access_entry_exists; then
+    check_fail "no access entry for $ROLE_ARN"
+    return 0
+  fi
+  check_pass "access entry exists for $ROLE_ARN"
+  groups="$(aws eks describe-access-entry --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
+    --query accessEntry.kubernetesGroups --output text)"
+  groups="$(cidr_normalise "$groups")"
+  scope="$(aws eks list-associated-access-policies --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
+    --query "associatedAccessPolicies[?policyArn == '${ADMIN_VIEW_POLICY_ARN}'].accessScope.type" --output text)"
+  if [[ "$scope" == None ]]; then
+    scope=""
+  fi
+  if [[ "$AUTHORIZATION" == rbac ]]; then
+    if [[ " $groups " == *" $GROUP "* ]]; then
+      check_pass "access entry carries Kubernetes group $GROUP"
+    else
+      check_fail "access entry groups (${groups:-none}) do not include $GROUP"
+    fi
+    if [[ -n "$scope" ]]; then
+      warn "AmazonEKSAdminViewPolicy is also associated, which is broader than rbac mode needs"
+    fi
+  elif [[ "$scope" == cluster ]]; then
+    check_pass "AmazonEKSAdminViewPolicy is associated with cluster scope"
+  else
+    check_fail "AmazonEKSAdminViewPolicy is not associated with cluster scope (found: ${scope:-none})"
+  fi
+}
+
+verify_rbac() {
+  local resource answer
+  if [[ "$AUTHORIZATION" != rbac ]]; then
+    info "rbac: kubectl auth can-i cannot see access-policy grants; admin-view is checked through list-associated-access-policies only"
+    return 0
+  fi
+  if ! command -v kubectl >/dev/null 2>&1; then
+    check_fail "kubectl is not installed; cannot check RBAC"
+    return 0
+  fi
+  setup_kubectl
+  for resource in "${RBAC_RESOURCES[@]}"; do
+    answer="$("${KUBECTL[@]}" auth can-i list "$resource" --all-namespaces --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+    if [[ "$answer" == yes* ]]; then
+      check_pass "group $GROUP can list $resource"
+    else
+      check_fail "group $GROUP cannot list $resource (got: ${answer:-no answer})"
+    fi
+  done
+  answer="$("${KUBECTL[@]}" auth can-i create pods --all-namespaces --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+  if [[ "$answer" == yes* ]]; then
+    check_fail "group $GROUP can create pods; the grant must be read-only"
+  else
+    check_pass "group $GROUP cannot create pods"
+  fi
+  info "kubectl auth can-i impersonates the group through Kubernetes RBAC only: it does not exercise EKS access policies or prove Nullify can reach the endpoint"
+}
+
+verify_network() {
+  local public current missing
+  if [[ "$SKIP_NETWORK" == true ]]; then
+    info "network: skipped (--skip-network)"
+    return 0
+  fi
+  public="$(cluster_query resourcesVpcConfig.endpointPublicAccess)"
+  if [[ "$public" != True ]]; then
+    check_fail "public endpoint is disabled; private-only clusters are not supported by the managed scan"
+    return 0
+  fi
+  current="$(current_public_cidrs)"
+  missing="$(cidr_missing "$current" "$NULLIFY_CIDRS")"
+  if [[ -z "$missing" ]]; then
+    check_pass "publicAccessCidrs admits Nullify's $NULLIFY_REGION egress IPs"
+  else
+    check_fail "publicAccessCidrs is missing Nullify egress IPs: $missing"
+  fi
+}
+
+run_verify() {
+  verify_access_entry
+  verify_rbac
+  verify_network
+  info "end to end: confirm the cluster connects on the Nullify configure page"
+  if ((VERIFY_FAILURES > 0)); then
+    die "verify: $VERIFY_FAILURES check(s) failed"
+  fi
+  info "verify: all checks passed"
+}
+
+main() {
+  parse_args "$@"
+  preflight
+  case "$ACTION" in
+    plan | apply)
+      ensure_auth_mode
+      ensure_access_entry
+      if rbac_in_scope; then
+        setup_kubectl
+      fi
+      apply_rbac
+      ensure_network
+      if [[ "$DRY_RUN" == true ]]; then
+        info "dry run complete: nothing was changed"
+      else
+        info "apply complete; check it with: $(basename "$0") verify --cluster $CLUSTER --region $REGION ..."
+      fi
+      ;;
+    verify)
+      run_verify
+      ;;
+    remove)
+      if rbac_in_scope; then
+        setup_kubectl
+      fi
+      remove_rbac
+      remove_access_entry
+      remove_network
+      ;;
+  esac
+}
+
+main "$@"
