@@ -90,13 +90,19 @@ jobs:
         run: terraform validate
 
   # Module logic (preconditions, checks, RBAC rules, KMS grants) against mocked
-  # providers. mock_provider needs Terraform 1.7+; no cloud credentials are used.
+  # providers. No cloud credentials are used. The modules declare >= 1.5, but
+  # the validate job only parses them there: 1.8.5 is the lowest version that
+  # runs this suite (mock_provider is 1.7+, strcontains in the tests is 1.8+),
+  # so every module is exercised at that floor as well as at 1.10.5.
   terraform-test:
-    name: terraform test (${{ matrix.directory }})
+    name: terraform test (${{ matrix.directory }}, tf ${{ matrix.terraform }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
+        terraform:
+          - 1.8.5
+          - 1.10.5
         directory:
           - aws-integration-setup/terraform/modules/eks-managed-scan-access
           - aws-integration-setup/terraform/modules/k8s-resources
@@ -109,7 +115,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.10.5
+          terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
       - name: terraform fmt -check (including test files)
