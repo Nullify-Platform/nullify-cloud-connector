@@ -12,7 +12,7 @@
 # REQUIRED VALUES (get these from Nullify configure page):
 #   - collector.clusterName: Your exact cluster name
 #   - collector.s3.bucket: S3 bucket name
-#   - collector.kms.keyArn: KMS key ARN (not an alias)
+#   - collector.kms.keyArn: KMS key ARN (or alias ARN)
 #   - EKS only: serviceAccount.annotations."eks.amazonaws.com/role-arn"
 #   - GKE only: collector.gke.awsRoleArn
 

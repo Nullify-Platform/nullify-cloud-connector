@@ -75,8 +75,8 @@ namespace when that is empty.
 
 {{/*
 AWS region of the Nullify bucket. S3 only accepts an SSE-KMS key from the
-bucket's own region, so the key ARN's region is the default and any other value
-is rejected. Call after "k8s-collector.validateCollector".
+bucket's own region, so the region of the key or alias ARN is the default and
+any other value is rejected. Call after "k8s-collector.validateCollector".
 */}}
 {{- define "k8s-collector.awsRegion" -}}
 {{- $keyRegion := index (splitList ":" .Values.collector.kms.keyArn) 3 -}}
@@ -104,8 +104,8 @@ Rejects missing or placeholder values the CronJob cannot run without.
 {{- fail "collector.s3.bucket is still the placeholder YOUR-NULLIFY-S3-BUCKET: use the bucket shown on the Nullify configure page" -}}
 {{- end -}}
 {{- $keyArn := required "collector.kms.keyArn is required: the collector refuses to upload without KMS encryption" .Values.collector.kms.keyArn -}}
-{{- if not (regexMatch "^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/.+" $keyArn) -}}
-{{- fail (printf "collector.kms.keyArn must be a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>), got %q. A KMS alias does not work: IAM policies ignore alias ARNs for key operations, so the upload is denied kms:GenerateDataKey. Use the KMS key ARN from the Nullify configure page; if it shows an alias, contact Nullify." $keyArn) -}}
+{{- if not (regexMatch "^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+)$" $keyArn) -}}
+{{- fail (printf "collector.kms.keyArn must be a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>, including multi-Region mrk- keys) or alias ARN (arn:aws:kms:<region>:<account-id>:alias/<alias-name>) from the Nullify configure page, got %q." $keyArn) -}}
 {{- end -}}
 {{- if eq $provider "gcp" -}}
 {{- $_ := required "collector.gke.awsRoleArn is required when cloudProvider is gcp: Nullify provides it after you register the cluster's OIDC issuer" (.Values.collector.gke.awsRoleArn | default .Values.collector.gke.nullifyAwsRoleArn) -}}

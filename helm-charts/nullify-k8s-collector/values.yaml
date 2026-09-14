@@ -4,7 +4,7 @@
 # REQUIRED VALUES (the chart refuses to render without them):
 #   - collector.clusterName: Your exact cluster name
 #   - collector.s3.bucket: S3 bucket from Nullify configure page
-#   - collector.kms.keyArn: KMS key ARN (not an alias) from Nullify configure page
+#   - collector.kms.keyArn: KMS key ARN (or alias ARN) from Nullify configure page
 #
 # Provider-specific required values:
 #   - EKS: serviceAccount.annotations."eks.amazonaws.com/role-arn"
@@ -69,7 +69,10 @@ collector:
         keyPrefix: k8s-collector
 
     # KMS key ARN from the Nullify configure page:
-    # arn:aws:kms:<region>:<account-id>:key/<key-id>. An alias does not work.
+    # arn:aws:kms:<region>:<account-id>:key/<key-id>. An alias ARN
+    # (arn:aws:kms:<region>:<account-id>:alias/<name>) needs the connector
+    # CloudFormation stack version that also grants key/* in Nullify's KMS
+    # account; with the Terraform module, use the key ARN.
     kms:
         keyArn: ""
 
@@ -137,7 +140,7 @@ serviceAccount:
         # iam.gke.io/gcp-service-account: "YOUR-GCP-SA-EMAIL"
     create: true
     # cloudProvider=aws: fail the render unless the role-arn annotation above is
-    # an IAM role ARN (partitions aws, aws-us-gov, aws-cn). Set false only when
+    # an arn:aws:iam:: role ARN. Set false only when
     # the pod gets AWS credentials another way: EKS Pod Identity, a node
     # instance profile, kube2iam or kiam.
     requireRoleArn: true

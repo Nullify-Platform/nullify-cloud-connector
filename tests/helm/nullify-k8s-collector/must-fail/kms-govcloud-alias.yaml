@@ -1,10 +1,10 @@
-# expect: if it shows an alias, contact Nullify
+# expect: collector.kms.keyArn must be a KMS key ARN
 collector:
   clusterName: example-eks-cluster
   s3:
     bucket: example-nullify-bucket
   kms:
-    keyArn: arn:aws:kms:eu-central-1:123456789012:alias/example-customer-upload
+    keyArn: arn:aws-us-gov:kms:us-gov-west-1:123456789012:alias/example-customer-upload
 serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AWSIntegration-example-NullifyReadOnlyRole
