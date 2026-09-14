@@ -1,2 +1,4 @@
-# expect: collector.clusterName is required
+# Helm renders templates in reverse path order, so the ServiceAccount's role-arn
+# guard fires before the CronJob's clusterName guard.
+# expect: must be the IAM role ARN from the Nullify configure page
 {}
