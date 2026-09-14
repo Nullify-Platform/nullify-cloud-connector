@@ -161,8 +161,10 @@ case $METHOD in
     MAIN_REGION_ARGS=()
     if [[ -n "$REGION" ]]; then
       MAIN_REGION_ARGS=(--region "$REGION")
+      MAIN_STACK_WHERE="in ${REGION}"
+    else
+      MAIN_STACK_WHERE="in the AWS CLI's configured region (pass --region if the stack is elsewhere)"
     fi
-    MAIN_STACK_WHERE="in ${REGION:-the AWS CLI's configured region (pass --region if the stack is elsewhere)}"
 
     MAIN_STACK_EXISTS=true
     if ! stack_exists "$STACK_NAME" "$REGION"; then
