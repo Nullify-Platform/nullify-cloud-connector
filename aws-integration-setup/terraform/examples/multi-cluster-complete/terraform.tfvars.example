@@ -16,6 +16,13 @@ eks_cluster_arns = [
   "arn:aws:eks:us-east-1:123456789012:cluster/secondary-cluster"
 ]
 
+# collector (default): in-cluster CronJob. managed: EKS access entry plus the list-only
+# nullify-readonly ClusterRole, nothing runs in the cluster. both: deploy both.
+# scan_mode = "managed"
+
+# Your Nullify region from the configure page, required for managed or both
+# nullify_region = "eu-central-1"
+
 # Primary AWS region (where IAM resources are created)
 aws_region = "ap-southeast-2"
 

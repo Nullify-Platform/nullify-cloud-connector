@@ -20,6 +20,9 @@ locals {
   secondary_region = split(":", var.eks_cluster_arns[1])[3]
 
   collector_upload_target = var.nullify_s3_access_point_arn != "" ? var.nullify_s3_access_point_arn : var.s3_bucket_name
+
+  collector = contains(["collector", "both"], var.scan_mode)
+  managed   = contains(["managed", "both"], var.scan_mode)
 }
 
 provider "aws" {
@@ -71,7 +74,7 @@ module "nullify_aws_integration" {
   nullify_s3_access_point_arn = var.nullify_s3_access_point_arn
   kms_key_arn                 = var.kms_key_arn
 
-  enable_kubernetes_integration = true
+  enable_kubernetes_integration = local.collector
   eks_cluster_arns              = var.eks_cluster_arns
   kubernetes_namespace          = var.kubernetes_namespace
   tags                          = var.tags
@@ -89,6 +92,9 @@ module "k8s_resources_primary" {
   kubernetes_namespace = var.kubernetes_namespace
   cronjob_schedule     = var.cronjob_schedule
   collector_image      = var.collector_image
+
+  enable_collector         = local.collector
+  enable_managed_scan_rbac = local.managed
 }
 
 module "k8s_resources_secondary" {
@@ -103,4 +109,18 @@ module "k8s_resources_secondary" {
   kubernetes_namespace = var.kubernetes_namespace
   cronjob_schedule     = var.cronjob_schedule
   collector_image      = var.collector_image
+
+  enable_collector         = local.collector
+  enable_managed_scan_rbac = local.managed
+}
+
+module "eks_managed_scan_access" {
+  source = "../../modules/eks-managed-scan-access"
+  count  = local.managed ? 1 : 0
+
+  principal_arn       = module.nullify_aws_integration.role_arn
+  principal_unique_id = module.nullify_aws_integration.role_unique_id
+  cluster_arns        = var.eks_cluster_arns
+  nullify_region      = var.nullify_region
+  tags                = var.tags
 }

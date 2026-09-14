@@ -30,6 +30,23 @@ variable "eks_cluster_arns" {
   }
 }
 
+variable "scan_mode" {
+  type        = string
+  description = "collector: in-cluster CronJob with IRSA (default). managed: Nullify lists resources through an EKS access entry and the list-only nullify-readonly ClusterRole, with nothing running in the cluster. both: deploy both"
+  default     = "collector"
+
+  validation {
+    condition     = contains(["collector", "managed", "both"], var.scan_mode)
+    error_message = "scan_mode must be collector, managed or both"
+  }
+}
+
+variable "nullify_region" {
+  type        = string
+  description = "Your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2). Required when scan_mode is managed or both"
+  default     = ""
+}
+
 variable "aws_region" {
   type        = string
   description = "The primary AWS region for the integration (where IAM resources are created)"

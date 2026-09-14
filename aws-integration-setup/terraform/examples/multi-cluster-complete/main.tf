@@ -4,7 +4,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 5.33"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
@@ -20,6 +20,9 @@ locals {
   secondary_region = split(":", var.eks_cluster_arns[1])[3]
 
   collector_upload_target = var.nullify_s3_access_point_arn != "" ? var.nullify_s3_access_point_arn : var.s3_bucket_name
+
+  collector = contains(["collector", "both"], var.scan_mode)
+  managed   = contains(["managed", "both"], var.scan_mode)
 }
 
 provider "aws" {
@@ -80,7 +83,7 @@ module "nullify_aws_integration" {
   nullify_s3_access_point_arn = var.nullify_s3_access_point_arn
   kms_key_arn                 = var.kms_key_arn
 
-  enable_kubernetes_integration = true
+  enable_kubernetes_integration = local.collector
   eks_cluster_arns              = var.eks_cluster_arns
   kubernetes_namespace          = var.kubernetes_namespace
   tags                          = var.tags
@@ -105,6 +108,9 @@ module "k8s_resources_primary" {
   kubernetes_namespace = var.kubernetes_namespace
   cronjob_schedule     = var.cronjob_schedule
   collector_image      = var.collector_image
+
+  enable_collector         = local.collector
+  enable_managed_scan_rbac = local.managed
 }
 
 module "k8s_resources_secondary" {
@@ -119,4 +125,37 @@ module "k8s_resources_secondary" {
   kubernetes_namespace = var.kubernetes_namespace
   cronjob_schedule     = var.cronjob_schedule
   collector_image      = var.collector_image
+
+  enable_collector         = local.collector
+  enable_managed_scan_rbac = local.managed
+}
+
+# AWS provider v5 manages access entries only in the provider's region, so
+# each cluster gets a module instance on its regional provider.
+module "eks_managed_scan_access_primary" {
+  source = "../../modules/eks-managed-scan-access"
+  count  = local.managed ? 1 : 0
+  providers = {
+    aws = aws.primary
+  }
+
+  principal_arn       = module.nullify_aws_integration.role_arn
+  principal_unique_id = module.nullify_aws_integration.role_unique_id
+  cluster_arns        = [var.eks_cluster_arns[0]]
+  nullify_region      = var.nullify_region
+  tags                = var.tags
+}
+
+module "eks_managed_scan_access_secondary" {
+  source = "../../modules/eks-managed-scan-access"
+  count  = local.managed ? 1 : 0
+  providers = {
+    aws = aws.secondary
+  }
+
+  principal_arn       = module.nullify_aws_integration.role_arn
+  principal_unique_id = module.nullify_aws_integration.role_unique_id
+  cluster_arns        = [var.eks_cluster_arns[1]]
+  nullify_region      = var.nullify_region
+  tags                = var.tags
 }
