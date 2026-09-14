@@ -54,7 +54,7 @@
       },
       "NullifyS3AccessPointArn": {
         "Type": "String",
-        "Description": "Optional. Use only if the Nullify configure page shows an S3 access point ARN for your tenant (arn:aws:s3:<region>:<account>:accesspoint/<name>); otherwise leave empty and use NullifyS3Bucket. Access point support is rolling out. Applies only with EnableEKSIntegration=true: the S3 access policy then also allows uploads through this access point, and the NullifyS3Bucket grants stay.",
+        "Description": "Set this when the Nullify configure page shows an S3 access point ARN (arn:aws:s3:<region>:<account>:accesspoint/<name>), and use the same ARN as the Helm collector.s3.bucket; uploads through the access point are denied without it. Leave empty when the page shows a bucket name. Applies only with EnableEKSIntegration=true: the S3 access policy then also allows uploads through this access point, and the NullifyS3Bucket grants stay.",
         "Default": "",
         "AllowedPattern": "^(arn:aws:s3:[a-z0-9-]+:[0-9]{12}:accesspoint/[a-z0-9-]{3,50})?$",
         "ConstraintDescription": "Must be empty or an S3 access point ARN (arn:aws:s3:<region>:<account>:accesspoint/<name>)."

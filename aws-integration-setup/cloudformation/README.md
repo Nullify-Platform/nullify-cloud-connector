@@ -202,11 +202,14 @@ aws cloudformation update-stack \
 
 `UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
-### 5. Collector upload target (optional S3 access point)
+### 5. Collector upload target
 
-The Kubernetes collector uploads to the S3 bucket shown on the Nullify configure page, which is `NullifyS3Bucket`. Use that bucket name for the Helm chart's `collector.s3.bucket`.
+The Nullify configure page shows the upload target for the Helm chart's `collector.s3.bucket`. Which form it shows decides the setup:
 
-`NullifyS3AccessPointArn` is optional. Set it only if the Nullify configure page shows an S3 access point ARN for your tenant; otherwise leave it empty and use the bucket name. Access point support is rolling out. With `EnableEKSIntegration=true`, the S3 access policy then also allows `s3:PutObject`, `s3:PutObjectAcl` and `s3:ListBucket` on the access point and its `/object/*` path, and the `NullifyS3Bucket` grants stay.
+- **An S3 access point ARN** (`arn:aws:s3:REGION:NULLIFY-ACCOUNT:accesspoint/NAME`): first set `NullifyS3AccessPointArn` to that ARN in this stack, then use the same ARN as `collector.s3.bucket`. Without the parameter, uploads fail with `AccessDenied`: a grant on the bucket does not cover requests made through an access point.
+- **A bucket name**: use it as `collector.s3.bucket` and leave `NullifyS3AccessPointArn` empty. That bucket is `NullifyS3Bucket`.
+
+With `EnableEKSIntegration=true` and `NullifyS3AccessPointArn` set, the S3 access policy also allows `s3:PutObject`, `s3:PutObjectAcl` and `s3:ListBucket` on the access point and its `/object/*` path, and the `NullifyS3Bucket` grants stay.
 
 ```bash
     ParameterKey=NullifyS3AccessPointArn,ParameterValue=arn:aws:s3:REGION:NULLIFY-ACCOUNT:accesspoint/NAME \
@@ -309,7 +312,9 @@ Nullify connects from these IPs. Use the Nullify region that serves your tenant:
 `aws eks update-cluster-config` replaces `publicAccessCidrs` rather than appending to it, so the script merges:
 
 - a list that contains `0.0.0.0/0` is left unchanged;
-- otherwise the missing `/32`s are appended, the result is refused above the EKS limit of 40 CIDRs, the list is re-read just before the update, and the added CIDRs are recorded in the cluster tag `nullify-added-cidrs` so `remove` takes out only those.
+- otherwise the missing `/32`s are appended, the result is refused above the EKS limit of 40 CIDRs, the list is re-read just before the update, and the CIDRs to add are recorded in the cluster tag `nullify-pending-cidrs` before the update and moved to `nullify-added-cidrs` once it succeeds, so `remove` takes out only those;
+- if a run stops between the two (timeout, Ctrl-C, expired credentials), the next `apply` or `remove` treats the pending CIDRs that `publicAccessCidrs` holds as added and drops the rest;
+- a record longer than an EKS tag value (256 characters) continues in `nullify-added-cidrs-2`, `nullify-added-cidrs-3`, and so on.
 
 ### Setup script
 
@@ -329,7 +334,7 @@ cd aws-integration-setup/scripts
   --customer-name yourcompany --nullify-region eu-central-1
 ```
 
-Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|admin-view`, `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at a pinned commit of this repository when the checkout lacks it), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
+Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|admin-view`, `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.1.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
 
 ### Step 4: verify
 
@@ -354,7 +359,7 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|ad
 
 Remove in this order so no access entry outlives the role:
 
-1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs`. It refuses to leave `publicAccessCidrs` empty, and if the public endpoint has since been disabled it leaves the endpoint settings alone and only drops the tag. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
+1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs` plus any in `nullify-pending-cidrs` that `publicAccessCidrs` still holds. It refuses to leave `publicAccessCidrs` empty. If the public endpoint has since been disabled, it leaves the endpoint settings, `publicAccessCidrs` and both tags alone and says so; `publicAccessCidrs` can still hold Nullify's CIDRs when the endpoint is re-enabled, so re-run `remove` then. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
 2. In each region: `aws cloudformation delete-stack --region REGION --stack-name nullify-eks-managed-scan-access`.
 3. Delete the main stack.
 
