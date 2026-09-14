@@ -24,7 +24,7 @@ This template creates:
      - External ID for your account
      - Nullify's cross-account role ARN
      - S3 bucket name (for Kubernetes integration)
-     - KMS key ARN (optional, for key management operations)
+     - KMS ARN (optional, for key management operations): an alias ARN or a key ARN; both are accepted
 
 2. **AWS Requirements**:
    - AWS CLI configured with appropriate permissions
@@ -161,10 +161,13 @@ aws cloudformation create-stack \
 
 ### 4. Deploy with KMS Integration (Optional)
 
-Pass the **KMS key ARN** from the Nullify configure page: `arn:aws:kms:<region>:<account>:key/<key-id>`. Multi-Region keys (`key/mrk-...`) are accepted.
+Pass the KMS ARN shown on the Nullify configure page as `NullifyKMSKeyArn`. Both forms are accepted:
+
+- an alias ARN, `arn:aws:kms:<region>:<account>:alias/<name>`, which the configure page shows today;
+- a key ARN, `arn:aws:kms:<region>:<account>:key/<key-id>`, including multi-Region `key/mrk-...` keys. The configure page will show the key ARN once Nullify rolls that change out.
 
 ```bash
-# Deploy with KMS key ARN for key management operations
+# Deploy with the KMS ARN for key management operations
 aws cloudformation create-stack \
   --stack-name nullify-aws-integration \
   --template-body file://nullify-cloudformation-template.json \
@@ -173,13 +176,13 @@ aws cloudformation create-stack \
     ParameterKey=ExternalID,ParameterValue=YOUR-EXTERNAL-ID \
     ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::NULLIFY-ACCOUNT:role/NULLIFY-ROLE \
     ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
-    ParameterKey=NullifyKMSKeyArn,ParameterValue=arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012 \
+    ParameterKey=NullifyKMSKeyArn,ParameterValue=arn:aws:kms:us-west-2:123456789012:alias/NULLIFY-ALIAS \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-An alias ARN (`arn:aws:kms:<region>:<account>:alias/<name>`) is still accepted for this release. IAM cannot name a key by alias, so for an alias the template grants the KMS actions on `arn:aws:kms:<region>:<account>:key/*` in Nullify's KMS account and region. Nullify's key policy remains the real gate. The `KMSPolicyResource` stack output shows which form is in effect.
+IAM ignores alias ARNs for key operations, so the KMS policy grants its actions on the ARN you pass and on `arn:aws:kms:<region>:<account>:key/*` in the same Nullify account and region. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. Either form produces a working grant, so an existing stack does not need updating when the configure page changes. The `KMSPolicyResource` stack output lists both resources.
 
-Move an existing stack from an alias to the key ARN:
+Update an existing stack, keeping its current values:
 
 ```bash
 aws cloudformation update-stack \
@@ -193,19 +196,23 @@ aws cloudformation update-stack \
     ParameterKey=EnableEKSIntegration,UsePreviousValue=true \
     ParameterKey=ExternalID,UsePreviousValue=true \
     ParameterKey=NullifyS3Bucket,UsePreviousValue=true \
-    ParameterKey=NullifyKMSKeyArn,ParameterValue=arn:aws:kms:REGION:NULLIFY-ACCOUNT:key/KEY-ID \
+    ParameterKey=NullifyKMSKeyArn,UsePreviousValue=true \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-### 5. Collector upload target (S3 access point)
+`UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
-Nullify gives each tenant an S3 access point as the Kubernetes collector's upload target, for example `arn:aws:s3:eu-central-1:123456789012:accesspoint/yourcompany-k8s-collector`. With `EnableEKSIntegration=true`, pass it as `NullifyS3AccessPointArn`. The S3 access policy then also allows `s3:PutObject`, `s3:PutObjectAcl` and `s3:ListBucket` on the access point and its `/object/*` path; the `NullifyS3Bucket` grants stay for backwards compatibility. Set the same ARN as the Helm chart's `collector.s3.bucket`.
+### 5. Collector upload target (optional S3 access point)
+
+The Kubernetes collector uploads to the S3 bucket shown on the Nullify configure page, which is `NullifyS3Bucket`. Use that bucket name for the Helm chart's `collector.s3.bucket`.
+
+`NullifyS3AccessPointArn` is optional. Set it only if the Nullify configure page shows an S3 access point ARN for your tenant; otherwise leave it empty and use the bucket name. Access point support is rolling out. With `EnableEKSIntegration=true`, the S3 access policy then also allows `s3:PutObject`, `s3:PutObjectAcl` and `s3:ListBucket` on the access point and its `/object/*` path, and the `NullifyS3Bucket` grants stay.
 
 ```bash
     ParameterKey=NullifyS3AccessPointArn,ParameterValue=arn:aws:s3:REGION:NULLIFY-ACCOUNT:accesspoint/NAME \
 ```
 
-On an existing stack, add that line to the `update-stack` command above, keeping `NullifyKMSKeyArn` as `UsePreviousValue=true` if it does not change.
+On an existing stack, add that line to the `update-stack` command above.
 
 ### Stack outputs
 
@@ -214,7 +221,7 @@ On an existing stack, add that line to the `update-stack` command above, keeping
 | `RoleArn`, `IAMRoleArn` | ARN of the Nullify read-only role |
 | `RoleName` | `AWSIntegration-<CustomerName>-NullifyReadOnlyRole` |
 | `KubernetesGroupName` | `nullify-readonly`, the default group for the managed EKS scan |
-| `KMSPolicyResource` | Resource of the KMS policy (only when `NullifyKMSKeyArn` is set) |
+| `KMSPolicyResource` | Resources of the KMS policy, comma-separated: `NullifyKMSKeyArn` and `key/*` in its account and region (only when `NullifyKMSKeyArn` is set) |
 
 ## Managed EKS scan (no in-cluster agent)
 
@@ -237,7 +244,7 @@ Kubernetes has no metadata-only permission for Secrets: `list secrets` permits r
 |---|---|---|
 | Runs in the cluster | CronJob with an IRSA service account | Nothing |
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
-| AWS setup | `EnableEKSIntegration=true`, OIDC provider URL, `NullifyS3AccessPointArn` (upload target) | One access entry per cluster |
+| AWS setup | `EnableEKSIntegration=true`, OIDC provider URL, `NullifyS3Bucket` (upload target) | One access entry per cluster |
 | Kubernetes setup | Helm release | ClusterRole and binding for group `nullify-readonly`, or `AmazonEKSAdminViewPolicy` |
 | Upgrades | You upgrade the chart | None |
 
@@ -322,7 +329,7 @@ cd aws-integration-setup/scripts
   --customer-name yourcompany --nullify-region eu-central-1
 ```
 
-Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|admin-view`, `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL`, `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
+Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|admin-view`, `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at a pinned commit of this repository when the checkout lacks it), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
 
 ### Step 4: verify
 
@@ -341,13 +348,13 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|ad
 | `401 Unauthorized` | No access entry, an entry for a since-recreated role, or `CONFIG_MAP` authentication mode |
 | `403 ... cannot list <resource>` | RBAC missing or incomplete for that resource |
 | Timeout connecting to the endpoint | Nullify's IPs are not in `publicAccessCidrs`, or the endpoint is private-only |
-| KMS `AccessDenied` on collector upload | `NullifyKMSKeyArn` is an alias ARN; switch to the key ARN |
+| KMS `AccessDenied` on collector upload | `NullifyKMSKeyArn` is empty or not the value shown on the configure page. If it matches, the role already allows `key/*` in that account and region, so the denial comes from Nullify's key policy: contact Nullify support |
 
 ### Removal
 
 Remove in this order so no access entry outlives the role:
 
-1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs`. It refuses to leave `publicAccessCidrs` empty.
+1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs`. It refuses to leave `publicAccessCidrs` empty, and if the public endpoint has since been disabled it leaves the endpoint settings alone and only drops the tag. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
 2. In each region: `aws cloudformation delete-stack --region REGION --stack-name nullify-eks-managed-scan-access`.
 3. Delete the main stack.
 
