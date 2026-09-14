@@ -16,25 +16,43 @@ The data collected includes (but is not limited to):
 
 ## Configuration
 - Cloud Provider: {{ .Values.cloudProvider | default "aws" }}
+- Cluster Name: {{ .Values.collector.clusterName }}
 - S3 Bucket: {{ .Values.collector.s3.bucket }}
 - S3 Key Prefix: {{ .Values.collector.s3.keyPrefix }}
-- AWS Region: {{ .Values.collector.aws.region }}
+- AWS Region: {{ .Values.collector.aws.region | default "region of collector.kms.keyArn" }}
+- Namespace: {{ include "k8s-collector.namespace" . }}
 - Schedule: {{ .Values.collector.schedule }}
+{{- if contains ":alias/" (toString .Values.collector.kms.keyArn) }}
 
-{{- if and .Values.collector.dataCollection .Values.collector.dataCollection.excludeNamespaces }}
-- Excluded Namespaces: {{ .Values.collector.dataCollection.excludeNamespaces }}
+WARNING: collector.kms.keyArn is a KMS alias ARN. IAM matches the key ARN, not the alias,
+so uploads need a role policy that also grants kms:GenerateDataKey on key/* in Nullify's KMS
+account and region. The current connector CloudFormation template grants that; an older
+stack, or the Terraform module (it grants only the ARN it is given), denies the upload.
+Update the stack, or use the key ARN: the Nullify configure page will show the key ARN soon.
 {{- end }}
 
-{{- if and .Values.collector.dataCollection .Values.collector.dataCollection.metadataOnly }}
-- Collection Mode: Metadata only (no resource content)
-{{- else }}
-- Collection Mode: Full resource data
+{{- if ne (include "k8s-collector.namespace" .) .Release.Namespace }}
+
+NOTE: the collector's objects are in namespace "{{ include "k8s-collector.namespace" . }}"
+(serviceAccount.namespace), not the release namespace "{{ .Release.Namespace }}".
+{{- end }}
+{{- with .Values.namespace }}
+{{- if .create }}
+
+NOTE: namespace.create was removed in chart 0.4.0 and is ignored. Create the namespace with
+`helm install --create-namespace`, or `spec.install.createNamespace: true` in a Flux HelmRelease.
+{{- end }}
+{{- end }}
+{{- if .Values.collector.dataCollection }}
+
+NOTE: collector.dataCollection was removed in chart 0.4.0 and is ignored. The collector never
+supported namespace or resource filters, so these values had no effect.
 {{- end }}
 
 {{- if eq (.Values.cloudProvider | default "aws") "gcp" }}
 
 ## Authentication (GKE Projected SA Token → AWS STS)
-- Nullify AWS Role: {{ .Values.collector.gke.awsRoleArn | default "NOT SET — ask Nullify for the role ARN" }}
+- Nullify AWS Role: {{ .Values.collector.gke.awsRoleArn | default .Values.collector.gke.nullifyAwsRoleArn }}
 - Token Audience: {{ .Values.collector.gke.audience }}
 
 The collector uses a projected Kubernetes ServiceAccount token (signed by the
@@ -43,30 +61,26 @@ AWS credential is stored in the cluster. No GKE Workload Identity setup required
 {{- else }}
 
 ## Authentication (EKS IRSA)
-{{- if (index .Values.serviceAccount.annotations "eks.amazonaws.com/role-arn") }}
-- IAM Role: {{ index .Values.serviceAccount.annotations "eks.amazonaws.com/role-arn" }}
-{{- else }}
-NOTE: No IAM role was specified for the ServiceAccount. Make sure the collector
-has necessary AWS credentials through other means (instance profile, environment variables, etc.)
-{{- end }}
+- IAM Role: {{ index (.Values.serviceAccount.annotations | default dict) "eks.amazonaws.com/role-arn" | default "none set; the pod needs AWS credentials from outside this chart (serviceAccount.requireRoleArn=false)" }}
+- ServiceAccount: system:serviceaccount:{{ include "k8s-collector.namespace" . }}:{{ include "k8s-collector.serviceAccountName" . }}
+  (the connector CloudFormation trust only allows system:serviceaccount:nullify:nullify-k8s-collector-sa)
 {{- end }}
 
 ## Required AWS Permissions
-The IAM role or credentials used by the collector need these permissions (already granted
-when Nullify's IAM resources are installed):
-- s3:PutObject
-- s3:GetObject
-- s3:ListBucket
+The collector only uploads. Its role needs s3:PutObject on the Nullify bucket and
+kms:GenerateDataKey on the KMS key; the connector's EKS integration (CloudFormation
+EnableEKSIntegration, or Terraform enable_kubernetes_integration) grants both.
+It never reads from the bucket.
 
 ## Useful Commands
 You can verify the CronJob is created with:
-  kubectl -n {{ .Values.serviceAccount.namespace }} get cronjob {{ include "k8s-collector.name" . }}
+  kubectl -n {{ include "k8s-collector.namespace" . }} get cronjob {{ include "k8s-collector.name" . }}
 
 To check when the job is scheduled to run next:
-  kubectl -n {{ .Values.serviceAccount.namespace }} get cronjob {{ include "k8s-collector.name" . }} -o wide
+  kubectl -n {{ include "k8s-collector.namespace" . }} get cronjob {{ include "k8s-collector.name" . }} -o wide
 
 To check logs from the most recent job run:
-  kubectl -n {{ .Values.serviceAccount.namespace }} logs job/$(kubectl -n {{ .Values.serviceAccount.namespace }} get jobs --sort-by=.metadata.creationTimestamp -l app.kubernetes.io/name={{ include "k8s-collector.name" . }} -o jsonpath="{.items[-1].metadata.name}")
+  kubectl -n {{ include "k8s-collector.namespace" . }} logs job/$(kubectl -n {{ include "k8s-collector.namespace" . }} get jobs --sort-by=.metadata.creationTimestamp -o jsonpath="{.items[-1].metadata.name}")
 
 To run the job manually:
-  kubectl -n {{ .Values.serviceAccount.namespace }} create job --from=cronjob/{{ include "k8s-collector.name" . }} {{ include "k8s-collector.name" . }}-manual-$(date +%s)
+  kubectl -n {{ include "k8s-collector.namespace" . }} create job --from=cronjob/{{ include "k8s-collector.name" . }} {{ include "k8s-collector.name" . }}-manual-$(date +%s)

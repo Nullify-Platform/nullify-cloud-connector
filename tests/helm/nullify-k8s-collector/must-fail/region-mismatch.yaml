@@ -1,0 +1,12 @@
+# expect: does not match the region of collector.kms.keyArn
+collector:
+  clusterName: example-eks-cluster
+  aws:
+    region: us-east-1
+  s3:
+    bucket: example-nullify-bucket
+  kms:
+    keyArn: arn:aws:kms:eu-central-1:123456789012:key/00000000-0000-0000-0000-000000000000
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AWSIntegration-example-NullifyReadOnlyRole

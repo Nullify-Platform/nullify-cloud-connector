@@ -1,0 +1,13 @@
+# EKS install with a multi-Region KMS key ARN and an explicit matching region.
+cloudProvider: aws
+collector:
+  clusterName: example-eks-cluster
+  aws:
+    region: us-east-2
+  s3:
+    bucket: example-nullify-bucket
+  kms:
+    keyArn: arn:aws:kms:us-east-2:123456789012:key/mrk-1234abcd12ab34cd56ef1234567890ab
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AWSIntegration-example-NullifyReadOnlyRole

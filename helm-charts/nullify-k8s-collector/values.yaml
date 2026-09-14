@@ -1,10 +1,10 @@
 # Default values for nullify-k8s-collector
 # This is a YAML-formatted file.
 #
-# REQUIRED VALUES (must be configured before deployment):
+# REQUIRED VALUES (the chart refuses to render without them):
 #   - collector.clusterName: Your exact cluster name
 #   - collector.s3.bucket: S3 bucket from Nullify configure page
-#   - collector.kms.keyArn: KMS key ARN from Nullify configure page
+#   - collector.kms.keyArn: KMS key ARN (or alias ARN) from Nullify configure page
 #
 # Provider-specific required values:
 #   - EKS: serviceAccount.annotations."eks.amazonaws.com/role-arn"
@@ -15,6 +15,10 @@
 #          serviceAccount.annotations."iam.gke.io/gcp-service-account"
 #          (Your GCP service account email, bound to the in-cluster
 #           ServiceAccount via Workload Identity)
+#
+# The chart does not create its namespace. Install with
+#   helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
+#     --namespace nullify --create-namespace -f values.yaml
 
 # Which cluster platform the collector is running on.
 # Supported values: "aws" (EKS, default) | "gcp" (GKE).
@@ -34,14 +38,17 @@ clusterRoleBinding:
 collector:
     enabled: true
 
-    # AWS region (extract from your KMS key ARN)
+    # Region of the Nullify S3 bucket (NOT your cluster's region). S3 only
+    # accepts a KMS key from the bucket's region, so leave this empty to use
+    # the region in collector.kms.keyArn; any other value is rejected.
     aws:
-        region: us-east-1
+        region: ""
 
     # Must match your actual cluster name exactly
-    clusterName: "YOUR-CLUSTER-NAME"
+    clusterName: ""
 
-    # Container image
+    # Container image. Pin a versioned tag instead of k8s-collector-latest once
+    # Nullify publishes one.
     image:
         repository: public.ecr.aws/w4o2j2x4/integrations
         tag: k8s-collector-latest
@@ -58,12 +65,16 @@ collector:
 
     # S3 configuration (from Nullify configure page)
     s3:
-        bucket: "YOUR-NULLIFY-S3-BUCKET"
+        bucket: ""
         keyPrefix: k8s-collector
 
-    # KMS configuration (from Nullify configure page)
+    # KMS key ARN from the Nullify configure page:
+    # arn:aws:kms:<region>:<account-id>:key/<key-id>. An alias ARN
+    # (arn:aws:kms:<region>:<account-id>:alias/<name>) needs the connector
+    # CloudFormation stack version that also grants key/* in Nullify's KMS
+    # account; with the Terraform module, use the key ARN.
     kms:
-        keyArn: "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"
+        keyArn: ""
 
     # Debug logging
     debug:
@@ -80,12 +91,6 @@ collector:
                 - ALL
         readOnlyRootFilesystem: true
         runAsNonRoot: true
-
-    # Data collection filters (optional)
-    dataCollection:
-        # excludeNamespaces: "kube-system,kube-public"
-        # includeResources: "pods,services,deployments"
-        # metadataOnly: true
 
     # GKE-specific settings (only used when cloudProvider is "gcp").
     gke:
@@ -114,12 +119,6 @@ nameOverride: ""
 # Labels for all resources
 labels: {}
 
-# Namespace configuration
-namespace:
-    annotations: {}
-    create: true
-    requireNamespace: false
-
 # Node selector
 nodeSelector: {}
 
@@ -133,14 +132,23 @@ nodeSelector: {}
 # one that applies. Extra annotations are passed through unchanged.
 serviceAccount:
     annotations:
-        # Used when cloudProvider=aws (EKS). IAM role ARN from the Nullify
-        # configure page.
-        eks.amazonaws.com/role-arn: "arn:aws:iam::ACCOUNT:role/ROLE-NAME"
+        # Required when cloudProvider=aws (EKS). IAM role ARN from the Nullify
+        # configure page: arn:aws:iam::<account-id>:role/AWSIntegration-<CustomerName>-NullifyReadOnlyRole
+        eks.amazonaws.com/role-arn: ""
         # Used when cloudProvider=gcp (GKE). Your GCP service account email,
         # e.g. nullify-k8s-collector@your-project.iam.gserviceaccount.com.
         # iam.gke.io/gcp-service-account: "YOUR-GCP-SA-EMAIL"
     create: true
+    # cloudProvider=aws: fail the render unless the role-arn annotation above is
+    # an arn:aws:iam:: role ARN. Set false only when
+    # the pod gets AWS credentials another way: EKS Pod Identity, a node
+    # instance profile, kube2iam or kiam.
+    requireRoleArn: true
+    # Keep the default name and namespace on EKS: the connector's CloudFormation
+    # IRSA trust only allows system:serviceaccount:nullify:nullify-k8s-collector-sa.
     name: nullify-k8s-collector-sa
+    # Namespace for every namespaced object. It must already exist (use
+    # --create-namespace). Empty means the release namespace.
     namespace: nullify
 
 # Pod tolerations
