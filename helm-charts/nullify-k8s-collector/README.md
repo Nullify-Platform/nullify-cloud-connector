@@ -4,8 +4,14 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 
 ## Prerequisites
 
-- Kubernetes 1.16+
-- Helm 3.0+
+- Kubernetes 1.21+ (the chart uses `batch/v1` CronJob)
+- Helm 3
+- **EKS:** the Nullify AWS integration deployed with its EKS integration enabled (see [AWS IAM Configuration](#aws-iam-configuration))
+- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
+- Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
+
+> **Image tag:** the default `collector.image.tag` is the floating `k8s-collector-latest`, pulled on every run.
+> Pin a versioned tag once Nullify publishes one.
 
 ## Supported platforms
 
@@ -19,81 +25,86 @@ The same chart runs on **EKS** and **GKE**. Select the platform via `cloudProvid
 In both cases the collector uploads cluster metadata to the same Nullify-managed
 S3 bucket. No long-lived AWS credential is stored in the customer cluster.
 
+## Installation
+
+The chart does not create its namespace. Let Helm create it:
+
+```bash
+helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
+helm repo update
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
+  --namespace nullify --create-namespace \
+  -f values-production.yaml
+```
+
+With Flux, set `spec.targetNamespace: nullify` and `spec.install.createNamespace: true` on the HelmRelease.
+
+All namespaced objects go to `serviceAccount.namespace` (default `nullify`), whatever `--namespace` says; set it to `""` to use the release namespace.
+On EKS keep the defaults: the connector's IRSA trust only allows `system:serviceaccount:nullify:nullify-k8s-collector-sa`.
+
+The chart refuses to render when a required value is missing or still a placeholder, and names the value in the error.
+
 ## Configuration
 
-The following table lists the configurable parameters of the chart and their default values.
-
-> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`.
-> Platform-specific required values are listed below. Get these from the Nullify configure page.
+> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, and
+> `serviceAccount.annotations."eks.amazonaws.com/role-arn"` (EKS) or `collector.gke.awsRoleArn` (GKE).
+> Get these from the Nullify configure page.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `cloudProvider` | Platform the collector runs on: `aws` (EKS) or `gcp` (GKE) | `aws` |
 | `serviceAccount.create` | If true, create a new service account | `true` |
-| `serviceAccount.annotations` | Annotations for the service account. The chart renders only the annotation that matches `cloudProvider`. | See [values.yaml](./values.yaml) |
+| `serviceAccount.annotations` | Annotations for the service account. The chart renders only the annotation that matches `cloudProvider`. | `eks.amazonaws.com/role-arn: ""` |
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
+| `serviceAccount.namespace` | Namespace of every namespaced object; `""` means the release namespace. Must already exist. | `nullify` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
 | `collector.image.tag` | Image tag | `k8s-collector-latest` |
 | `collector.image.pullPolicy` | Pull policy | `Always` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
-| `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `YOUR-NULLIFY-S3-BUCKET` |
+| `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `""` (required) |
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
-| `collector.aws.region` | AWS region | `us-east-1` |
-| `collector.clusterName` | Cluster name (must match your actual cluster name) | `YOUR-CLUSTER-NAME` |
-| `collector.kms.keyArn` | KMS key ARN for encryption (from Nullify configure page) | `""` |
+| `collector.aws.region` | Region of the **Nullify S3 bucket**, not your cluster. Defaults to the region in `collector.kms.keyArn`; any other value is rejected, because S3 only accepts a KMS key from the bucket's region. | `""` |
+| `collector.clusterName` | Cluster name (must match your actual cluster name) | `""` (required) |
+| `collector.kms.keyArn` | KMS **key** ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>`. An alias ARN is rejected: IAM ignores aliases for key operations, so uploads would be denied. | `""` (required) |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `collector.gke.awsRoleArn` | **GKE only.** Nullify-owned federated AWS IAM role ARN (provided after cluster registration). | `""` |
 | `collector.gke.audience` | **GKE only.** Token audience for the projected SA token. Do not change unless Nullify asks you to. | `sts.amazonaws.com` |
 | `collector.gke.webIdentityTokenPath` | **GKE only.** In-pod path of the projected SA token. | `/var/run/secrets/tokens/gcp-sa-token` |
-| `labels` | Additional labels for the collector resources | `null` |
+| `nodeSelector` / `tolerations` | Collector pod placement | `{}` / `[]` |
+| `labels` | Additional labels for the collector resources | `{}` |
+
+The collector has no namespace or resource filters: it always lists every kind its ClusterRole allows, in every namespace.
 
 ## Security Context
 
-The collector runs with:
+The collector container runs with:
 
-- Non-root user (UID 1001)
+- `runAsNonRoot: true`
 - Read-only root filesystem
 - No privilege escalation
 - All capabilities dropped
 
 ## AWS IAM Configuration
 
-> 📖 **Note**: The IAM role ARN required for IRSA configuration is provided in the Nullify configure page. Log in to your Nullify configure page, navigate to Configure > Integrations, and select AWS integration to obtain the required values.
+> 📖 **Note**: The IAM role ARN, S3 bucket and KMS key ARN are provided in the Nullify configure page (Configure > Integrations > AWS).
 
 ### EKS with IRSA (IAM Roles for Service Accounts)
 
-For EKS clusters, use IAM Roles for Service Accounts (IRSA):
+Do not create the IRSA role by hand. The Nullify AWS integration role gains the collector's trust and permissions when you enable its EKS integration:
 
-1. Create an IAM policy with S3 permissions:
+- **CloudFormation** ([template](../../aws-integration-setup/cloudformation/README.md)): update the stack with `EnableEKSIntegration=true`, `EKSOidcProviderURL=oidc.eks.<cluster-region>.amazonaws.com/id/<ISSUER_ID>` (no `https://`), `NullifyS3Bucket` and `NullifyKMSKeyArn` (the key ARN).
+- **Terraform** ([module](../../aws-integration-setup/terraform/README.md)): set `enable_kubernetes_integration = true`, `eks_cluster_arns`, `s3_bucket_name` and `kms_key_arn`. `kubernetes_namespace` and `service_account_name` must match this chart's `serviceAccount.namespace` and `serviceAccount.name`. Deploy the collector with either this chart or the `k8s-resources` module, not both.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::your-bucket-name",
-        "arn:aws:s3:::your-bucket-name/*"
-      ]
-    }
-  ]
-}
-```
+The cluster needs an IAM OIDC provider (`eksctl utils associate-iam-oidc-provider --cluster <name> --approve`).
 
-2. Create an IAM role for the service account and attach the policy
+The collector only uploads. It needs `s3:PutObject` on the Nullify bucket and `kms:GenerateDataKey` on the key, both granted by the integration. It never reads from the bucket, and the integration explicitly denies `s3:GetObject`.
 
-3. In your values.yaml file, specify the IAM role ARN:
+Then set the role ARN in your values:
 
 ```yaml
 serviceAccount:
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/NullifyCollectorRole"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-yourcompany-NullifyReadOnlyRole"
 ```
 
 ### GKE with Workload Identity Federation
@@ -131,8 +142,6 @@ cloudProvider: gcp
 
 collector:
   clusterName: "my-gke-cluster"
-  aws:
-    region: "us-east-1"   # AWS region of the Nullify S3 bucket
   s3:
     bucket: "your-nullify-bucket"
   kms:
@@ -145,7 +154,8 @@ collector:
 Then install:
 
 ```bash
-helm install nullify-k8s-collector ./nullify-k8s-collector -f values-gke.yaml
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
+  --namespace nullify --create-namespace -f values-gke.yaml
 ```
 
 ### Other Kubernetes Clusters
@@ -157,12 +167,19 @@ other means:
 - Using instance profiles for nodes running on EC2
 - Using a solution like Kube2IAM or kiam
 
+## Upgrading to 0.4.0
+
+- `namespace.create` and `namespace.requireNamespace` are removed, along with the pre-install namespace hook and the `bitnami/kubectl` Job. Existing namespaces are not deleted. New installs need `--create-namespace`, or an existing namespace.
+- `collector.dataCollection.*` is removed. The collector never read `EXCLUDE_NAMESPACES`, `INCLUDE_RESOURCES` or `METADATA_ONLY`.
+- `collector.clusterName`, `collector.s3.bucket` and `collector.kms.keyArn` now default to `""`, and rendering fails when they are empty or still the old placeholders. The EKS role-arn annotation is validated the same way.
+- `collector.aws.region` now defaults to the KMS key's region instead of `us-east-1`.
+- `nodeSelector` and `tolerations` now apply to the collector pod; before, only the removed pre-install Job used them.
+
 ## Uninstallation
 
-To uninstall/delete the `k8s-collector` deployment:
-
 ```bash
-helm delete k8s-collector
+helm uninstall nullify-k8s-collector --namespace nullify
+kubectl delete namespace nullify   # optional; Helm does not delete the namespace
 ```
 
 ## Troubleshooting
@@ -174,22 +191,23 @@ If the CronJob is not creating jobs on schedule:
 1. Check that the cron schedule is valid:
 
    ```bash
-   kubectl -n nullify get cronjob k8s-collector -o jsonpath='{.spec.schedule}'
+   kubectl -n nullify get cronjob nullify-k8s-collector -o jsonpath='{.spec.schedule}'
    ```
 
 2. Check the CronJob status:
 
    ```bash
-   kubectl -n nullify describe cronjob k8s-collector
+   kubectl -n nullify describe cronjob nullify-k8s-collector
    ```
 
 ### Access Issues
 
 If the job is failing due to S3 access issues:
 
-1. Verify that the IAM role or credentials have the necessary permissions
-2. Check that the S3 bucket exists and is accessible
-3. Examine the job logs for detailed error messages
+1. `AccessDenied` on `kms:GenerateDataKey`: `collector.kms.keyArn`, and `NullifyKMSKeyArn` on the CloudFormation stack, must be the key ARN, not an alias.
+2. `AccessDenied` on `sts:AssumeRoleWithWebIdentity`: the service account must be `nullify/nullify-k8s-collector-sa`, and the integration's EKS OIDC provider URL must match the cluster.
+3. Wrong-region or redirect errors: `collector.aws.region` must be the Nullify bucket's region (leave it empty).
+4. Examine the job logs for detailed error messages.
 
 ### Debug Mode
 
@@ -204,7 +222,7 @@ To enable debug logging for troubleshooting:
 
 2. **Upgrade the deployment**:
    ```bash
-   helm upgrade nullify-collector nullify/nullify-k8s-collector -f values.yaml
+   helm upgrade nullify-k8s-collector nullify/nullify-k8s-collector -n nullify -f values.yaml
    ```
 
 3. **Check debug logs**:

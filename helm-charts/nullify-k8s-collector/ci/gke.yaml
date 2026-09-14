@@ -1,0 +1,16 @@
+# GKE install in the release namespace, with an explicit matching region.
+cloudProvider: gcp
+collector:
+  clusterName: example-gke-cluster
+  aws:
+    region: us-east-1
+  s3:
+    bucket: example-nullify-bucket
+  kms:
+    keyArn: arn:aws:kms:us-east-1:123456789012:key/00000000-0000-0000-0000-000000000000
+  gke:
+    awsRoleArn: arn:aws:iam::123456789012:role/NullifyK8sCollectorRole
+serviceAccount:
+  namespace: ""
+  annotations:
+    iam.gke.io/gcp-service-account: nullify-k8s-collector@example-project.iam.gserviceaccount.com
