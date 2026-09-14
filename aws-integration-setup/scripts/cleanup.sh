@@ -91,7 +91,7 @@ confirm() {
 
 require_aws_credentials() {
   local err
-  if ! err="$(aws sts get-caller-identity 2>&1 >/dev/null)"; then
+  if ! err="$({ aws sts get-caller-identity >/dev/null; } 2>&1)"; then
     echo -e "${RED}aws sts get-caller-identity failed, so no stack was checked or deleted: ${err}${NC}" >&2
     exit 1
   fi
@@ -108,7 +108,7 @@ stack_exists() {
   if [[ -n "$region" ]]; then
     args+=(--region "$region")
   fi
-  if err="$(aws cloudformation describe-stacks "${args[@]}" 2>&1 >/dev/null)"; then
+  if err="$({ aws cloudformation describe-stacks "${args[@]}" >/dev/null; } 2>&1)"; then
     return 0
   fi
   if [[ "$err" == *ValidationError* && "$err" == *"does not exist"* ]]; then

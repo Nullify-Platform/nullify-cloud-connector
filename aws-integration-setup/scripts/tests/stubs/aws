@@ -1,20 +1,51 @@
 #!/usr/bin/env bash
-# Fake AWS CLI for tests/setup-eks-managed-scan.bats. Appends every call to
-# $FAKE_AWS_LOG and answers from the FAKE_* environment variables the test sets.
+# Fake AWS CLI for the bats tests. Appends every call to $FAKE_AWS_LOG, keeps
+# publicAccessCidrs and the cluster tags as files under $FAKE_AWS_STATE so a
+# later run sees what an earlier one wrote, and answers the rest from the FAKE_*
+# environment variables the test sets.
 
 printf '%s\n' "$*" >>"$FAKE_AWS_LOG"
 
 query=""
+stack_name=""
+region=""
+tags_json=""
+vpc_config=""
+tag_keys=()
+in_tag_keys=false
 previous=""
 for arg in "$@"; do
-  if [[ "$previous" == --query ]]; then
-    query="$arg"
+  if [[ "$in_tag_keys" == true && "$arg" != --* ]]; then
+    tag_keys+=("$arg")
+    previous="$arg"
+    continue
+  fi
+  in_tag_keys=false
+  case "$previous" in
+    --query) query="$arg" ;;
+    --stack-name) stack_name="$arg" ;;
+    --region) region="$arg" ;;
+    --tags) tags_json="$arg" ;;
+    --resources-vpc-config) vpc_config="$arg" ;;
+  esac
+  if [[ "$arg" == --tag-keys ]]; then
+    in_tag_keys=true
   fi
   previous="$arg"
 done
 
+fail() {
+  echo "An error occurred ($1) when calling the $2 operation${3:+: $3}" >&2
+  exit 254
+}
+
+tags_dir="${FAKE_AWS_STATE:-/nonexistent}/tags"
+
 case "${1:-} ${2:-}" in
   "sts get-caller-identity")
+    if [[ "${FAKE_STS_FAILS:-false}" == true ]]; then
+      fail ExpiredToken GetCallerIdentity "The security token included in the request is expired"
+    fi
     if [[ "$query" == Arn ]]; then
       echo "arn:aws:iam::111122223333:user/operator"
     else
@@ -30,27 +61,90 @@ case "${1:-} ${2:-}" in
       cluster.resourcesVpcConfig.endpointPrivateAccess) echo "${FAKE_PRIVATE:-False}" ;;
       cluster.resourcesVpcConfig.publicAccessCidrs)
         if [[ "${FAKE_CIDRS_READ_FAILS:-false}" == true ]]; then
-          echo "An error occurred (AccessDeniedException) when calling the DescribeCluster operation" >&2
-          exit 254
+          fail AccessDeniedException DescribeCluster
         fi
-        printf '%s\n' "${FAKE_CIDRS:-None}" | tr ' ' '\t'
+        tr ' ' '\t' <"$FAKE_AWS_STATE/cidrs"
         ;;
-      cluster.tags.*) echo "${FAKE_TAG:-None}" ;;
+      "keys(cluster.tags"*)
+        keys=()
+        for file in "$tags_dir"/*; do
+          if [[ -f "$file" ]]; then
+            keys+=("${file##*/}")
+          fi
+        done
+        (
+          IFS=$'\t'
+          echo "${keys[*]}"
+        )
+        ;;
+      cluster.tags.*)
+        key="${query#cluster.tags.}"
+        key="${key#\"}"
+        key="${key%\"}"
+        if [[ -f "$tags_dir/$key" ]]; then
+          cat "$tags_dir/$key"
+          echo
+        else
+          echo None
+        fi
+        ;;
       *)
         echo "fake aws: unexpected describe-cluster query '$query'" >&2
         exit 99
         ;;
     esac
     ;;
-  "eks update-cluster-config") echo "update-1" ;;
+  "eks update-cluster-config")
+    case "${FAKE_UPDATE_STATUS:-Successful}" in
+      Failed | Cancelled) ;;
+      *)
+        pattern='"publicAccessCidrs":\[([^]]*)\]'
+        if [[ "$vpc_config" =~ $pattern ]]; then
+          list="${BASH_REMATCH[1]//\"/}"
+          printf '%s\n' "${list//,/ }" >"$FAKE_AWS_STATE/cidrs"
+        fi
+        ;;
+    esac
+    echo "update-1"
+    ;;
   "eks describe-update")
+    if [[ "${FAKE_DESCRIBE_UPDATE_FAILS:-false}" == true ]]; then
+      fail ExpiredTokenException DescribeUpdate "The security token included in the request is expired"
+    fi
     if [[ "$query" == update.status ]]; then
       echo "${FAKE_UPDATE_STATUS:-Successful}"
     else
       echo "[]"
     fi
     ;;
-  "eks tag-resource" | "eks untag-resource") ;;
+  "eks tag-resource")
+    rest="$tags_json"
+    pattern='"([^"]+)":"([^"]*)"'
+    while [[ "$rest" =~ $pattern ]]; do
+      if ((${#BASH_REMATCH[2]} > 256)); then
+        fail InvalidParameterException TagResource "tag value longer than 256 characters"
+      fi
+      printf '%s' "${BASH_REMATCH[2]}" >"$tags_dir/${BASH_REMATCH[1]}"
+      rest="${rest#*"${BASH_REMATCH[0]}"}"
+    done
+    ;;
+  "eks untag-resource")
+    for key in "${tag_keys[@]}"; do
+      rm -f "$tags_dir/$key"
+    done
+    ;;
+  "cloudformation describe-stacks")
+    if [[ "${FAKE_CFN_ALL_DENIED:-false}" == true ||
+      (-n "${FAKE_CFN_DENIED_REGION:-}" && "$region" == "$FAKE_CFN_DENIED_REGION") ]]; then
+      fail AccessDenied DescribeStacks "User is not authorized to perform: cloudformation:DescribeStacks"
+    fi
+    if [[ " ${FAKE_CFN_STACKS:-} " == *" ${stack_name}@${region} "* ]]; then
+      echo '{"Stacks":[]}'
+    else
+      fail ValidationError DescribeStacks "Stack with id ${stack_name} does not exist"
+    fi
+    ;;
+  "cloudformation delete-stack" | "cloudformation wait") ;;
   *)
     echo "fake aws: unexpected call: $*" >&2
     exit 99
