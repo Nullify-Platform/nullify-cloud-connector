@@ -1,4 +1,4 @@
-# expect: collector.kms.keyArn must be a KMS key ARN
+# expect: if it shows an alias, contact Nullify
 collector:
   clusterName: example-eks-cluster
   s3:
