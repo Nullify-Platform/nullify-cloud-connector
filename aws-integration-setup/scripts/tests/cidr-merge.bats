@@ -119,6 +119,75 @@ word_count() {
   [ "$output" = "18.157.227.250/32" ]
 }
 
+@test "intersect keeps only entries present in both, in the first list's order" {
+  run cidr_intersect "18.157.227.250/32 198.51.100.7/32 18.198.60.231/32" "203.0.113.0/24 18.198.60.231/32 18.157.227.250/32"
+  [ "$status" -eq 0 ]
+  [ "$output" = "18.157.227.250/32 18.198.60.231/32" ]
+}
+
+@test "intersect is literal: 0.0.0.0/0 does not contain a /32" {
+  run cidr_intersect "18.198.60.231/32" "0.0.0.0/0"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "difference drops entries present in the second list and may be empty" {
+  run cidr_difference "18.198.60.231/32 198.51.100.7/32" "18.198.60.231/32"
+  [ "$status" -eq 0 ]
+  [ "$output" = "198.51.100.7/32" ]
+  run cidr_difference "18.198.60.231/32" "18.198.60.231/32"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "tag part matches the base key and numbered continuations only" {
+  local key
+  for key in nullify-added-cidrs nullify-added-cidrs-2 nullify-added-cidrs-10; do
+    run cidr_tag_is_part nullify-added-cidrs "$key"
+    [ "$status" -eq 0 ]
+  done
+  for key in nullify-added-cidrs-1 nullify-added-cidrs-0 nullify-added-cidrs-x nullify-added-cidrsx nullify-pending-cidrs Name; do
+    run cidr_tag_is_part nullify-added-cidrs "$key"
+    [ "$status" -ne 0 ]
+  done
+}
+
+@test "tag part key is the base for the first chunk and numbered after it" {
+  run cidr_tag_part_key nullify-added-cidrs 1
+  [ "$output" = "nullify-added-cidrs" ]
+  run cidr_tag_part_key nullify-added-cidrs 2
+  [ "$output" = "nullify-added-cidrs-2" ]
+  run cidr_tag_is_part nullify-added-cidrs "$(cidr_tag_part_key nullify-added-cidrs 12)"
+  [ "$status" -eq 0 ]
+}
+
+@test "tag chunks keep a short list in one chunk" {
+  run cidr_tag_chunks "$NULLIFY_EU" 256
+  [ "$status" -eq 0 ]
+  [ "$output" = "$NULLIFY_EU" ]
+}
+
+@test "tag chunks split a long list without splitting a CIDR or exceeding the limit" {
+  local list="" i line joined=""
+  for ((i = 100; i < 140; i++)); do
+    list="${list:+$list }203.0.${i}.255/32"
+  done
+  run cidr_tag_chunks "$list" 256
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -gt 1 ]
+  for line in "${lines[@]}"; do
+    [ "${#line}" -le 256 ]
+    joined="${joined:+$joined }$line"
+  done
+  [ "$joined" = "$list" ]
+}
+
+@test "tag chunks of an empty list print nothing" {
+  run cidr_tag_chunks "" 256
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
 @test "json array renders a list" {
   run cidr_json_array "18.198.60.231/32 203.0.113.0/24"
   [ "$status" -eq 0 ]

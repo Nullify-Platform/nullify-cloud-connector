@@ -133,6 +133,92 @@ cidr_union() {
   echo "${result[*]:-}"
 }
 
+# cidr_intersect A B
+# Prints the entries of A that are literally present in B, in A's order.
+cidr_intersect() {
+  local cidr
+  local -a first second result
+  read -r -a first <<< "$(cidr_normalise "${1:-}")"
+  read -r -a second <<< "$(cidr_normalise "${2:-}")"
+  result=()
+  for cidr in ${first[@]+"${first[@]}"}; do
+    if cidr_list_contains "$cidr" ${second[@]+"${second[@]}"}; then
+      result+=("$cidr")
+    fi
+  done
+  echo "${result[*]:-}"
+}
+
+# cidr_difference A B
+# Prints the entries of A that are not literally present in B, in A's order.
+# Unlike cidr_remove, an empty result is allowed.
+cidr_difference() {
+  local cidr
+  local -a first second result
+  read -r -a first <<< "$(cidr_normalise "${1:-}")"
+  read -r -a second <<< "$(cidr_normalise "${2:-}")"
+  result=()
+  for cidr in ${first[@]+"${first[@]}"}; do
+    if ! cidr_list_contains "$cidr" ${second[@]+"${second[@]}"}; then
+      result+=("$cidr")
+    fi
+  done
+  echo "${result[*]:-}"
+}
+
+# cidr_tag_is_part BASE KEY
+# Succeeds when KEY is BASE or a numbered continuation of it (BASE-2, BASE-3, ...).
+cidr_tag_is_part() {
+  local base="${1:-}" key="${2:-}" suffix part_number='^([2-9]|[1-9][0-9]+)$'
+  if [[ -z "$base" ]]; then
+    return 1
+  fi
+  if [[ "$key" == "$base" ]]; then
+    return 0
+  fi
+  suffix="${key#"$base"-}"
+  [[ "$suffix" != "$key" && "$suffix" =~ $part_number ]]
+}
+
+# cidr_tag_part_key BASE INDEX
+# Prints the tag key holding chunk INDEX (1-based) of a list stored under BASE:
+# BASE for the first chunk, BASE-INDEX for the rest.
+cidr_tag_part_key() {
+  if (( ${2:-1} <= 1 )); then
+    echo "$1"
+  else
+    echo "$1-$2"
+  fi
+}
+
+# cidr_tag_chunks LIST MAX_LENGTH
+# Prints LIST as space-separated chunks of at most MAX_LENGTH characters, one
+# chunk per line and no CIDR split across chunks, so a list longer than one EKS
+# tag value (256 characters) can be stored as BASE, BASE-2, ... Prints nothing
+# for an empty list. Returns 5 when a single entry is longer than MAX_LENGTH.
+cidr_tag_chunks() {
+  local max="${2:-256}" cidr chunk=""
+  local -a items
+  read -r -a items <<< "$(cidr_normalise "${1:-}")"
+  for cidr in ${items[@]+"${items[@]}"}; do
+    if (( ${#cidr} > max )); then
+      echo "entry longer than $max characters: $cidr" >&2
+      return 5
+    fi
+    if [[ -z "$chunk" ]]; then
+      chunk="$cidr"
+    elif (( ${#chunk} + 1 + ${#cidr} <= max )); then
+      chunk="$chunk $cidr"
+    else
+      echo "$chunk"
+      chunk="$cidr"
+    fi
+  done
+  if [[ -n "$chunk" ]]; then
+    echo "$chunk"
+  fi
+}
+
 # cidr_remove CURRENT RECORDED
 # Prints CURRENT without the entries in RECORDED (the CIDRs this tooling added).
 # Returns 4, printing nothing on stdout, when the result would be empty: an
