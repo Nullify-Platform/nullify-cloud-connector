@@ -1,0 +1,75 @@
+name: CloudFormation validate
+
+# Lints the customer-facing CloudFormation templates and AWS setup scripts, and
+# unit-tests the publicAccessCidrs merge helpers, so a broken template or script
+# is caught in CI rather than in a customer account.
+
+on:
+  pull_request:
+    paths:
+      - "aws-integration-setup/cloudformation/**"
+      - "aws-integration-setup/scripts/**"
+      - ".github/workflows/cloudformation-validate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "aws-integration-setup/cloudformation/**"
+      - "aws-integration-setup/scripts/**"
+      - ".github/workflows/cloudformation-validate.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  cfn-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install cfn-lint
+        run: pip install "cfn-lint==1.56.3"
+
+      - name: cfn-lint
+        run: |
+          cfn-lint \
+            aws-integration-setup/cloudformation/nullify-cloudformation-template.json \
+            aws-integration-setup/cloudformation/nullify-eks-managed-scan-access.json \
+            --non-zero-exit-code error \
+            --regions ap-southeast-2 eu-central-1 us-east-1 us-east-2
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y shellcheck >/dev/null
+
+      - name: shellcheck new managed EKS scan scripts (all severities)
+        run: |
+          shellcheck -x \
+            aws-integration-setup/scripts/setup-eks-managed-scan.sh \
+            aws-integration-setup/scripts/lib/cidr-merge.sh
+
+      - name: shellcheck all AWS setup scripts (warnings and errors)
+        run: shellcheck -x --severity=warning aws-integration-setup/scripts/*.sh
+
+  bats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y bats >/dev/null
+
+      - name: bats
+        run: bats aws-integration-setup/scripts/tests
