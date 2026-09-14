@@ -1,0 +1,2 @@
+# expect: must not start with "system:"
+groupName: system:authenticated

@@ -7,6 +7,7 @@ on:
       - "manifests/**"
       - "scripts/publish-helm-repo.sh"
       - "scripts/test-helm-charts.sh"
+      - "scripts/check-rbac-manifest.sh"
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   push:
@@ -16,6 +17,7 @@ on:
       - "manifests/**"
       - "scripts/publish-helm-repo.sh"
       - "scripts/test-helm-charts.sh"
+      - "scripts/check-rbac-manifest.sh"
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   workflow_dispatch:
@@ -79,9 +81,21 @@ jobs:
           echo "Versions a merge would newly publish:"
           cat published.txt
 
+  rbac-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Raw manifest matches the chart's default render
+        run: scripts/check-rbac-manifest.sh
+
   release:
     if: github.event_name != 'pull_request'
-    needs: validate
+    needs: [validate, rbac-manifest]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1,0 +1,23 @@
+Nullify read-only access installed.
+
+  ClusterRole:        {{ .Values.clusterRoleName }} (verb: list)
+  ClusterRoleBinding: {{ .Values.clusterRoleBindingName }} -> Group "{{ .Values.groupName }}"
+  Secrets list:       {{ .Values.grantSecretsRead }}
+  ConfigMaps list:    {{ .Values.grantConfigMapsRead }}
+{{- if or (not .Values.grantSecretsRead) (not .Values.grantConfigMapsRead) }}
+
+WARNING: Nullify's managed EKS scan currently fails the whole cluster when Secrets or
+ConfigMaps cannot be listed. Leave both enabled unless Nullify has confirmed support.
+{{- end }}
+
+Next steps:
+  1. Map the Nullify integration role to group "{{ .Values.groupName }}" (no access policy):
+       aws eks create-access-entry --cluster-name <cluster> --region <region> \
+         --principal-arn arn:aws:iam::<account-id>:role/AWSIntegration-<CustomerName>-NullifyReadOnlyRole \
+         --type STANDARD --kubernetes-groups {{ .Values.groupName }}
+  2. Allow Nullify's egress IP addresses on the cluster's public API endpoint.
+  3. Verify the group's RBAC (a group can only be impersonated together with a user):
+       kubectl auth can-i list secrets --all-namespaces --as nullify-verify --as-group {{ .Values.groupName }}
+       kubectl auth can-i get pods --all-namespaces --as nullify-verify --as-group {{ .Values.groupName }}   # expect: no
+
+See https://github.com/Nullify-Platform/nullify-cloud-connector/blob/main/helm-charts/nullify-k8s-readonly-access/README.md

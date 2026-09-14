@@ -1,0 +1,66 @@
+# Nullify managed EKS scan: read-only Kubernetes access (list only).
+#
+# This is the default render of helm-charts/nullify-k8s-readonly-access without
+# Helm's bookkeeping labels; CI (scripts/check-rbac-manifest.sh) fails if the two
+# drift apart. Install a tagged copy, never main:
+#   kubectl apply -f https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/nullify-k8s-readonly-access-v0.1.0/manifests/nullify-readonly-rbac.yaml
+#
+# The group name below MUST match --kubernetes-groups on your EKS access entry.
+# Removing "secrets" or "configmaps" currently makes Nullify's scan of this cluster fail.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nullify-readonly
+  labels:
+    app.kubernetes.io/name: nullify-k8s-readonly-access
+    app.kubernetes.io/part-of: nullify
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - namespaces
+      - pods
+      - services
+      - persistentvolumeclaims
+      - persistentvolumes
+      - resourcequotas
+      - limitranges
+      - serviceaccounts
+      - configmaps
+      - secrets
+    verbs: ["list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
+    verbs: ["list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["list"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources:
+      - validatingwebhookconfigurations
+      - mutatingwebhookconfigurations
+      - validatingadmissionpolicies
+      - validatingadmissionpolicybindings
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nullify-readonly
+  labels:
+    app.kubernetes.io/name: nullify-k8s-readonly-access
+    app.kubernetes.io/part-of: nullify
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nullify-readonly
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: "nullify-readonly"
