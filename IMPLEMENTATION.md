@@ -120,16 +120,17 @@ serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::YOUR-ACCOUNT:role/AWSIntegration-mycompany-NullifyReadOnlyRole
 
-aws:
-  region: "us-east-1"
-  s3Bucket: "mycompany-nullify-k8s-collector"
-  
 collector:
+  clusterName: "my-eks-cluster"                  # exact EKS cluster name
+  s3:
+    bucket: "nullify-bucket-from-configure-page"
+  kms:
+    keyArn: "arn:aws:kms:<region>:<account-id>:key/<key-id>"   # key ARN, not an alias
+  # aws.region defaults to the key's region, which is the Nullify bucket's region
   schedule: "0 0 * * *"  # Daily at midnight
-  dataCollection:
-    excludeNamespaces: "kube-system,kube-public"
-    metadataOnly: true
 ```
+
+The IRSA role comes from the connector's EKS integration (CloudFormation `EnableEKSIntegration=true`, or Terraform `enable_kubernetes_integration`), which trusts `system:serviceaccount:nullify:nullify-k8s-collector-sa`.
 
 ## Production Deployment Checklist
 
