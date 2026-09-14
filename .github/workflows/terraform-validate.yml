@@ -32,8 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # AWS rows run the declared floor (Terraform 1.5); the v6
-        # multi-cluster example uses ephemeral resources, which need 1.10.
+        # AWS rows run the declared floor (Terraform 1.5); examples that use
+        # ephemeral resources (v6 multi-cluster, v6 managed-scan) need 1.10.
         include:
           - directory: gcp-integration-setup/terraform
             terraform: 1.9.5
@@ -49,12 +49,20 @@ jobs:
             terraform: 1.5.7
           - directory: aws-integration-setup/terraform/examples/multi-cluster-complete
             terraform: 1.5.7
+          - directory: aws-integration-setup/terraform/examples/managed-scan
+            terraform: 1.5.7
+          - directory: aws-integration-setup/terraform/modules/eks-managed-scan-access
+            terraform: 1.5.7
           - directory: aws-integration-setup/terraform-v6
             terraform: 1.5.7
           - directory: aws-integration-setup/terraform-v6/examples/basic
             terraform: 1.5.7
           - directory: aws-integration-setup/terraform-v6/examples/multi-cluster-complete
             terraform: 1.10.5
+          - directory: aws-integration-setup/terraform-v6/examples/managed-scan
+            terraform: 1.10.5
+          - directory: aws-integration-setup/terraform-v6/modules/eks-managed-scan-access
+            terraform: 1.5.7
           - directory: azure-integration-setup/terraform
             terraform: 1.9.5
           - directory: azure-integration-setup/terraform/examples/management-group
@@ -80,6 +88,41 @@ jobs:
       - name: terraform validate
         working-directory: ${{ matrix.directory }}
         run: terraform validate
+
+  # Module logic (preconditions, checks, RBAC rules, KMS grants) against mocked
+  # providers. mock_provider needs Terraform 1.7+; no cloud credentials are used.
+  terraform-test:
+    name: terraform test (${{ matrix.directory }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - aws-integration-setup/terraform/modules/eks-managed-scan-access
+          - aws-integration-setup/terraform/modules/k8s-resources
+          - aws-integration-setup/terraform/modules/nullify-aws-integration
+          - aws-integration-setup/terraform-v6/modules/eks-managed-scan-access
+          - aws-integration-setup/terraform-v6/modules/k8s-resources
+          - aws-integration-setup/terraform-v6/modules/nullify-aws-integration
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+
+      - name: terraform fmt -check (including test files)
+        working-directory: ${{ matrix.directory }}
+        run: terraform fmt -check -recursive
+
+      - name: terraform init -backend=false
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
+
+      - name: terraform test
+        working-directory: ${{ matrix.directory }}
+        run: terraform test
 
   shellcheck:
     runs-on: ubuntu-latest
