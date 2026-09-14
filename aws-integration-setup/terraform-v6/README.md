@@ -92,7 +92,7 @@ module "nullify_eks_access" {
 }
 ```
 
-The default `authorization = "rbac"` needs the list-only `nullify-readonly` ClusterRole on each cluster (`k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true`, or the `nullify-k8s-readonly-access` Helm chart). `admin_view_policy` is a warned opt-in; see `../terraform/README.md`.
+The default `authorization = "rbac"` needs the list-only `nullify-readonly` ClusterRole on each cluster: apply it with `k8s-resources` (`enable_collector = false, enable_managed_scan_rbac = true`), or with any equivalent manifest of your own. `admin_view_policy` is a warned opt-in. The clusters must already exist when you plan; see `../terraform/README.md`.
 
 ## Required Variables
 
@@ -114,7 +114,9 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `tags`: Resource tags
 - `cronjob_schedule`: Deprecated and unused here; set the schedule on `k8s-resources`
 
-`k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0`. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
+`k8s-resources` requires `cluster_name` whenever `enable_collector` is true, and it must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory.
+
+`k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, the same build as the `k8s-collector-latest` tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
 
 ## Validation
 

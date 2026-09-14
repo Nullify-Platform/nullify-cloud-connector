@@ -201,6 +201,11 @@ run "admin_view_policy_is_cluster_scoped_and_warns" {
     condition     = output.kubernetes_group_name == null
     error_message = "admin_view_policy binds no Kubernetes group"
   }
+
+  assert {
+    condition     = length(aws_eks_access_entry.nullify["arn:aws:eks:eu-west-1:123456789012:cluster/prod"].kubernetes_groups) == 0
+    error_message = "admin_view_policy must clear kubernetes_groups on the entry itself: the attribute is Optional+Computed, so null keeps whatever is in state"
+  }
 }
 
 run "view_policy_is_not_offered" {

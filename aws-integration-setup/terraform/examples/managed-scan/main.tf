@@ -61,7 +61,7 @@ module "eks_managed_scan_access" {
 
 # Creating the ClusterRole needs rights to grant every permission in it, which
 # in practice means cluster-admin. Set manage_rbac = false when Helm, Flux or
-# Argo CD applies the nullify-k8s-readonly-access chart instead.
+# Argo CD applies the nullify-readonly ClusterRole instead.
 module "k8s_resources" {
   source = "../../modules/k8s-resources"
   count  = var.authorization == "rbac" && var.manage_rbac ? 1 : 0

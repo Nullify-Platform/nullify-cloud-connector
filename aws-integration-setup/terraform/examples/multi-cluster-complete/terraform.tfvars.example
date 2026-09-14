@@ -42,7 +42,7 @@ kubernetes_namespace = "nullify"
 cronjob_schedule = "0 0 * * *"
 
 # Collector image (defaults to a pinned tag of Nullify's ECR Public image)
-# collector_image = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0"
+# collector_image = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
 
 # Tags to apply to all AWS resources
 tags = {

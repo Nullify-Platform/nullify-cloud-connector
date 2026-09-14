@@ -35,7 +35,7 @@ run "kms_alias_grants_the_alias_and_key_wildcard" {
   }
 }
 
-run "kms_multi_region_key_is_accepted" {
+run "kms_key_arn_grants_only_that_key" {
   command = plan
 
   variables {
@@ -43,8 +43,8 @@ run "kms_multi_region_key_is_accepted" {
   }
 
   assert {
-    condition     = contains(output.kms_policy_resources, "arn:aws:kms:us-east-2:111122223333:key/*")
-    error_message = "A key ARN must also grant key/* in the same account and region"
+    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:111122223333:key/mrk-1234abcd12ab34cd56ef1234567890ab"])
+    error_message = "A key ARN resolves in IAM on its own: only an alias ARN needs key/*"
   }
 }
 

@@ -159,6 +159,13 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
     }
   }
 
+  lifecycle {
+    precondition {
+      condition     = var.cluster_name != ""
+      error_message = "cluster_name is required when enable_collector is true: the collector uploads to <prefix>/k8s-collector/<cluster_name>-data.json, so collectors without a name all overwrite the same k8s-collector/default-name-data.json object."
+    }
+  }
+
   spec {
     schedule                      = var.cronjob_schedule
     concurrency_policy            = "Forbid"
@@ -191,6 +198,11 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
             container {
               name  = "k8s-collector"
               image = var.collector_image
+
+              env {
+                name  = "CLUSTER_NAME"
+                value = var.cluster_name
+              }
 
               env {
                 name  = "NULLIFY_S3_BUCKET_NAME"

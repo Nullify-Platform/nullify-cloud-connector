@@ -102,6 +102,7 @@ module "k8s_resources_primary" {
     kubernetes = kubernetes.primary
   }
   iam_role_arn         = module.nullify_aws_integration.role_arn
+  cluster_name         = local.primary_name
   s3_bucket_name       = local.collector_upload_target
   kms_key_arn          = var.kms_key_arn
   aws_region           = var.aws_region
@@ -119,6 +120,7 @@ module "k8s_resources_secondary" {
     kubernetes = kubernetes.secondary
   }
   iam_role_arn         = module.nullify_aws_integration.role_arn
+  cluster_name         = local.secondary_name
   s3_bucket_name       = local.collector_upload_target
   kms_key_arn          = var.kms_key_arn
   aws_region           = var.aws_region
