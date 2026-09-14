@@ -76,6 +76,28 @@ output_has() {
   output_has "Nothing to clean up"
 }
 
+@test "--region is used to check, delete and wait for the main stack" {
+  FAKE_CFN_STACKS="nullify-integration@eu-west-1"
+  run_cleanup --region eu-west-1
+  [ "$status" -eq 0 ]
+  called 'cloudformation describe-stacks --stack-name nullify-integration --region eu-west-1'
+  called 'cloudformation delete-stack --region eu-west-1 --stack-name nullify-integration'
+  called 'cloudformation wait stack-delete-complete --region eu-west-1 --stack-name nullify-integration'
+  output_has "Cleanup complete"
+}
+
+@test "a main stack not found names the region that was checked" {
+  FAKE_CFN_STACKS="nullify-integration@eu-west-1"
+  run_cleanup --region us-east-1
+  [ "$status" -eq 0 ]
+  not_called 'cloudformation delete-stack'
+  output_has "not found in us-east-1"
+
+  run_cleanup
+  [ "$status" -eq 0 ]
+  output_has "not found in the AWS CLI's configured region"
+}
+
 @test "only a does-not-exist error reads as a missing stack, and the rest are still deleted" {
   FAKE_CFN_STACKS="nullify-eks-managed-scan-access@us-east-1"
   run_cleanup --eks-access-regions eu-west-1,us-east-1
