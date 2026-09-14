@@ -63,6 +63,22 @@ jobs:
       - name: Lint and render
         run: scripts/test-helm-charts.sh "${{ matrix.chart }}"
 
+  publish-dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Build the Helm repository without deploying it
+        run: |
+          scripts/publish-helm-repo.sh _site
+          echo "Versions a merge would newly publish:"
+          cat published.txt
+
   release:
     if: github.event_name != 'pull_request'
     needs: validate
