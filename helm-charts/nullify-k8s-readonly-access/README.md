@@ -9,7 +9,7 @@ The chart installs exactly two cluster-scoped objects:
 
 | Object | Name (default) | Grants |
 |---|---|---|
-| ClusterRole | `nullify-readonly` | `list` on the 26 kinds below. No `get`, `watch`, exec, logs, proxy, custom resources or writes. |
+| ClusterRole | `nullify-readonly` | `list` on the 26 kinds below, and `get` on the `/version` URL. No `get` or `watch` on resources, exec, logs, proxy, custom resources or writes. |
 | ClusterRoleBinding | `nullify-readonly` | Binds the ClusterRole to Group `nullify-readonly` |
 
 | API group | Kinds (verb `list`) |
@@ -21,10 +21,12 @@ The chart installs exactly two cluster-scoped objects:
 | `rbac.authorization.k8s.io` | roles, rolebindings, clusterroles, clusterrolebindings |
 | `admissionregistration.k8s.io` | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
-These are exactly the lists the scanner makes. It also reads `/version`, which
-every authenticated principal can read through the default
-`system:public-info-viewer` binding. Clusters older than 1.30 do not serve
-ValidatingAdmissionPolicies; the rule is harmless there, and the scanner skips that kind.
+These are exactly the lists the scanner makes. It also reads `/version`. The
+default `system:public-info-viewer` binding usually allows that, but hardened
+clusters sometimes remove it, and a denied `/version` fails the whole scan, so
+the ClusterRole grants `get` on `/version` itself. Clusters older than 1.30 do
+not serve ValidatingAdmissionPolicies; the rule is harmless there, and the
+scanner skips that kind.
 
 The scan runs every namespace and fails the whole cluster if any of these lists
 is denied, so the binding has to be cluster-wide.
@@ -149,15 +151,41 @@ Pin a tag, never `main`:
 kubectl apply -f https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/nullify-k8s-readonly-access-v0.1.0/manifests/nullify-readonly-rbac.yaml
 ```
 
-To move from the manifest to Helm later, delete the two objects first
-(`kubectl delete clusterrolebinding,clusterrole nullify-readonly`); Helm refuses
-to adopt objects it did not create. Scans fail until the chart is installed.
+To move from the manifest to Helm later, let Helm adopt the two objects instead
+of deleting them, so scans keep working. Helm 3.2 and later adopts an existing
+object that carries its release's ownership metadata; without it, the install
+fails with `invalid ownership metadata`:
+
+```bash
+kubectl label clusterrole/nullify-readonly clusterrolebinding/nullify-readonly \
+  app.kubernetes.io/managed-by=Helm --overwrite
+kubectl annotate clusterrole/nullify-readonly clusterrolebinding/nullify-readonly \
+  meta.helm.sh/release-name=nullify-k8s-readonly-access \
+  meta.helm.sh/release-namespace=default --overwrite
+```
+
+Then run the Helm install above with the same release name and namespace. If a
+Flux Kustomization applied the manifest, remove it with `prune: false` first, or
+it deletes the objects Helm just adopted.
 
 ## 3. Allow Nullify on the API endpoint
 
 Add Nullify's egress IP addresses for your Nullify region to the cluster's
-public access CIDRs. `publicAccessCidrs` **replaces** the list, so merge with
-the current value, and the list holds at most 40 CIDRs.
+public access CIDRs. The region is where your Nullify tenant runs, not where the
+cluster runs.
+
+| Nullify region | Egress IPs |
+|---|---|
+| `ap-southeast-2` | `13.55.32.104/32`, `3.105.146.106/32`, `13.211.99.100/32` |
+| `eu-central-1` | `18.198.60.231/32`, `18.157.227.250/32`, `18.185.152.197/32` |
+| `us-east-2` | `52.15.146.50/32`, `16.58.40.80/32`, `3.133.15.210/32` |
+
+Nullify will also serve this list from an API endpoint; until then this table is
+the source of truth.
+
+`publicAccessCidrs` **replaces** the list, so merge with the current value, and
+the list holds at most 40 CIDRs. If the current value is `0.0.0.0/0`, the
+endpoint is already open to Nullify.
 
 ```bash
 aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
@@ -229,8 +257,8 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 | `clusterRoleBindingName` | `nullify-readonly` | ClusterRoleBinding name |
 | `grantSecretsRead` | `true` | Include `secrets`. Required by the scan today. |
 | `grantConfigMapsRead` | `true` | Include `configmaps`. Required by the scan today. |
-| `extraSubjects` | `[]` | Extra binding subjects; `system:` groups are rejected |
-| `extraRules` | `[]` | Extra ClusterRole rules; only `get`, `list` and `watch` verbs are accepted |
+| `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
+| `extraRules` | `[]` | Extra ClusterRole rules. Only `get`, `list` and `watch`; no wildcard `apiGroups` or `resources`; no `exec`, `attach`, `portforward`, `proxy` or `log` subresources; `nonResourceURLs` only `/version`. |
 | `labels` | `{}` | Labels added to both objects |
 | `annotations` | `{}` | Annotations added to both objects |
 
