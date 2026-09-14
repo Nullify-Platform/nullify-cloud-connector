@@ -143,6 +143,8 @@ terraform init && terraform apply
 
 IAM ignores alias ARNs in a policy's `Resource`, so the KMS policy grants the ARN you pass and `arn:aws:kms:<region>:<account>:key/*` in the same Nullify account and region. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. The `kms_policy_resources` module output lists both resources.
 
+`k8s-resources` takes the same variable but writes no IAM policy: it forwards the value to the collector as `NULLIFY_KMS_KEY_ARN`, which S3 takes as `SSEKMSKeyId`. It therefore accepts every form S3 does, including a bare key ID or `alias/<name>`, in any partition.
+
 ## Module Usage
 
 ### AWS Integration Only
