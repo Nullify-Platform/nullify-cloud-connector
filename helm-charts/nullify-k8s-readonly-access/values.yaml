@@ -27,9 +27,9 @@ extraSubjects: []
 #    name: nullify-scanner
 
 # Extra rules appended verbatim to the ClusterRole. Only the get, list and watch
-# verbs are accepted. Wildcard apiGroups or resources, the exec, attach,
-# portforward, proxy and log subresources, and nonResourceURLs other than
-# /version are rejected.
+# verbs are accepted. Wildcard apiGroups or resources, every subresource other
+# than status and scale (exec, log and proxy, and CRD subresources such as a
+# VM console or vnc), and nonResourceURLs other than /version are rejected.
 extraRules: []
 #  - apiGroups: ["batch"]
 #    resources: ["jobs", "cronjobs"]

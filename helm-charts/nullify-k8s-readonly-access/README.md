@@ -157,16 +157,26 @@ object that carries its release's ownership metadata; without it, the install
 fails with `invalid ownership metadata`:
 
 ```bash
+# Helm CLI install above: the release name and --namespace.
+export RELEASE_NAME=nullify-k8s-readonly-access RELEASE_NAMESPACE=default
+# Flux HelmRelease above: spec.releaseName (default [<spec.targetNamespace>-]<metadata.name>)
+# and spec.storageNamespace (default metadata.namespace), here:
+# export RELEASE_NAME=nullify-k8s-readonly-access RELEASE_NAMESPACE=flux-system
+
 kubectl label clusterrole/nullify-readonly clusterrolebinding/nullify-readonly \
   app.kubernetes.io/managed-by=Helm --overwrite
 kubectl annotate clusterrole/nullify-readonly clusterrolebinding/nullify-readonly \
-  meta.helm.sh/release-name=nullify-k8s-readonly-access \
-  meta.helm.sh/release-namespace=default --overwrite
+  meta.helm.sh/release-name="$RELEASE_NAME" \
+  meta.helm.sh/release-namespace="$RELEASE_NAMESPACE" --overwrite
 ```
 
-Then run the Helm install above with the same release name and namespace. If a
-Flux Kustomization applied the manifest, remove it with `prune: false` first, or
-it deletes the objects Helm just adopted.
+`meta.helm.sh/release-namespace` must be the namespace Helm stores the release
+in, not a namespace the objects live in (both are cluster-scoped). A mismatch
+fails the install or reconcile with `invalid ownership metadata`.
+
+Then install with that release name and namespace. If a Flux Kustomization
+applied the manifest, remove it with `prune: false` first, or it deletes the
+objects Helm just adopted.
 
 ## 3. Allow Nullify on the API endpoint
 
@@ -258,7 +268,7 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 | `grantSecretsRead` | `true` | Include `secrets`. Required by the scan today. |
 | `grantConfigMapsRead` | `true` | Include `configmaps`. Required by the scan today. |
 | `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
-| `extraRules` | `[]` | Extra ClusterRole rules. Only `get`, `list` and `watch`; no wildcard `apiGroups` or `resources`; no `exec`, `attach`, `portforward`, `proxy` or `log` subresources; `nonResourceURLs` only `/version`. |
+| `extraRules` | `[]` | Extra ClusterRole rules. Only `get`, `list` and `watch`; no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); `nonResourceURLs` only `/version`. |
 | `labels` | `{}` | Labels added to both objects |
 | `annotations` | `{}` | Annotations added to both objects |
 

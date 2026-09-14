@@ -10,17 +10,25 @@ app.kubernetes.io/part-of: nullify
 {{- end }}
 
 {{/*
+groupName as rendered and validated: trimmed of surrounding whitespace.
+*/}}
+{{- define "nullify-readonly.groupName" -}}
+{{- trim (toString (required "groupName is required" .Values.groupName)) -}}
+{{- end }}
+
+{{/*
 Rejects values that would widen the grant beyond read-only configuration access
 for the intended subjects:
 - any subject named "system:..." (for example system:authenticated or
   system:anonymous), whatever its kind, compared trimmed and case-insensitively;
 - ServiceAccounts in Kubernetes control-plane namespaces;
 - extraRules verbs other than get, list and watch; wildcard apiGroups or
-  resources; the exec, attach, portforward, proxy and log subresources; and
-  nonResourceURLs other than /version.
+  resources; any subresource other than status and scale (for example exec,
+  log, proxy, or a CRD's console or vnc); and nonResourceURLs other than
+  /version.
 */}}
 {{- define "nullify-readonly.validate" -}}
-{{- $group := trim (toString (required "groupName is required" .Values.groupName)) -}}
+{{- $group := include "nullify-readonly.groupName" . -}}
 {{- if not $group -}}
 {{- fail "groupName is required" -}}
 {{- end -}}
@@ -43,7 +51,7 @@ for the intended subjects:
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- $blockedSubresources := list "exec" "attach" "portforward" "proxy" "log" -}}
+{{- $allowedSubresources := list "status" "scale" -}}
 {{- range .Values.extraRules -}}
 {{- range .verbs -}}
 {{- if not (has (toString .) (list "get" "list" "watch")) -}}
@@ -58,8 +66,9 @@ for the intended subjects:
 {{- range .resources -}}
 {{- $resource := lower (trim (toString .)) -}}
 {{- $parts := splitList "/" $resource -}}
-{{- if or (contains "*" $resource) (and (gt (len $parts) 1) (has (last $parts) $blockedSubresources)) -}}
-{{- fail (printf "extraRules resource %q is not allowed: wildcards and the exec, attach, portforward, proxy and log subresources reach beyond read-only configuration" (toString .)) -}}
+{{- $allowedSubresource := and (eq (len $parts) 2) (has (last $parts) $allowedSubresources) -}}
+{{- if or (contains "*" $resource) (and (gt (len $parts) 1) (not $allowedSubresource)) -}}
+{{- fail (printf "extraRules resource %q is not allowed: wildcards and subresources other than status and scale reach beyond read-only configuration" (toString .)) -}}
 {{- end -}}
 {{- end -}}
 {{- range .nonResourceURLs -}}
