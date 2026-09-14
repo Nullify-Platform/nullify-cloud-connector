@@ -117,7 +117,12 @@ case $METHOD in
       echo -e "${YELLOW}Access entries created by setup-eks-managed-scan.sh need its 'remove' action.${NC}"
     fi
 
-    if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" &>/dev/null 2>&1; then
+    MAIN_STACK_EXISTS=true
+    if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" &>/dev/null; then
+      MAIN_STACK_EXISTS=false
+    fi
+
+    if [[ "$MAIN_STACK_EXISTS" != true && -z "$EKS_ACCESS_REGIONS" ]]; then
       echo -e "${YELLOW}Stack '${STACK_NAME}' not found. Nothing to clean up.${NC}"
       exit 0
     fi
@@ -128,15 +133,19 @@ case $METHOD in
       delete_eks_access_stacks
     fi
 
-    echo -e "${BLUE}Deleting stack...${NC}"
-    aws cloudformation delete-stack --stack-name "$STACK_NAME"
-
-    echo -e "${BLUE}Waiting for stack deletion to complete...${NC}"
-    if aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" 2>/dev/null; then
-      echo -e "${GREEN}Stack '${STACK_NAME}' deleted successfully.${NC}"
+    if [[ "$MAIN_STACK_EXISTS" != true ]]; then
+      echo -e "${YELLOW}Stack '${STACK_NAME}' not found; only the EKS access stacks were removed.${NC}"
     else
-      echo -e "${RED}Stack deletion failed or timed out. Check the AWS Console for details.${NC}"
-      exit 1
+      echo -e "${BLUE}Deleting stack...${NC}"
+      aws cloudformation delete-stack --stack-name "$STACK_NAME"
+
+      echo -e "${BLUE}Waiting for stack deletion to complete...${NC}"
+      if aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" 2>/dev/null; then
+        echo -e "${GREEN}Stack '${STACK_NAME}' deleted successfully.${NC}"
+      else
+        echo -e "${RED}Stack deletion failed or timed out. Check the AWS Console for details.${NC}"
+        exit 1
+      fi
     fi
     ;;
 
