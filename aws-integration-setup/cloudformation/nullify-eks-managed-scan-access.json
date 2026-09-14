@@ -117,23 +117,12 @@
     ]
   },
   "Outputs": {
-    "Fn::ForEach::NullifyEKSAccessEntryArns": [
-      "Cluster",
-      {
-        "Ref": "ClusterNames"
-      },
-      {
-        "AccessEntryArn&{Cluster}": {
-          "Description": "EKS access entry ARN for cluster ${Cluster}",
-          "Value": {
-            "Fn::GetAtt": [
-              "NullifyEKSAccessEntry&{Cluster}",
-              "AccessEntryArn"
-            ]
-          }
-        }
+    "AccessEntryArnCommand": {
+      "Description": "Prints the access entry ARN for one cluster in ClustersConfigured.",
+      "Value": {
+        "Fn::Sub": "aws eks describe-access-entry --region ${AWS::Region} --cluster-name CLUSTER --principal-arn arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole --query accessEntry.accessEntryArn --output text"
       }
-    ],
+    },
     "PrincipalArn": {
       "Description": "IAM role the access entries grant cluster access to.",
       "Value": {
