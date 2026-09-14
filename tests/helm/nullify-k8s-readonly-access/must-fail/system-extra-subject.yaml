@@ -1,4 +1,4 @@
-# expect: extraSubjects group "system:serviceaccounts"
+# expect: extraSubjects Group "system:serviceaccounts" must not start with "system:"
 extraSubjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group

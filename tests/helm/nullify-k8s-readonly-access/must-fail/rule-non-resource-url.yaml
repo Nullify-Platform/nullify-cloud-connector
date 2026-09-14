@@ -1,0 +1,4 @@
+# expect: extraRules nonResourceURL "/metrics" is not allowed
+extraRules:
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
