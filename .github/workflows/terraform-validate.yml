@@ -27,27 +27,46 @@ permissions:
 
 jobs:
   terraform:
+    name: terraform (${{ matrix.directory }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        directory:
-          - gcp-integration-setup/terraform
-          - gcp-integration-setup/terraform/examples/organization
-          - gcp-integration-setup/terraform/examples/folder
-          - gcp-integration-setup/terraform/examples/single-project
-          - aws-integration-setup/terraform
-          - aws-integration-setup/terraform/examples/basic
-          - aws-integration-setup/terraform/examples/multi-cluster-complete
-          - azure-integration-setup/terraform
-          - azure-integration-setup/terraform/examples/management-group
-          - azure-integration-setup/terraform/examples/subscriptions
+        # AWS rows run the declared floor (Terraform 1.5); the v6
+        # multi-cluster example uses ephemeral resources, which need 1.10.
+        include:
+          - directory: gcp-integration-setup/terraform
+            terraform: 1.9.5
+          - directory: gcp-integration-setup/terraform/examples/organization
+            terraform: 1.9.5
+          - directory: gcp-integration-setup/terraform/examples/folder
+            terraform: 1.9.5
+          - directory: gcp-integration-setup/terraform/examples/single-project
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform
+            terraform: 1.5.7
+          - directory: aws-integration-setup/terraform/examples/basic
+            terraform: 1.5.7
+          - directory: aws-integration-setup/terraform/examples/multi-cluster-complete
+            terraform: 1.5.7
+          - directory: aws-integration-setup/terraform-v6
+            terraform: 1.5.7
+          - directory: aws-integration-setup/terraform-v6/examples/basic
+            terraform: 1.5.7
+          - directory: aws-integration-setup/terraform-v6/examples/multi-cluster-complete
+            terraform: 1.10.5
+          - directory: azure-integration-setup/terraform
+            terraform: 1.9.5
+          - directory: azure-integration-setup/terraform/examples/management-group
+            terraform: 1.9.5
+          - directory: azure-integration-setup/terraform/examples/subscriptions
+            terraform: 1.9.5
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.5
+          terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
       - name: terraform fmt -check
