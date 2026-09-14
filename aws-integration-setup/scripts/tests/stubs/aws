@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Fake AWS CLI for tests/setup-eks-managed-scan.bats. Appends every call to
+# $FAKE_AWS_LOG and answers from the FAKE_* environment variables the test sets.
+
+printf '%s\n' "$*" >>"$FAKE_AWS_LOG"
+
+query=""
+previous=""
+for arg in "$@"; do
+  if [[ "$previous" == --query ]]; then
+    query="$arg"
+  fi
+  previous="$arg"
+done
+
+case "${1:-} ${2:-}" in
+  "sts get-caller-identity")
+    if [[ "$query" == Arn ]]; then
+      echo "arn:aws:iam::111122223333:user/operator"
+    else
+      echo "111122223333"
+    fi
+    ;;
+  "eks describe-cluster")
+    case "$query" in
+      cluster.arn) echo "arn:aws:eks:eu-west-1:111122223333:cluster/prod" ;;
+      cluster.status) echo "ACTIVE" ;;
+      cluster.accessConfig.authenticationMode) echo "API" ;;
+      cluster.resourcesVpcConfig.endpointPublicAccess) echo "${FAKE_PUBLIC:-True}" ;;
+      cluster.resourcesVpcConfig.endpointPrivateAccess) echo "${FAKE_PRIVATE:-False}" ;;
+      cluster.resourcesVpcConfig.publicAccessCidrs)
+        if [[ "${FAKE_CIDRS_READ_FAILS:-false}" == true ]]; then
+          echo "An error occurred (AccessDeniedException) when calling the DescribeCluster operation" >&2
+          exit 254
+        fi
+        printf '%s\n' "${FAKE_CIDRS:-None}" | tr ' ' '\t'
+        ;;
+      cluster.tags.*) echo "${FAKE_TAG:-None}" ;;
+      *)
+        echo "fake aws: unexpected describe-cluster query '$query'" >&2
+        exit 99
+        ;;
+    esac
+    ;;
+  "eks update-cluster-config") echo "update-1" ;;
+  "eks describe-update")
+    if [[ "$query" == update.status ]]; then
+      echo "${FAKE_UPDATE_STATUS:-Successful}"
+    else
+      echo "[]"
+    fi
+    ;;
+  "eks tag-resource" | "eks untag-resource") ;;
+  *)
+    echo "fake aws: unexpected call: $*" >&2
+    exit 99
+    ;;
+esac

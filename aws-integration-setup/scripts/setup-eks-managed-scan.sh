@@ -25,7 +25,8 @@ readonly MANAGED_BY_TAG_VALUE="nullify-connector"
 readonly ADDED_CIDRS_TAG_KEY="nullify-added-cidrs"
 readonly DEFAULT_GROUP="nullify-readonly"
 readonly RBAC_CLUSTER_ROLE="nullify-readonly"
-readonly ADMIN_VIEW_POLICY_ARN="arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+readonly RBAC_MANIFEST_PINNED_COMMIT="9cf0271a7f5bf03a84ca61aae4d95d1ffdc17cf5"
+readonly RBAC_MANIFEST_PINNED_URL="https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/${RBAC_MANIFEST_PINNED_COMMIT}/manifests/nullify-readonly-rbac.yaml"
 readonly ADMIN_VIEW_WARNING="AmazonEKSAdminViewPolicy grants get, list and watch on every resource, including Secrets, custom resources and pods/log, and on EKS 1.34 and earlier get pods/exec is enough to exec into pods. Its grants do not show in kubectl auth can-i --list."
 readonly VERIFY_USER="nullify-verify"
 readonly UPDATE_POLL_SECONDS=15
@@ -55,13 +56,14 @@ AUTHORIZATION="rbac"
 GROUP="$DEFAULT_GROUP"
 ALLOW_AUTH_MODE_CHANGE=false
 KUBE_CONTEXT=""
-RBAC_MANIFEST="$REPO_ROOT/manifests/nullify-readonly-rbac.yaml"
+RBAC_MANIFEST=""
 SKIP_ACCESS_ENTRY=false
 SKIP_RBAC=false
 SKIP_NETWORK=false
 DRY_RUN=false
 
 CLUSTER_ARN=""
+ADMIN_VIEW_POLICY_ARN=""
 NULLIFY_CIDRS=""
 KUBECONFIG_TMP=""
 KUBECTL=()
@@ -89,9 +91,10 @@ Actions:
   apply    Make the changes: authentication mode (only with
            --allow-auth-mode-change), access entry, RBAC, publicAccessCidrs.
   verify   Check the access entry, RBAC (kubectl auth can-i) and publicAccessCidrs.
-  remove   Undo apply: RBAC manifest objects, access entries tagged
-           ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}, and the CIDRs recorded in
-           the ${ADDED_CIDRS_TAG_KEY} cluster tag.
+  remove   Undo apply: RBAC manifest objects (except Helm-managed ones), access
+           entries tagged ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}, and the CIDRs
+           recorded in the ${ADDED_CIDRS_TAG_KEY} cluster tag. A public endpoint
+           disabled since apply is left alone; only the tag is dropped.
 
 Required:
   --cluster NAME             EKS cluster name
@@ -115,7 +118,9 @@ Options:
   --kube-context NAME        Use this kubeconfig context instead of a temporary
                              kubeconfig written by aws eks update-kubeconfig
   --rbac-manifest PATH|URL   RBAC manifest (default: manifests/nullify-readonly-rbac.yaml
-                             in this repository). Pin URLs to a commit SHA.
+                             in this checkout, or that file at commit
+                             ${RBAC_MANIFEST_PINNED_COMMIT:0:12} of this repository when the
+                             checkout lacks it). Pin URLs to a commit SHA.
   --skip-access-entry        The access entry is owned by the CloudFormation stack
                              nullify-eks-managed-scan-access.json
   --skip-rbac                RBAC is applied elsewhere (Helm chart
@@ -242,14 +247,16 @@ cluster_query() {
 
 resolve_role_arn() {
   local caller_arn account partition
-  if [[ -n "$ROLE_ARN" ]]; then
-    return 0
+  if [[ -z "$ROLE_ARN" ]]; then
+    caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
+    account="$(aws sts get-caller-identity --query Account --output text)"
+    partition="${caller_arn#arn:}"
+    partition="${partition%%:*}"
+    ROLE_ARN="arn:${partition}:iam::${account}:role/AWSIntegration-${CUSTOMER_NAME}-NullifyReadOnlyRole"
   fi
-  caller_arn="$(aws sts get-caller-identity --query Arn --output text)"
-  account="$(aws sts get-caller-identity --query Account --output text)"
-  partition="${caller_arn#arn:}"
+  partition="${ROLE_ARN#arn:}"
   partition="${partition%%:*}"
-  ROLE_ARN="arn:${partition}:iam::${account}:role/AWSIntegration-${CUSTOMER_NAME}-NullifyReadOnlyRole"
+  ADMIN_VIEW_POLICY_ARN="arn:${partition}:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
 }
 
 preflight() {
@@ -318,6 +325,16 @@ rbac_in_scope() {
 }
 
 check_rbac_manifest() {
+  local checkout_manifest="$REPO_ROOT/manifests/nullify-readonly-rbac.yaml"
+  if [[ -z "$RBAC_MANIFEST" ]]; then
+    if [[ -f "$checkout_manifest" ]]; then
+      RBAC_MANIFEST="$checkout_manifest"
+    else
+      RBAC_MANIFEST="$RBAC_MANIFEST_PINNED_URL"
+      info "rbac: $checkout_manifest is not in this checkout; using the manifest pinned at commit $RBAC_MANIFEST_PINNED_COMMIT ($RBAC_MANIFEST). Review it, or pass --rbac-manifest PATH|URL"
+    fi
+    return 0
+  fi
   case "$RBAC_MANIFEST" in
     https://*)
       if [[ ! "$RBAC_MANIFEST" =~ /[0-9a-f]{40}/ ]]; then
@@ -329,7 +346,7 @@ check_rbac_manifest() {
       ;;
     *)
       if [[ ! -f "$RBAC_MANIFEST" ]]; then
-        die "RBAC manifest not found: $RBAC_MANIFEST. Pass --rbac-manifest <path|url>, or install the nullify-k8s-readonly-access Helm chart and re-run with --skip-rbac"
+        die "RBAC manifest not found: $RBAC_MANIFEST. Fix the --rbac-manifest path, omit --rbac-manifest to use the default, or install the nullify-k8s-readonly-access Helm chart and re-run with --skip-rbac"
       fi
       ;;
   esac
@@ -422,7 +439,8 @@ apply_rbac() {
 
 current_public_cidrs() {
   local raw
-  raw="$(cidr_normalise "$(cluster_query resourcesVpcConfig.publicAccessCidrs)")"
+  raw="$(cluster_query resourcesVpcConfig.publicAccessCidrs)" || die "could not read publicAccessCidrs of $CLUSTER"
+  raw="$(cidr_normalise "$raw")"
   if [[ "$raw" == None ]]; then
     raw=""
   fi
@@ -431,49 +449,57 @@ current_public_cidrs() {
 
 added_cidrs_tag() {
   local raw
-  raw="$(cluster_query "tags.\"${ADDED_CIDRS_TAG_KEY}\"")"
+  raw="$(cluster_query "tags.\"${ADDED_CIDRS_TAG_KEY}\"")" || die "could not read the ${ADDED_CIDRS_TAG_KEY} tag of $CLUSTER"
   if [[ "$raw" == None ]]; then
     raw=""
   fi
   cidr_normalise "$raw"
 }
 
-endpoint_private_access_json() {
-  local private
-  private="$(cluster_query resourcesVpcConfig.endpointPrivateAccess)"
-  case "$private" in
+# endpoint_access_json FIELD
+# Prints resourcesVpcConfig.FIELD (endpointPublicAccess or endpointPrivateAccess)
+# as a JSON boolean, and dies when it cannot be read.
+endpoint_access_json() {
+  local value
+  value="$(cluster_query "resourcesVpcConfig.$1")" || die "could not read $1 of $CLUSTER"
+  case "$value" in
     True) echo true ;;
     False) echo false ;;
-    *) die "could not read endpointPrivateAccess (got '$private')" ;;
+    *) die "could not read $1 of $CLUSTER (got '$value')" ;;
   esac
 }
 
 # update_public_cidrs DESIRED EXPECTED_CURRENT
-# Re-reads publicAccessCidrs immediately before the update and aborts if it no
-# longer matches what the caller planned against. All three endpoint fields are
-# sent so private access is preserved.
+# Re-reads publicAccessCidrs and both endpoint flags immediately before the
+# update, aborts if the CIDRs no longer match what the caller planned against or
+# the public endpoint is now disabled, and sends the flags as read so neither is
+# changed.
 update_public_cidrs() {
-  local desired="$1" expected="$2" latest private vpc_config update_id
+  local desired="$1" expected="$2" latest public private vpc_config update_id
   latest="$(current_public_cidrs)"
   if [[ "$latest" != "$expected" ]]; then
     die "publicAccessCidrs changed while this script ran (was: ${expected:-empty}, now: ${latest:-empty}); re-run"
   fi
-  private="$(endpoint_private_access_json)"
-  vpc_config="$(printf '{"endpointPublicAccess":true,"endpointPrivateAccess":%s,"publicAccessCidrs":%s}' \
-    "$private" "$(cidr_json_array "$desired")")"
+  public="$(endpoint_access_json endpointPublicAccess)"
+  if [[ "$public" != true ]]; then
+    die "the public endpoint of $CLUSTER is disabled; publicAccessCidrs left unchanged"
+  fi
+  private="$(endpoint_access_json endpointPrivateAccess)"
+  vpc_config="$(printf '{"endpointPublicAccess":%s,"endpointPrivateAccess":%s,"publicAccessCidrs":%s}' \
+    "$public" "$private" "$(cidr_json_array "$desired")")"
   update_id="$(mutate aws eks update-cluster-config --name "$CLUSTER" --region "$REGION" \
     --resources-vpc-config "$vpc_config" --query update.id --output text)"
   wait_for_update "$update_id"
 }
 
 ensure_network() {
-  local public current merged added recorded
+  local public current merged added recorded tag_value
   if [[ "$SKIP_NETWORK" == true ]]; then
     info "network: skipped (--skip-network)"
     return 0
   fi
-  public="$(cluster_query resourcesVpcConfig.endpointPublicAccess)"
-  if [[ "$public" != True ]]; then
+  public="$(endpoint_access_json endpointPublicAccess)"
+  if [[ "$public" != true ]]; then
     die "cluster $CLUSTER has no public endpoint. Private-only clusters are not supported by the managed scan: enable the public endpoint restricted to Nullify's egress IPs, or use the in-cluster collector"
   fi
   current="$(current_public_cidrs)"
@@ -486,19 +512,45 @@ ensure_network() {
     return 0
   fi
   recorded="$(added_cidrs_tag)"
+  tag_value="$(cidr_union "$recorded" "$added")"
   info "network: adding $added to publicAccessCidrs"
-  mutate aws eks tag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" \
-    --tags "$(printf '{"%s":"%s"}' "$ADDED_CIDRS_TAG_KEY" "$(cidr_union "$recorded" "$added")")"
   update_public_cidrs "$merged" "$current"
+  if ! mutate aws eks tag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" \
+    --tags "$(printf '{"%s":"%s"}' "$ADDED_CIDRS_TAG_KEY" "$tag_value")"; then
+    die "publicAccessCidrs now includes $added, but tagging the cluster failed, so remove will not take those CIDRs out. Record them with: aws eks tag-resource --resource-arn $CLUSTER_ARN --region $REGION --tags '{\"${ADDED_CIDRS_TAG_KEY}\":\"${tag_value}\"}'"
+  fi
 }
 
 remove_rbac() {
+  local objects object owner managed_by release
   if ! rbac_in_scope; then
     info "rbac: nothing to remove (authorization admin-view or --skip-rbac)"
     return 0
   fi
   check_rbac_manifest
-  mutate "${KUBECTL[@]}" delete --ignore-not-found -f "$RBAC_MANIFEST"
+  if [[ "$DRY_RUN" == true && -z "$KUBE_CONTEXT" ]]; then
+    mutate "${KUBECTL[@]}" delete --ignore-not-found -f "$RBAC_MANIFEST"
+    info "rbac: remove skips objects labelled app.kubernetes.io/managed-by=Helm or annotated meta.helm.sh/release-name"
+    return 0
+  fi
+  objects="$("${KUBECTL[@]}" get --ignore-not-found -f "$RBAC_MANIFEST" -o name)" ||
+    die "could not read the objects of $RBAC_MANIFEST from the cluster"
+  if [[ -z "$objects" ]]; then
+    info "rbac: none of the objects in $RBAC_MANIFEST exist"
+    return 0
+  fi
+  for object in $objects; do
+    owner="$("${KUBECTL[@]}" get --ignore-not-found "$object" \
+      -o 'jsonpath={.metadata.labels.app\.kubernetes\.io/managed-by}{"|"}{.metadata.annotations.meta\.helm\.sh/release-name}')" ||
+      die "could not read $object"
+    managed_by="${owner%%"|"*}"
+    release="${owner#*"|"}"
+    if [[ "$managed_by" == Helm || -n "$release" ]]; then
+      warn "rbac: leaving $object: it is managed by Helm (release ${release:-unknown}); remove it with helm uninstall, or pass --skip-rbac"
+      continue
+    fi
+    mutate "${KUBECTL[@]}" delete --ignore-not-found "$object"
+  done
 }
 
 remove_access_entry() {
@@ -520,7 +572,7 @@ remove_access_entry() {
 }
 
 remove_network() {
-  local recorded current remaining
+  local recorded public current remaining
   if [[ "$SKIP_NETWORK" == true ]]; then
     info "network: skipped (--skip-network)"
     return 0
@@ -528,6 +580,12 @@ remove_network() {
   recorded="$(added_cidrs_tag)"
   if [[ -z "$recorded" ]]; then
     info "network: no ${ADDED_CIDRS_TAG_KEY} tag; publicAccessCidrs left unchanged"
+    return 0
+  fi
+  public="$(endpoint_access_json endpointPublicAccess)"
+  if [[ "$public" != true ]]; then
+    warn "network: the public endpoint of $CLUSTER is disabled; leaving the endpoint and publicAccessCidrs unchanged and dropping the ${ADDED_CIDRS_TAG_KEY} tag"
+    mutate aws eks untag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" --tag-keys "$ADDED_CIDRS_TAG_KEY"
     return 0
   fi
   current="$(current_public_cidrs)"
