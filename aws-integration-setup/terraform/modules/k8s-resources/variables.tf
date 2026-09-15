@@ -41,12 +41,12 @@ variable "cronjob_schedule" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The KMS key the collector encrypts its upload with (optional). This module only passes the value to the collector as NULLIFY_KMS_KEY_ARN, which S3 takes as SSEKMSKeyId, so every form S3 accepts is accepted here: a key ARN (including multi-Region key/mrk-... keys), an alias ARN, a bare key ID or alias/<name>. Any AWS partition"
+  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
   default     = ""
 
   validation {
-    condition     = var.kms_key_arn == "" || can(regex("^(arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+)|mrk-[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|alias/[A-Za-z0-9/_-]+)$", var.kms_key_arn))
-    error_message = "Must be empty, a KMS key ARN (arn:<partition>:kms:<region>:<account-id>:key/<key-id>), a KMS alias ARN (arn:<partition>:kms:<region>:<account-id>:alias/<name>), a bare key ID or alias/<name>"
+    condition     = var.kms_key_arn == "" || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+)$", var.kms_key_arn))
+    error_message = "Must be empty, a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>) or a KMS alias ARN (arn:aws:kms:<region>:<account-id>:alias/<name>)"
   }
 }
 
