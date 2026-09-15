@@ -230,12 +230,13 @@ On an existing stack, add that line to the `update-stack` command above.
 
 ## Managed EKS scan (no in-cluster agent)
 
-Nullify lists Kubernetes resources in your EKS cluster from Nullify's cloud-scan compute, using the read-only role this template creates. Nothing runs in the cluster. The scan only calls `list`, on 26 kinds:
+Nullify lists Kubernetes resources in your EKS cluster from Nullify's cloud-scan compute, using the read-only role this template creates. Nothing runs in the cluster. The scan only calls `list`, on 27 kinds:
 
 | API group | Resources |
 |---|---|
 | core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
 | apps | deployments, daemonsets, statefulsets, replicasets |
+| batch | jobs |
 | networking.k8s.io | ingresses, networkpolicies |
 | discovery.k8s.io | endpointslices |
 | rbac.authorization.k8s.io | roles, rolebindings, clusterroles, clusterrolebindings |
@@ -345,7 +346,7 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|ad
 `setup-eks-managed-scan.sh verify` checks that:
 
 - the authentication mode supports access entries, and the access entry exists with the group (RBAC) or a cluster-scoped `AmazonEKSAdminViewPolicy` association;
-- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 26 resources, and `create pods` does not;
+- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 27 resources, and `create pods` does not;
 - `publicAccessCidrs` admits Nullify's egress IPs.
 
 `can-i` exercises Kubernetes RBAC only. It cannot see access-policy grants or prove that Nullify can reach the endpoint. Finish by confirming the cluster connects on the Nullify configure page.

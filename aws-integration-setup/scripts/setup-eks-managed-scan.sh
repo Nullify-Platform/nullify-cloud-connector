@@ -40,6 +40,7 @@ RBAC_RESOURCES=(
   nodes namespaces pods services persistentvolumeclaims persistentvolumes
   configmaps secrets resourcequotas limitranges serviceaccounts
   deployments.apps daemonsets.apps statefulsets.apps replicasets.apps
+  jobs.batch
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io
   endpointslices.discovery.k8s.io
   roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io
