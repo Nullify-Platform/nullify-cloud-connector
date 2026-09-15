@@ -177,29 +177,30 @@ jobs:
               *) echo "::error::git ls-remote for tag ${tag} exited ${rc}; origin may be unreachable, refusing to assume no tag exists"; exit 1 ;;
             esac
 
-            if [ "$has_tag" = "true" ]; then
-              # The tag pre-dates this run (normally created by an earlier
-              # release run for this same version), whether or not it already
-              # has a release, or a release with no asset yet. Never
-              # hand-create <chart>-v* tags: refuse to trust it unless its
-              # commit is on main and its tree for this chart (plus any
-              # manifest this chart's own README points at) is identical to
-              # $target's, so the release always documents the commit it
-              # actually came from.
+            # Never hand-create <chart>-v* tags: before this job attaches an
+            # asset to one, refuse to trust it unless its commit is on main
+            # and its tree for this chart (plus any manifest this chart's own
+            # README points at) is identical to $target's, so the release
+            # always documents the commit it actually came from. Not run when
+            # the release already has the asset: nothing gets attached there,
+            # so an unbumped, unrelated edit to $target must not wedge it.
+            verify_hand_made_tag() {
               git fetch -q --no-tags origin "+refs/tags/${tag}:refs/tags/${tag}" </dev/null
-              if ! git merge-base --is-ancestor "refs/tags/${tag}^{commit}" HEAD </dev/null; then
-                echo "::error::tag ${tag} exists but its commit is not on main; refusing to trust it. Hand-made <chart>-v* tags are never created outside this job; delete ${tag} and let this job recreate it."
+              git merge-base --is-ancestor "refs/tags/${tag}^{commit}" HEAD </dev/null && mb_rc=0 || mb_rc=$?
+              if [ "$mb_rc" != 0 ]; then
+                echo "::error::git merge-base for tag ${tag} exited ${mb_rc}; the existing tag does not match; investigate before re-running."
                 exit 1
               fi
-              manifests="$(git show "refs/tags/${tag}:helm-charts/${name}/README.md" 2>/dev/null | grep -oE '\bmanifests/[A-Za-z0-9_.-]+\.ya?ml\b' | sort -u || true)"
+              manifests="$(git show "refs/tags/${tag}:helm-charts/${name}/README.md" 2>/dev/null | grep -oE '\bmanifests/[A-Za-z0-9_.-]+\.ya?ml\b' | sort -u | tr '\n' ' ' || true)"
               if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" ${manifests} </dev/null; then
-                echo "::error::tag ${tag} exists but its tree for helm-charts/${name} ${manifests} differs from ${target}; refusing to trust it. Hand-made <chart>-v* tags are never created outside this job; delete ${tag} and let this job recreate it."
+                echo "::error::tag ${tag} exists but its tree for helm-charts/${name} ${manifests}differs from ${target}; the existing tag does not match; investigate before re-running."
                 exit 1
               fi
-            fi
+            }
 
             if gh release view "$tag" >/dev/null 2>&1 </dev/null; then
               if ! gh release view "$tag" --json assets --jq '.assets[].name' </dev/null | grep -qxF "$asset"; then
+                [ "$has_tag" = "true" ] && verify_hand_made_tag
                 gh release upload "$tag" "_site/${asset}" </dev/null
                 continue
               fi
@@ -224,6 +225,7 @@ jobs:
               "" \
               "Chart README: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/helm-charts/${name}/README.md")"
             if [ "$has_tag" = "true" ]; then
+              verify_hand_made_tag
               gh release create "$tag" "_site/${asset}" --verify-tag \
                 --title "${name} ${version}" --notes "${notes}" </dev/null
             else

@@ -233,12 +233,12 @@ chart_dir_at() {
 verify_tag_chart_version() {
   local tag="$1" name="$2" version="$3" chart
   if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
-    git fetch -q --unshallow "$TAG_REMOTE" </dev/null || die "could not unshallow the checkout to verify tag $tag"
+    git fetch -q --unshallow "$TAG_REMOTE" </dev/null || { echo "could not unshallow the checkout to verify tag $tag" >&2; return 3; }
   fi
   git fetch -q --no-tags "$TAG_REMOTE" \
     "+refs/heads/$MAIN_BRANCH:refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" \
     "+refs/tags/$tag:refs/tags/$tag" </dev/null ||
-    die "could not fetch $MAIN_BRANCH and tag $tag from $TAG_REMOTE to verify $name $version"
+    { echo "could not fetch $MAIN_BRANCH and tag $tag from $TAG_REMOTE to verify $name $version" >&2; return 3; }
   git merge-base --is-ancestor "refs/tags/$tag^{commit}" "refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" || return 2
   chart="$(chart_dir_at "refs/tags/$tag^{commit}" "$name")" || return 1
   [ "$(git show "refs/tags/$tag^{commit}:$chart/Chart.yaml" | yq -r '.version')" = "$version" ] || return 1
@@ -252,7 +252,9 @@ verify_against_tag_tree() {
   local tag="$1" name="$2" version="$3" asset="$4"
   local chart src="$work/recover-src/$tag" rc
   chart="$(verify_tag_chart_version "$tag" "$name" "$version")" && rc=0 || rc=$?
-  if [ "$rc" = 2 ]; then
+  if [ "$rc" = 3 ]; then
+    die "could not verify tag $tag for $name $version: fetch failed (see error above)"
+  elif [ "$rc" = 2 ]; then
     die "tag $tag is not on $MAIN_BRANCH; refusing to recover $name $version from it"
   elif [ "$rc" != 0 ]; then
     die "tag $tag has no $CHARTS_DIR/*/Chart.yaml named $name at version $version; refusing to recover $name $version from it"
@@ -287,6 +289,7 @@ recover_from_release() {
     case "$tag_rc" in
       0) echo "::warning::$name $version is tagged ($tag) but has no GitHub release, so nothing was ever published for it; it stays unpublished until $MAIN_BRANCH carries that version" ;;
       2) echo "::warning::$tag is not on $MAIN_BRANCH, and it has no GitHub release either; it is not a real chart release and stays unpublished" ;;
+      3) die "could not verify tag $tag for $name $version: fetch failed (see error above)" ;;
       *) echo "::warning::$tag's tree is not $name $version, and it has no GitHub release either; it is not a real chart release and stays unpublished" ;;
     esac
     return 1
@@ -298,6 +301,7 @@ recover_from_release() {
     case "$tag_rc" in
       0) echo "::warning::release $tag has no asset $asset, so $name $version cannot be restored from it; it stays unpublished until $MAIN_BRANCH carries that version" ;;
       2) echo "::warning::$tag is not on $MAIN_BRANCH, and its release has no $asset either; it is not a real chart release and stays unpublished" ;;
+      3) die "could not verify tag $tag for $name $version: fetch failed (see error above)" ;;
       *) echo "::warning::$tag's tree is not $name $version, and its release has no $asset either; it is not a real chart release and stays unpublished" ;;
     esac
     return 1
