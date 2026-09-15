@@ -12,12 +12,14 @@
 # release before it deploys. Every <chart>-v<version> tag of a chart in
 # CHARTS_DIR or in the index, and each legacy collector tag in LEGACY_TAGS, must
 # have its version in the fetched index. A missing version means the index is
-# stale, a deploy failed after tagging, or a deploy removed it, and the build
-# stops. Set HELM_REPO_RECOVER_FROM_RELEASES=true to restore each missing
-# version from the <chart>-<version>.tgz asset on its GitHub release instead.
-# A recovered asset must have the same contents as CHARTS_DIR/<chart> packaged
-# from the tag, and the tag's commit must be on MAIN_BRANCH; a legacy version's
-# asset must match the sha256 pinned in LEGACY_TAGS.
+# stale, a deploy failed after tagging, or a deploy removed it. With
+# HELM_REPO_RECOVER_FROM_RELEASES=true (every job in the workflow) each missing
+# version is restored from the <chart>-<version>.tgz asset on its GitHub release
+# and reported as a ::warning::, so the next release on main republishes it;
+# without it the build stops. A recovered asset must have the same contents as
+# the chart named <chart> in CHARTS_DIR packaged from the tag, and the tag's
+# commit must be on MAIN_BRANCH; a legacy version's asset must match the sha256
+# pinned in LEGACY_TAGS. A version that fails either check stops the build.
 #
 # Charts are independent. A chart is skipped with an ::error:: annotation and
 # listed in SKIPPED_LIST when it fails scripts/test-helm-charts.sh, when its
@@ -197,11 +199,24 @@ for entry in "${LEGACY_TAGS[@]}"; do
   fi
 done
 
-# Requires <tag> to be on MAIN_BRANCH and CHARTS_DIR/<name> packaged from the
-# tag's tree to have the same contents as <asset>.
+# Prints the CHARTS_DIR subdirectory whose Chart.yaml at <commit> is chart <name>.
+chart_dir_at() {
+  local commit="$1" name="$2" dir
+  while IFS= read -r dir; do
+    if git cat-file -e "$commit:$dir/Chart.yaml" 2>/dev/null &&
+      [ "$(git show "$commit:$dir/Chart.yaml" | yq -r '.name')" = "$name" ]; then
+      echo "$dir"
+      return 0
+    fi
+  done < <(git ls-tree -d --name-only "$commit" "$CHARTS_DIR/")
+  return 1
+}
+
+# Requires <tag> to be on MAIN_BRANCH and the chart named <name> in CHARTS_DIR,
+# packaged from the tag's tree, to have the same contents as <asset>.
 verify_against_tag_tree() {
   local tag="$1" name="$2" version="$3" asset="$4"
-  local chart="$CHARTS_DIR/$name" src="$work/recover-src/$tag"
+  local chart src="$work/recover-src/$tag"
   if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
     git fetch -q --unshallow "$TAG_REMOTE" </dev/null || die "could not unshallow the checkout to verify tag $tag"
   fi
@@ -211,8 +226,8 @@ verify_against_tag_tree() {
     die "could not fetch $MAIN_BRANCH and tag $tag from $TAG_REMOTE to verify $(basename "$asset")"
   git merge-base --is-ancestor "refs/tags/$tag^{commit}" "refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" ||
     die "tag $tag is not on $MAIN_BRANCH; refusing to recover $name $version from it"
-  git cat-file -e "refs/tags/$tag^{commit}:$chart/Chart.yaml" 2>/dev/null ||
-    die "tag $tag has no $chart/Chart.yaml; refusing to recover $name $version from it"
+  chart="$(chart_dir_at "refs/tags/$tag^{commit}" "$name")" ||
+    die "tag $tag has no $CHARTS_DIR/*/Chart.yaml with name $name; refusing to recover $name $version from it"
   mkdir -p "$src/pkg"
   git archive "refs/tags/$tag^{commit}" "$chart" | tar -x -C "$src" ||
     die "could not extract $chart from tag $tag"
@@ -251,6 +266,22 @@ recover_from_release() {
   cp "$dir/$asset" "$SITE_DIR/$asset"
   printf '%s\t%s\t%s\n' "$name" "$version" "$SITE_DIR/$asset" >>"$known"
   echo "recovered $name $version from release $tag (sha256 $actual)"
+  echo "::warning::$name $version is tagged ($tag) but missing from ${REPO_URL}index.yaml; restored from its verified release asset, and the next release on $MAIN_BRANCH republishes it"
+}
+
+# Prints the path of release <name>-v<version>'s <name>-<version>.tgz asset,
+# downloaded and checked against its recorded digest, or nothing when the release
+# has no such asset. Fails when the asset cannot be downloaded or verified.
+fetch_release_asset() {
+  local name="$1" version="$2" tag="$1-v$2" asset="$1-$2.tgz" recorded dir
+  recorded="$(awk -F'\t' -v t="$tag" -v a="$asset" '$1 == t && $2 == a { print $3; exit }' "$release_assets")"
+  [ -n "$recorded" ] || return 0
+  [ "$recorded" != "none" ] || return 1
+  dir="$work/release-asset/$tag"
+  mkdir -p "$dir"
+  gh release download "$tag" -R "$REPOSITORY" -p "$asset" -D "$dir" --clobber </dev/null >&2 || return 1
+  [ "$recorded" = "sha256:$(sha256sum "$dir/$asset" | cut -d' ' -f1)" ] || return 1
+  echo "$dir/$asset"
 }
 
 new_dir="$work/new"
@@ -271,11 +302,10 @@ if [ ${#missing[@]} -gt 0 ]; then
   printf '  %s\n' "${missing[@]}" >&2
   cat >&2 <<EOF
 Refusing to build: deploying now would unpublish them. Either the fetched index
-is a stale CDN copy (re-run once it expires, up to 10 minutes), a deploy failed
-after its tags and releases were created, or a deploy removed them. To restore
-them from their GitHub release assets, re-run the "Helm charts" workflow on main
-with recover_from_releases=true (HELM_REPO_RECOVER_FROM_RELEASES=true locally).
-A tag that is not a real chart release has to be deleted instead.
+is a stale CDN copy, a deploy failed after its tags and releases were created,
+or a deploy removed them. Set HELM_REPO_RECOVER_FROM_RELEASES=true (the "Helm
+charts" workflow always does) to restore them from their verified GitHub release
+assets. A tag that is not a real chart release has to be deleted instead.
 EOF
   exit 1
 fi
@@ -363,9 +393,19 @@ for chart_yaml in "${charts[@]}"; do
     continue
   fi
 
-  if ! release_asset_matches "$name" "$version" "$pkg"; then
-    skip_chart "$name" "$version" "$chart_yaml" "release $name-v$version already has a $name-$version.tgz asset with other contents; delete that release or bump version in $chart_yaml"
+  # helm package output is not byte-reproducible, so an existing asset is
+  # compared by contents and, when they match, published in place of $pkg so the
+  # site serves the bytes the release already carries.
+  if ! existing="$(fetch_release_asset "$name" "$version")"; then
+    skip_chart "$name" "$version" "$chart_yaml" "release $name-v$version has a $name-$version.tgz asset that could not be downloaded or does not match its recorded digest"
     continue
+  fi
+  if [ -n "$existing" ]; then
+    if ! same_contents "$existing" "$pkg"; then
+      skip_chart "$name" "$version" "$chart_yaml" "release $name-v$version already has a $name-$version.tgz asset with other contents; delete that release or bump version in $chart_yaml"
+      continue
+    fi
+    pkg="$existing"
   fi
   cp "$pkg" "$new_dir/"
   echo "$name $version" >>"$PUBLISHED_LIST"

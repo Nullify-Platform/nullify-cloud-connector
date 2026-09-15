@@ -19,11 +19,6 @@ on:
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   workflow_dispatch:
-    inputs:
-      recover_from_releases:
-        description: Restore tagged chart versions missing from the live index from their GitHub release assets
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -72,12 +67,16 @@ jobs:
       - name: Lint and render
         run: scripts/test-helm-charts.sh "$CHART"
 
+      # A tagged version missing from the live index (a deploy failed after
+      # tagging, or a stale CDN copy) is a ::warning:: here once its release
+      # asset verifies, because the release job on main restores it the same way.
       - name: Published version is unchanged or bumped
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_ONLY_CHART: ${{ matrix.chart }}
           PUBLISH_STRICT: "true"
           PUBLISH_CHECK_RELEASE_ASSETS: "true"
+          HELM_REPO_RECOVER_FROM_RELEASES: "true"
         run: scripts/publish-helm-repo.sh "$RUNNER_TEMP/site"
 
   publish-dry-run:
@@ -97,7 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_RUN_CHART_TESTS: "true"
           PUBLISH_CHECK_RELEASE_ASSETS: "true"
-          HELM_REPO_RECOVER_FROM_RELEASES: ${{ inputs.recover_from_releases }}
+          HELM_REPO_RECOVER_FROM_RELEASES: "true"
         run: |
           scripts/publish-helm-repo.sh _site
           echo "Versions a merge to main would newly publish:"
@@ -140,16 +139,20 @@ jobs:
         with:
           version: ${{ env.HELM_VERSION }}
 
+      # Tagged versions missing from the live index are restored from their
+      # release assets, after the script checks the tag is on main and the asset
+      # matches the chart re-packaged from the tag (legacy 0.2.0: its pinned
+      # digest). A version that fails those checks stops the build.
       - name: Build Helm repository
         env:
           PUBLISH_RUN_CHART_TESTS: "true"
           PUBLISH_CHECK_RELEASE_ASSETS: "true"
-          HELM_REPO_RECOVER_FROM_RELEASES: ${{ inputs.recover_from_releases }}
+          HELM_REPO_RECOVER_FROM_RELEASES: "true"
         run: scripts/publish-helm-repo.sh _site
 
       # Before the deploy, so every version the site serves is tagged and the
       # next run's tag cross-check catches a stale index. A deploy that fails
-      # after this step is restored from the release assets.
+      # after this step is restored by the next run's recovery.
       # Driven by every published chart version at HEAD, not only new ones, so a
       # re-run after a failure here still creates the missing tags and releases.
       - name: Ensure a tag and release for every published chart version
