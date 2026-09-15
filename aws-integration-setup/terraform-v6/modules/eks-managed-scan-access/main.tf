@@ -10,9 +10,10 @@ locals {
 
   clusters = {
     for arn in var.cluster_arns : arn => {
-      name    = split("/", arn)[1]
-      region  = split(":", arn)[3]
-      account = split(":", arn)[4]
+      name      = split("/", arn)[1]
+      partition = split(":", arn)[1]
+      region    = split(":", arn)[3]
+      account   = split(":", arn)[4]
     }
   }
 }
@@ -61,7 +62,7 @@ resource "aws_eks_access_policy_association" "admin_view" {
   region        = each.value.region
   cluster_name  = aws_eks_access_entry.nullify[each.key].cluster_name
   principal_arn = aws_eks_access_entry.nullify[each.key].principal_arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+  policy_arn    = "arn:${each.value.partition}:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
 
   access_scope {
     type = "cluster"

@@ -2,7 +2,7 @@
 # This example shows the minimal setup for AWS integration without Kubernetes
 
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.8"
 
   required_providers {
     aws = {

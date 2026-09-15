@@ -21,7 +21,7 @@ token = ephemeral.aws_eks_cluster_auth.primary.token
 
 ## Requirements
 
-- Terraform >= 1.5 (>= 1.10 for the `multi-cluster-complete` and `managed-scan` examples)
+- Terraform >= 1.8 (>= 1.10 for the `multi-cluster-complete` and `managed-scan` examples)
 - AWS provider ~> 6.0
 - Kubernetes provider ~> 2.20 (only `modules/k8s-resources` and the `multi-cluster-complete` and `managed-scan` examples)
 
@@ -105,7 +105,7 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
 - `s3_bucket_name`: S3 bucket for scan results (optional)
 - `nullify_s3_access_point_arn`: S3 access point for collector uploads (optional)
-- `kms_key_arn`: KMS key ARN or alias ARN from the Nullify configure page (optional); see "KMS" in `../terraform/README.md`
+- `kms_key_arn`: KMS key ARN or alias ARN from the Nullify configure page; see "KMS" in `../terraform/README.md`. Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `enable_kubernetes_integration`: Set to `true` for EKS integration
 - `eks_cluster_arns`: List of EKS cluster ARNs to integrate with, in any region
 - `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization`, `managed_scan_kubernetes_group`: managed EKS scan
@@ -114,7 +114,7 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `tags`: Resource tags
 - `cronjob_schedule`: Deprecated and unused here; set the schedule on `k8s-resources`
 
-`k8s-resources` requires `cluster_name` whenever `enable_collector` is true, and it must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory.
+`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
 
 `k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, the same build as the `k8s-collector-latest` tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
 

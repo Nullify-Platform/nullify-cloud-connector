@@ -7,11 +7,17 @@ run "collector_only_is_the_default" {
     iam_role_arn   = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
     cluster_name   = "acme-prod"
     s3_bucket_name = "nullify-collector-uploads"
+    kms_key_arn    = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
   }
 
   assert {
     condition     = length([for env in kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env : env if env.name == "CLUSTER_NAME" && env.value == "acme-prod"]) == 1
     error_message = "The CronJob must set CLUSTER_NAME: it names the upload, and collectors without one all write k8s-collector/default-name-data.json"
+  }
+
+  assert {
+    condition     = length([for env in kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env : env if env.name == "ALLOW_UNENCRYPTED_UPLOAD"]) == 0
+    error_message = "ALLOW_UNENCRYPTED_UPLOAD must never be set unless allow_unencrypted_upload is true"
   }
 
   assert {
@@ -35,6 +41,7 @@ run "collector_requires_a_role_arn" {
 
   variables {
     cluster_name = "acme-prod"
+    kms_key_arn  = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
   }
 
   expect_failures = [kubernetes_service_account.nullify_collector_sa]
@@ -46,9 +53,47 @@ run "collector_requires_a_cluster_name" {
   variables {
     iam_role_arn   = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
     s3_bucket_name = "nullify-collector-uploads"
+    kms_key_arn    = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
   }
 
   expect_failures = [kubernetes_cron_job_v1.k8s_collector]
+}
+
+# The published collector images exit 1 on upload with "upload blocked: no KMS
+# encryption and unencrypted uploads not explicitly allowed" when neither is
+# set, after a successful collection. Failing at plan is the only signal the
+# customer gets before that.
+run "collector_requires_a_kms_key" {
+  command = plan
+
+  variables {
+    iam_role_arn   = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    cluster_name   = "acme-prod"
+    s3_bucket_name = "nullify-collector-uploads"
+  }
+
+  expect_failures = [kubernetes_cron_job_v1.k8s_collector]
+}
+
+run "unencrypted_upload_is_an_explicit_opt_out" {
+  command = plan
+
+  variables {
+    iam_role_arn             = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    cluster_name             = "acme-prod"
+    s3_bucket_name           = "nullify-collector-uploads"
+    allow_unencrypted_upload = true
+  }
+
+  assert {
+    condition     = length([for env in kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env : env if env.name == "ALLOW_UNENCRYPTED_UPLOAD" && env.value == "true"]) == 1
+    error_message = "allow_unencrypted_upload must be the only thing that sets ALLOW_UNENCRYPTED_UPLOAD"
+  }
+
+  assert {
+    condition     = length([for env in kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env : env if env.name == "NULLIFY_KMS_KEY_ARN"]) == 0
+    error_message = "NULLIFY_KMS_KEY_ARN must not be set when no key was given"
+  }
 }
 
 run "managed_scan_rbac_only" {
