@@ -21,6 +21,13 @@
 # commit must be on MAIN_BRANCH; a legacy version's asset must match the sha256
 # pinned in LEGACY_TAGS. A version that fails either check stops the build.
 #
+# A tag with no release, or a release with no such asset, has nothing to restore
+# and nothing was ever published for it, so it is a ::warning:: and the version
+# is dropped from the cross-check. Otherwise a hand-made tag would fail every
+# job, including the release job that would have created its release. An asset
+# whose release records no digest (uploaded before GitHub recorded them) is
+# still verified against the tag's tree.
+#
 # Charts are independent. A chart is skipped with an ::error:: annotation and
 # listed in SKIPPED_LIST when it fails scripts/test-helm-charts.sh, when its
 # <chart>/ci/pre-publish.sh hook exits non-zero, when its already-published
@@ -245,15 +252,31 @@ verify_against_tag_tree() {
 recover_from_release() {
   local tag="$1" name="$2" version="$3"
   local asset="$name-$version.tgz" dir="$work/recover/$tag"
+  local listing="$work/recover/$tag.json" errors="$work/recover/$tag.err"
   mkdir -p "$dir"
-  gh release download "$tag" -R "$REPOSITORY" -p "$asset" -D "$dir" </dev/null ||
-    die "release $tag has no asset $asset to recover $name $version from"
+  if ! gh release view "$tag" -R "$REPOSITORY" --json assets </dev/null >"$listing" 2>"$errors"; then
+    grep -qi 'release not found' "$errors" ||
+      die "listing release $tag of $REPOSITORY failed: $(tr '\n' ' ' <"$errors")"
+    echo "::warning::$name $version is tagged ($tag) but has no GitHub release, so nothing was ever published for it; it stays unpublished until $MAIN_BRANCH carries that version"
+    return 1
+  fi
   local recorded actual chart_yaml legacy
-  recorded="$(gh release view "$tag" -R "$REPOSITORY" --json assets \
-    --jq ".assets[] | select(.name == \"$asset\") | .digest" </dev/null | sed 's/^sha256://')"
+  recorded="$(jq -r --arg a "$asset" '.assets[] | select(.name == $a) | .digest // "none"' "$listing")"
+  if [ -z "$recorded" ]; then
+    echo "::warning::release $tag has no asset $asset, so $name $version cannot be restored from it; it stays unpublished until $MAIN_BRANCH carries that version"
+    return 1
+  fi
+  gh release download "$tag" -R "$REPOSITORY" -p "$asset" -D "$dir" </dev/null ||
+    die "downloading $asset from release $tag failed"
   actual="$(sha256sum "$dir/$asset" | cut -d' ' -f1)"
-  [ -n "$recorded" ] || die "release $tag records no digest for $asset; restore it by hand"
-  [ "$actual" = "$recorded" ] || die "release asset $asset has digest $actual, release $tag records $recorded"
+  if [ "$recorded" = "none" ]; then
+    # Assets uploaded before GitHub recorded digests have none. The asset is
+    # still verified against the tag's tree, or against the legacy pin, below.
+    echo "::warning::release $tag records no digest for $asset; verifying its contents against tag $tag instead"
+  else
+    [ "$actual" = "${recorded#sha256:}" ] ||
+      die "release asset $asset has digest $actual, release $tag records ${recorded#sha256:}"
+  fi
   chart_yaml="$(tar -xzOf "$dir/$asset" "$name/Chart.yaml")" || die "$asset has no $name/Chart.yaml"
   [ "$(yq -r '.name' <<<"$chart_yaml")" = "$name" ] || die "$asset from $tag is not chart $name"
   [ "$(yq -r '.version' <<<"$chart_yaml")" = "$version" ] || die "$asset from $tag is not version $version"
@@ -287,14 +310,26 @@ fetch_release_asset() {
 new_dir="$work/new"
 mkdir -p "$new_dir"
 
+# The tagged versions the built index is required to contain: every tag whose
+# version the site can actually serve. A tag with no release and no asset is
+# dropped from it, because there is nothing to restore and the version was
+# never published; the chart is published normally if MAIN_BRANCH carries it.
+checked="$work/tagged-checked.tsv"
+: >"$checked"
+
 missing=()
 while IFS=$'\t' read -r tag name version; do
-  is_known "$name" "$version" && continue
-  if [ "${HELM_REPO_RECOVER_FROM_RELEASES:-}" = "true" ]; then
-    recover_from_release "$tag" "$name" "$version"
-    cp "$SITE_DIR/$name-$version.tgz" "$new_dir/"
-  else
+  if is_known "$name" "$version"; then
+    printf '%s\t%s\t%s\n' "$tag" "$name" "$version" >>"$checked"
+    continue
+  fi
+  if [ "${HELM_REPO_RECOVER_FROM_RELEASES:-}" != "true" ]; then
     missing+=("$name $version (tag $tag)")
+    continue
+  fi
+  if recover_from_release "$tag" "$name" "$version"; then
+    cp "$SITE_DIR/$name-$version.tgz" "$new_dir/"
+    printf '%s\t%s\t%s\n' "$tag" "$name" "$version" >>"$checked"
   fi
 done <"$tagged"
 if [ ${#missing[@]} -gt 0 ]; then
@@ -427,7 +462,7 @@ while IFS=$'\t' read -r tag name version; do
   yq -o=json '.' "$SITE_DIR/index.yaml" |
     jq -e --arg n "$name" --arg v "$version" '(.entries[$n] // [])[] | select(.version == $v)' >/dev/null ||
     die "built index.yaml lacks tagged $name $version (tag $tag)"
-done <"$tagged"
+done <"$checked"
 
 echo "site ready in $SITE_DIR:"
 ls -1 "$SITE_DIR"

@@ -70,6 +70,9 @@ jobs:
       # A tagged version missing from the live index (a deploy failed after
       # tagging, or a stale CDN copy) is a ::warning:: here once its release
       # asset verifies, because the release job on main restores it the same way.
+      # A tag with no release, or no asset, is a ::warning:: too: nothing was
+      # ever published for it, so failing here would only stop the release job
+      # from creating it.
       - name: Published version is unchanged or bumped
         env:
           GH_TOKEN: ${{ github.token }}
@@ -142,7 +145,8 @@ jobs:
       # Tagged versions missing from the live index are restored from their
       # release assets, after the script checks the tag is on main and the asset
       # matches the chart re-packaged from the tag (legacy 0.2.0: its pinned
-      # digest). A version that fails those checks stops the build.
+      # digest). A version that fails those checks stops the build. A tag with
+      # no release is only a warning, so the next step can create it.
       - name: Build Helm repository
         env:
           PUBLISH_RUN_CHART_TESTS: "true"
