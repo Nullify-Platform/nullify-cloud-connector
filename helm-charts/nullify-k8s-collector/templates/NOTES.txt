@@ -22,6 +22,14 @@ The data collected includes (but is not limited to):
 - AWS Region: {{ .Values.collector.aws.region | default "region of collector.kms.keyArn" }}
 - Namespace: {{ include "k8s-collector.namespace" . }}
 - Schedule: {{ .Values.collector.schedule }}
+{{- if contains ":alias/" (toString .Values.collector.kms.keyArn) }}
+
+WARNING: collector.kms.keyArn is a KMS alias ARN. IAM matches the key ARN, not the alias,
+so uploads need a role policy that also grants kms:GenerateDataKey on key/* in Nullify's KMS
+account and region. The current connector CloudFormation template grants that; an older
+stack, or the Terraform module (it grants only the ARN it is given), denies the upload.
+Update the stack, or use the key ARN: the Nullify configure page will show the key ARN soon.
+{{- end }}
 
 {{- if ne (include "k8s-collector.namespace" .) .Release.Namespace }}
 

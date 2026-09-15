@@ -1,5 +1,4 @@
-# EKS in the aws-us-gov partition: the role-arn guard accepts non-commercial partitions.
-cloudProvider: aws
+# expect: must be the IAM role ARN from the Nullify configure page
 collector:
   clusterName: example-eks-cluster
   s3:

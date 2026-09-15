@@ -54,7 +54,7 @@ The chart refuses to render when a required value is missing or still a placehol
 |-----------|-------------|---------|
 | `cloudProvider` | Platform the collector runs on: `aws` (EKS) or `gcp` (GKE) | `aws` |
 | `serviceAccount.create` | If true, create a new service account | `true` |
-| `serviceAccount.requireRoleArn` | EKS: fail the render unless `eks.amazonaws.com/role-arn` is an IAM role ARN (partitions `aws`, `aws-us-gov`, `aws-cn`). Set `false` when the pod gets AWS credentials another way (see [Other Kubernetes Clusters](#other-kubernetes-clusters)). | `true` |
+| `serviceAccount.requireRoleArn` | EKS: fail the render unless `eks.amazonaws.com/role-arn` is an `arn:aws:iam::` role ARN. Set `false` when the pod gets AWS credentials another way (see [Other Kubernetes Clusters](#other-kubernetes-clusters)). | `true` |
 | `serviceAccount.annotations` | Annotations for the service account. The chart renders only the annotation that matches `cloudProvider`. | `eks.amazonaws.com/role-arn: ""` |
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `serviceAccount.namespace` | Namespace of every namespaced object; `""` means the release namespace. Must already exist. | `nullify` |
@@ -66,7 +66,7 @@ The chart refuses to render when a required value is missing or still a placehol
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | Region of the **Nullify S3 bucket**, not your cluster. Defaults to the region in `collector.kms.keyArn`; any other value is rejected, because S3 only accepts a KMS key from the bucket's region. | `""` |
 | `collector.clusterName` | Cluster name (must match your actual cluster name) | `""` (required) |
-| `collector.kms.keyArn` | KMS **key** ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>`. An alias ARN is rejected: IAM ignores aliases for key operations, so uploads would be denied. Use the key ARN from the Nullify configure page; if it shows an alias, contact Nullify. | `""` (required) |
+| `collector.kms.keyArn` | KMS key ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>` or alias ARN `arn:aws:kms:<region>:<account-id>:alias/<name>`, from the Nullify configure page. An alias needs the connector CloudFormation stack version that also grants `kms:GenerateDataKey` on `key/*` in Nullify's KMS account; the Terraform module grants only the ARN it is given, so use the key ARN there. The configure page will show the key ARN soon. | `""` (required) |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `collector.gke.awsRoleArn` | **GKE only.** Nullify-owned federated AWS IAM role ARN (provided after cluster registration). | `""` |
 | `collector.gke.audience` | **GKE only.** Token audience for the projected SA token. Do not change unless Nullify asks you to. | `sts.amazonaws.com` |
@@ -175,7 +175,7 @@ so the chart renders without the role-arn annotation:
 - `namespace.create` and `namespace.requireNamespace` are removed, along with the pre-install namespace hook and the `bitnami/kubectl` Job. Existing namespaces are not deleted. New installs need `--create-namespace`, or an existing namespace.
 - `collector.dataCollection.*` is removed. The collector never read `EXCLUDE_NAMESPACES`, `INCLUDE_RESOURCES` or `METADATA_ONLY`.
 - `collector.clusterName`, `collector.s3.bucket` and `collector.kms.keyArn` now default to `""`, and rendering fails when they are empty or still the old placeholders. The EKS role-arn annotation is validated the same way, unless `serviceAccount.requireRoleArn: false`.
-- A KMS alias in `collector.kms.keyArn` now fails to render. Uploads with an alias were already denied `kms:GenerateDataKey`. Use the key ARN from the Nullify configure page; if it shows an alias, contact Nullify.
+- `collector.kms.keyArn` must be an `arn:aws:kms:` key or alias ARN. With an alias, update the connector CloudFormation stack to the version that also grants `kms:GenerateDataKey` on `key/*`; older stacks and the Terraform module only grant the ARN as given, and IAM matches the key ARN, so uploads are denied.
 - `collector.aws.region` now defaults to the KMS key's region instead of `us-east-1`.
 - `helm upgrade --reuse-values` from 0.2.0 keeps 0.2.0's defaults, including `collector.aws.region: us-east-1`, so the region check fails unless the key is in `us-east-1`. Upgrade with `--reset-then-reuse-values` (Helm 3.14+) or `-f <your values>`, or set `collector.aws.region` to the key's region.
 - `nodeSelector` and `tolerations` now apply to the collector pod; before, only the removed pre-install Job used them.
@@ -209,7 +209,7 @@ If the CronJob is not creating jobs on schedule:
 
 If the job is failing due to S3 access issues:
 
-1. `AccessDenied` on `kms:GenerateDataKey`: `collector.kms.keyArn`, and `NullifyKMSKeyArn` on the CloudFormation stack, must be the key ARN, not an alias. If the Nullify configure page shows an alias, contact Nullify.
+1. `AccessDenied` on `kms:GenerateDataKey` with an alias in `collector.kms.keyArn`: update the connector CloudFormation stack to the version that also grants `key/*` in Nullify's KMS account, or use the key ARN (always, with Terraform).
 2. `AccessDenied` on `sts:AssumeRoleWithWebIdentity`: the service account must be `nullify/nullify-k8s-collector-sa`, and the integration's EKS OIDC provider URL must match the cluster.
 3. Wrong-region or redirect errors: `collector.aws.region` must be the Nullify bucket's region (leave it empty).
 4. Examine the job logs for detailed error messages.
