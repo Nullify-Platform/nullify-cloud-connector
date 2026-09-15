@@ -4,7 +4,11 @@
 # later run sees what an earlier one wrote, and answers the rest from the FAKE_*
 # environment variables the test sets. FAKE_UPDATES lists the cluster's updates
 # as space-separated "<id>:<type>:<status>" entries for list-updates and
-# describe-update. tag-resource enforces EKS's 50-tag limit (aws: keys excluded).
+# describe-update; update-1, the id update-cluster-config returns, is described
+# from FAKE_UPDATE_STATUS when FAKE_UPDATES does not list it. tag-resource
+# enforces EKS's 50-tag limit (aws: keys excluded, as AWS documents tagging in
+# general - the script itself counts them, which is the conservative reading of
+# the EKS quota).
 
 printf '%s\n' "$*" >>"$FAKE_AWS_LOG"
 
@@ -79,9 +83,6 @@ case "${1:-} ${2:-}" in
         fi
         tr ' ' '\t' <"$FAKE_AWS_STATE/cidrs"
         ;;
-      "length(keys(cluster.tags"*)
-        counted_tags
-        ;;
       "keys(cluster.tags"*)
         keys=()
         for file in "$tags_dir"/*; do
@@ -148,6 +149,11 @@ case "${1:-} ${2:-}" in
             details="${rest%%:*}"$'\t'"${rest#*:}"
           fi
         done
+        # update-cluster-config hands out update-1, so describe it even when the
+        # test set no FAKE_UPDATES entry for it.
+        if [[ -z "$details" && "$update_id" == update-1 ]]; then
+          details="EndpointAccessUpdate"$'\t'"${FAKE_UPDATE_STATUS:-Successful}"
+        fi
         if [[ -z "$details" ]]; then
           fail ResourceNotFoundException DescribeUpdate "No update found for ID: $update_id"
         fi
