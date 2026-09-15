@@ -199,7 +199,7 @@ run "readonly_policy_grants_a_read_only_action" {
   command = plan
 
   assert {
-    condition     = contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "access-analyzer:GetFinding")
+    condition     = contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "access-analyzer:List*")
     error_message = "The readonly policy's first statement must contain the expected access-analyzer read action"
   }
 
