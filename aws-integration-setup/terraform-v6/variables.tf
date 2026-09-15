@@ -24,7 +24,7 @@ variable "nullify_role_arn" {
 
   validation {
     condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.nullify_role_arn))
-    error_message = "Must be a valid ARN for an IAM role in the format arn:aws:iam::<account-id>:role/<role-name>"
+    error_message = "Must be a valid ARN for an IAM role in the format arn:aws:iam::<account-id>:role/<role-name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected."
   }
 }
 
@@ -41,7 +41,7 @@ variable "eks_cluster_arns" {
 
   validation {
     condition     = alltrue([for arn in var.eks_cluster_arns : can(regex("^arn:aws:eks:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9][A-Za-z0-9_-]*$", arn))])
-    error_message = "Each entry must be an EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>"
+    error_message = "Each entry must be an EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected."
   }
 }
 

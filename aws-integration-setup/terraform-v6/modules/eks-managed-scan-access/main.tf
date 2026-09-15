@@ -1,4 +1,11 @@
 locals {
+  # These are the NAT gateway Elastic IPs Nullify's scan compute egresses
+  # through in each region, sourced from the platform monorepo's
+  # `iac/network/vpc` module (`aws_eip.nat`, imported per prod workspace in
+  # `imports.tf`) -- not allocated or owned by this repo. They change only if
+  # Nullify recreates a NAT gateway; if a cluster starts failing the
+  # `nullify_endpoint_allowlist` check with no config change on your side,
+  # re-fetch this list rather than assuming a local misconfiguration.
   nullify_egress_cidrs_by_region = {
     "ap-southeast-2" = ["13.55.32.104/32", "3.105.146.106/32", "13.211.99.100/32"]
     "eu-central-1"   = ["18.198.60.231/32", "18.157.227.250/32", "18.185.152.197/32"]

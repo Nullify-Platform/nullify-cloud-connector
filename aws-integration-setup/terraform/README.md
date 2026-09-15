@@ -86,6 +86,7 @@ terraform/
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
+| Kinds read | Same kind list as the managed scan (both derive from the platform's collector) | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
@@ -107,7 +108,9 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 | rbac.authorization.k8s.io | roles, rolebindings, clusterroles, clusterrolebindings |
 | admissionregistration.k8s.io | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
-Plus `get` on the non-resource URL `/version`. Kubernetes has no metadata-only permission for Secrets: `list secrets` permits reading values, whichever mode you pick.
+Plus `get` on the non-resource URL `/version`.
+
+Both modes list Secrets, but neither reads values. The managed scan requests Kubernetes' server-side [Table representation](https://kubernetes.io/docs/reference/using-api/api-concepts/#alternate-representations-of-resources) for Secrets, so only metadata (name, type, key count) crosses the API server boundary; values never leave the cluster. The in-cluster collector fetches full Secret objects but redacts every value before it uploads collected data. The `list` verb technically permits reading values in either mode -- Kubernetes has no metadata-only RBAC verb for Secrets -- but Nullify's collection code never exercises that.
 
 ### `authorization = "admin_view_policy"` (opt-in)
 
@@ -121,7 +124,10 @@ Associates `AmazonEKSAdminViewPolicy` at cluster scope, so no Kubernetes objects
 - **One region per module instance (AWS provider v5).** Instantiate `eks-managed-scan-access` once per region with `providers = { aws = aws.<region> }`, as `examples/multi-cluster-complete` does. `../terraform-v6/` handles every region in one instance.
 - **Terraform identity.** `eks:DescribeCluster`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:UpdateAccessEntry`, `eks:DeleteAccessEntry` and `eks:TagResource`, plus `eks:AssociateAccessPolicy`, `eks:DisassociateAccessPolicy` and `eks:ListAssociatedAccessPolicies` for `admin_view_policy`. Creating the ClusterRole with `k8s-resources` needs rights to grant every permission in it, which in practice means cluster-admin. A GitOps controller (Flux, Argo CD) that already holds those rights can apply the same ClusterRole itself.
 - **Pass `principal_unique_id`.** EKS ties an access entry to the role's ID, so a recreated role with the same ARN is silently not authorized. With `principal_unique_id = module.nullify_aws_integration.role_unique_id`, the entries are replaced with the role.
-- **Existing access entry.** If this role is already mapped on a cluster, import it: `terraform import 'module.eks_managed_scan_access.aws_eks_access_entry.nullify["<cluster-arn>"]' <cluster-name>:<role-arn>`.
+- **Existing access entry.** If this role is already mapped on a cluster, import it. The address depends on how you call this module:
+  - Through the root module (`enable_managed_scan = true`, which wraps `eks_managed_scan_access` in `count`): `terraform import 'module.eks_managed_scan_access[0].aws_eks_access_entry.nullify["<cluster-arn>"]' <cluster-name>:<role-arn>`.
+  - Calling `modules/eks-managed-scan-access` directly with no `count`/`for_each` on the module block: `terraform import 'module.eks_managed_scan_access.aws_eks_access_entry.nullify["<cluster-arn>"]' <cluster-name>:<role-arn>`.
+  - From `examples/multi-cluster-complete`, which names two instances: `terraform import 'module.eks_managed_scan_access_primary[0].aws_eks_access_entry.nullify["<cluster-arn>"]' <cluster-name>:<role-arn>` (and `_secondary[0]` for the second cluster).
 
 ### Allowing Nullify to reach the EKS API endpoint
 
@@ -132,6 +138,8 @@ The managed scan connects to the cluster's public endpoint from Nullify's egress
 | ap-southeast-2 | 13.55.32.104, 3.105.146.106, 13.211.99.100 |
 | eu-central-1 | 18.198.60.231, 18.157.227.250, 18.185.152.197 |
 | us-east-2 | 52.15.146.50, 16.58.40.80, 3.133.15.210 |
+
+These are the NAT gateway Elastic IPs Nullify's scan compute egresses through, owned by the platform's `iac/network/vpc` module, not by this repo. They rotate only if Nullify recreates a NAT gateway in that region; if a cluster starts failing the check below with no change on your side, contact Nullify for the current list rather than assuming stale local config. Serving this list from an API instead of hardcoding it here is an open follow-up, not yet built.
 
 These modules never change `publicAccessCidrs`: the cluster belongs to your own IaC, and the API replaces the whole list. Instead:
 
