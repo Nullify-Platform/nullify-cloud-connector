@@ -190,6 +190,17 @@ jobs:
               "" \
               "Chart README: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/helm-charts/${name}/README.md")"
             if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null </dev/null; then
+              # The tag pre-dates this run (normally created by an earlier
+              # release run for this same version). Never hand-create
+              # <chart>-v* tags: refuse to attach the release unless the tag's
+              # tree for this chart and manifests/ is identical to $target's,
+              # so the release always documents the commit it actually came
+              # from.
+              git fetch -q --no-tags origin "+refs/tags/${tag}:refs/tags/${tag}" </dev/null
+              if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" manifests/ </dev/null; then
+                echo "::error::tag ${tag} already exists but its tree for helm-charts/${name} and manifests/ differs from ${target}; refusing to attach ${asset} there. Hand-made <chart>-v* tags are never created outside this job; delete ${tag} and let this job recreate it."
+                exit 1
+              fi
               gh release create "$tag" "_site/${asset}" --verify-tag \
                 --title "${name} ${version}" --notes "${notes}" </dev/null
             else
