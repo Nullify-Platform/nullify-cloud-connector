@@ -1,0 +1,10 @@
+# expect: collector.kms.keyArn must be a KMS key ARN
+collector:
+  clusterName: example-eks-cluster
+  s3:
+    bucket: example-nullify-bucket
+  kms:
+    keyArn: arn:aws:kms:REGION:ACCOUNT:key/KEY-ID
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AWSIntegration-example-NullifyReadOnlyRole

@@ -90,8 +90,6 @@ helm repo update
 # 2. Create your production values file (get values from Nullify configure page)
 cat > values-production.yaml << EOF
 collector:
-  aws:
-    region: "us-west-2"                # Extract from your KMS key ARN
   clusterName: "your-cluster-name"     # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
@@ -289,12 +287,10 @@ nullify-cloud-connector/
 │       ├── values-example.yaml           # Example production configuration
 │       ├── README.md                     # Chart-specific documentation
 │       └── templates/                    # Kubernetes resource templates
-│           ├── namespace.yaml            # Namespace creation
 │           ├── serviceaccount.yaml       # IRSA service account
 │           ├── clusterrole.yaml          # Read-only cluster permissions
 │           ├── clusterrolebinding.yaml   # RBAC binding
-│           ├── cronjob.yaml              # Main collector CronJob
-│           └── pre-install-job.yaml      # Pre-installation validation
+│           └── cronjob.yaml              # Main collector CronJob
 │   └── nullify-k8s-readonly-access/      # List-only RBAC for the managed EKS scan
 │
 ├── manifests/
@@ -370,7 +366,7 @@ All required values are provided in the Nullify configure page.
 ```yaml
 collector:
   aws:
-    region: "us-west-2"              # Extract from your KMS key ARN
+    region: ""                       # Nullify bucket's region; empty = the KMS key's region
   clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
@@ -405,12 +401,7 @@ eks_cluster_arns = [
 
 ```yaml
 collector:
-  # Data collection filters
-  dataCollection:
-    excludeNamespaces: "kube-system,kube-public"
-    includeResources: "pods,services,deployments"
-    metadataOnly: true  # Only collect metadata
-  
+  # The collector has no namespace or resource filters.
   # Resource limits
   resources:
     limits:
