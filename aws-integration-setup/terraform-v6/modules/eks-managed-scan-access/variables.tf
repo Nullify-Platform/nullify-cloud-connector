@@ -61,3 +61,9 @@ variable "tags" {
   description = "Tags to apply to the access entries"
   default     = {}
 }
+
+variable "collector_cluster_arns" {
+  type        = list(string)
+  description = "The subset of cluster_arns where a k8s-resources instance with enable_collector = true (or an equivalent manifest, or the nullify-k8s-collector Helm chart) already registers the cluster as an on-prem collector target. The module refuses to also create an access entry for one of these: the collector keys the cluster on cluster_name, this module's access entry keys the same cluster on its EKS ARN, and nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Checked for every authorization mode, including admin_view_policy, which creates no Kubernetes objects and so is invisible to any precondition inside k8s-resources"
+  default     = []
+}

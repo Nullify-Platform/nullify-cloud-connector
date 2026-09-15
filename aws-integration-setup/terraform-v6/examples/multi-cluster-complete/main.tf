@@ -120,9 +120,10 @@ module "eks_managed_scan_access" {
   source = "../../modules/eks-managed-scan-access"
   count  = local.managed ? 1 : 0
 
-  principal_arn       = module.nullify_aws_integration.role_arn
-  principal_unique_id = module.nullify_aws_integration.role_unique_id
-  cluster_arns        = var.eks_cluster_arns
-  nullify_region      = var.nullify_region
-  tags                = var.tags
+  principal_arn          = module.nullify_aws_integration.role_arn
+  principal_unique_id    = module.nullify_aws_integration.role_unique_id
+  cluster_arns           = var.eks_cluster_arns
+  nullify_region         = var.nullify_region
+  collector_cluster_arns = local.collector ? var.eks_cluster_arns : []
+  tags                   = var.tags
 }

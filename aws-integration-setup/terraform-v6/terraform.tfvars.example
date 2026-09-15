@@ -21,7 +21,8 @@ aws_region = "ap-southeast-2"
 # nullify_s3_access_point_arn = "arn:aws:s3:ap-southeast-2:123456789012:accesspoint/acme-corp-k8s-collector"
 
 # KMS ARN from the Nullify configure page (optional). A key ARN or an alias ARN both work.
-# kms_key_arn = "arn:aws:kms:ap-southeast-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+# The key lives in Nullify's account, not yours.
+# kms_key_arn = "arn:aws:kms:<nullify-region>:<nullify-account-id>:key/<from-the-configure-page>"
 
 # Enable Kubernetes integration (set to true if you have EKS clusters)
 enable_kubernetes_integration = false

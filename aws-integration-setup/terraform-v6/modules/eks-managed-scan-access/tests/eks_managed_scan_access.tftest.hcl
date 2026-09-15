@@ -208,3 +208,30 @@ run "cross_account_clusters_are_rejected" {
 
   expect_failures = [data.aws_eks_cluster.this]
 }
+
+run "a_collector_cluster_is_rejected_even_under_admin_view_policy" {
+  # admin_view_policy creates no Kubernetes objects, so the k8s-resources
+  # ClusterRole's own precondition can never see this combination. The guard
+  # has to live here, on the access entry every authorization mode creates.
+  command = plan
+
+  variables {
+    authorization          = "admin_view_policy"
+    collector_cluster_arns = ["arn:aws:eks:eu-west-1:123456789012:cluster/prod"]
+  }
+
+  expect_failures = [data.aws_eks_cluster.this, check.admin_view_policy_is_broader_than_required]
+}
+
+run "a_cluster_not_in_collector_cluster_arns_is_unaffected" {
+  command = plan
+
+  variables {
+    collector_cluster_arns = ["arn:aws:eks:eu-west-1:123456789012:cluster/some-other-cluster"]
+  }
+
+  assert {
+    condition     = length(aws_eks_access_entry.nullify) == 1
+    error_message = "A collector_cluster_arns entry for a different cluster must not block this one"
+  }
+}

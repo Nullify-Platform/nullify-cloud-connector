@@ -34,10 +34,10 @@ jobs:
       matrix:
         # AWS rows run the declared floor (Terraform 1.8, the version the
         # terraform-test job also runs); examples that use ephemeral resources
-        # (v6 multi-cluster, v6 managed-scan) need 1.10. Every modules/ directory
-        # is listed so a module added without a test suite is still parsed and
-        # fmt-checked; the validation blocks and preconditions themselves are
-        # only reached by the terraform-test job below, which supplies values.
+        # (v6 multi-cluster, v6 managed-scan) need 1.10. The three modules/
+        # directories each tree has are covered by the terraform-test job
+        # below instead, which already runs fmt-check, init and validate (via
+        # terraform test) against both Terraform versions with mocked values.
         include:
           - directory: gcp-integration-setup/terraform
             terraform: 1.9.5
@@ -55,12 +55,6 @@ jobs:
             terraform: 1.8.5
           - directory: aws-integration-setup/terraform/examples/managed-scan
             terraform: 1.8.5
-          - directory: aws-integration-setup/terraform/modules/eks-managed-scan-access
-            terraform: 1.8.5
-          - directory: aws-integration-setup/terraform/modules/k8s-resources
-            terraform: 1.8.5
-          - directory: aws-integration-setup/terraform/modules/nullify-aws-integration
-            terraform: 1.8.5
           - directory: aws-integration-setup/terraform-v6
             terraform: 1.8.5
           - directory: aws-integration-setup/terraform-v6/examples/basic
@@ -69,12 +63,6 @@ jobs:
             terraform: 1.10.5
           - directory: aws-integration-setup/terraform-v6/examples/managed-scan
             terraform: 1.10.5
-          - directory: aws-integration-setup/terraform-v6/modules/eks-managed-scan-access
-            terraform: 1.8.5
-          - directory: aws-integration-setup/terraform-v6/modules/k8s-resources
-            terraform: 1.8.5
-          - directory: aws-integration-setup/terraform-v6/modules/nullify-aws-integration
-            terraform: 1.8.5
           - directory: azure-integration-setup/terraform
             terraform: 1.9.5
           - directory: azure-integration-setup/terraform/examples/management-group

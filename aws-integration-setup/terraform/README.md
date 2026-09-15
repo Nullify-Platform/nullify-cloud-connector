@@ -183,9 +183,11 @@ module "nullify_readonly_rbac" {
 }
 ```
 
+If any cluster in `cluster_arns` also runs the collector (a `k8s-resources` instance with `enable_collector = true`, an equivalent manifest, or the `nullify-k8s-collector` Helm chart), list its ARN in `collector_cluster_arns` too — the module fails at plan rather than double-registering it, in every `authorization` mode.
+
 Outputs: `access_entry_arns`, `authorization`, `kubernetes_group_name`, `nullify_egress_cidrs`, `clusters_for_nullify`, `endpoint_allowlist`.
 
-The root configuration exposes the same module through `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization` (default `rbac`) and `managed_scan_kubernetes_group`. The root has no Kubernetes provider, so in `rbac` mode apply the RBAC separately.
+The root configuration exposes the same module through `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization` (default `rbac`) and `managed_scan_kubernetes_group`. The root has no Kubernetes provider, so in `rbac` mode apply the RBAC separately. It also derives `collector_cluster_arns` for you from `eks_cluster_arns` whenever `enable_kubernetes_integration` is true.
 
 ## Multi-Cluster Support
 
@@ -332,7 +334,7 @@ This is the same value as `collector.clusterName` in the `nullify-k8s-collector`
 
 `k8s-resources` variables include `enable_collector` (default `true`), `enable_managed_scan_rbac` (default `false`), `collector_image`, `cronjob_schedule` (default `0 0 * * *`), `kubernetes_namespace`, `service_account_name` and `enable_debug`.
 
-`enable_collector` and `enable_managed_scan_rbac` are mutually exclusive for one cluster, and the module fails at plan if both are true. The collector's upload registers the cluster as on-prem keyed on `cluster_name`; the managed scan registers the same cluster as its EKS ARN. Nothing joins the two, so enabling both lists the cluster twice with its pods and containers duplicated. To change mode, apply the new one and ask Nullify to remove the old cluster registration.
+A cluster cannot run the collector and the managed scan at once: the collector's upload registers it as on-prem keyed on `cluster_name`, the managed scan registers the same cluster as its EKS ARN, and nothing joins the two, so running both lists the cluster twice with its pods and containers duplicated. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination: pass it the cluster ARNs where `enable_collector` is `true` and the module fails at plan for any of them, in every `authorization` mode (`admin_view_policy` creates no Kubernetes objects, so a rule inside `k8s-resources` could never see it). To change mode, apply the new one and ask Nullify to remove the old cluster registration.
 
 `collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, a pinned tag of Nullify's ECR Public image. It is the same build as `k8s-collector-latest`, which the `nullify-k8s-collector` Helm chart deploys, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
 
@@ -376,9 +378,6 @@ module "nullify_k8s" {
 - The root and examples require AWS provider `>= 5.33`. Run `terraform init -upgrade` if your lock file pins an older 5.x.
 - `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
 - `k8s-resources` now requires `kms_key_arn` while `enable_collector` is true, with no opt-out. The shipped collector images refuse to upload without KMS encryption, so a deployment that left it empty was collecting successfully and then failing every upload. Set the value from the configure page; ask Nullify for a key if you have none.
-- `k8s-resources` no longer declares `allow_unencrypted_upload`. Passing it is now a plan error. It never worked against Nullify's bucket: leaving `kms_key_arn` empty also leaves the IAM role with no KMS statement, and the bucket's SSE-KMS default encryption makes `kms:GenerateDataKey` on Nullify's key a requirement of every upload, encrypted headers or not. The variable turned a self-explaining collector error into an S3 `AccessDenied`.
-- `k8s-resources` now rejects `enable_collector` and `enable_managed_scan_rbac` together, which `examples/multi-cluster-complete` already rejected as `scan_mode = "both"`. The two paths register the same cluster under different identities and nothing joins them.
-- `scan_mode = "both"` is no longer accepted in `examples/multi-cluster-complete`, and the module enforces the same rule. The collector registers a cluster as on-prem, keyed on `cluster_name`; the managed scan registers the same cluster as its EKS ARN. Nothing joins them, so "both" listed one cluster twice with its pods and containers duplicated.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The root configuration no longer declares the Kubernetes provider. It never deployed Kubernetes resources.
 - A cluster outside the AWS provider's region now fails at plan time with an explanation instead of a not-found error.
