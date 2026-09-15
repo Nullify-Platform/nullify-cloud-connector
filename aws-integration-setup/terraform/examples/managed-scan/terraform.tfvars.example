@@ -1,0 +1,25 @@
+# Managed EKS scan example - no in-cluster agent
+# Copy this file to terraform.tfvars and fill in your values.
+
+# REQUIRED: Customer name (provided by Nullify)
+customer_name = "acme-corp"
+
+# REQUIRED: External ID for cross-account role assumption (provided by Nullify)
+external_id = "your-external-id-from-nullify"
+
+# REQUIRED: Nullify cross-account role ARN (provided by Nullify)
+nullify_role_arn = "arn:aws:iam::123456789012:role/NullifyRole"
+
+# REQUIRED: the cluster to scan. Its authentication mode must be API or API_AND_CONFIG_MAP.
+eks_cluster_arn = "arn:aws:eks:eu-west-1:123456789012:cluster/prod"
+
+# REQUIRED: your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2)
+nullify_region = "eu-central-1"
+
+# rbac (recommended): list-only ClusterRole bound to the access entry's group.
+# admin_view_policy: AmazonEKSAdminViewPolicy, no Kubernetes objects, but it reads
+# every resource including Secrets and pods/log, and allows exec on EKS <= 1.34.
+# authorization = "rbac"
+
+# Set false if Helm, Flux or Argo CD applies the nullify-k8s-readonly-access chart.
+# manage_rbac = true

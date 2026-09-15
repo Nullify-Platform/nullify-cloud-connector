@@ -36,6 +36,14 @@ enable_kubernetes_integration = false
 #   "https://oidc.eks.ap-southeast-2.amazonaws.com/id/EXAMPLED539D4633E53DE1B716D3041E"
 # ]
 
+# Managed EKS scan: access entries so Nullify lists Kubernetes resources with no in-cluster agent.
+# Clusters must be in aws_region. In rbac mode, bind the group with the nullify-k8s-readonly-access
+# Helm chart, manifests/nullify-readonly-rbac.yaml or the k8s-resources module.
+# enable_managed_scan        = true
+# managed_scan_cluster_arns  = ["arn:aws:eks:ap-southeast-2:123456789012:cluster/my-cluster"]
+# nullify_region             = "ap-southeast-2"
+# managed_scan_authorization = "rbac"
+
 # Kubernetes namespace for Nullify resources
 # kubernetes_namespace = "nullify"
 

@@ -3,6 +3,11 @@ output "role_arn" {
   value       = aws_iam_role.nullify_readonly_role.arn
 }
 
+output "role_unique_id" {
+  description = "Stable ID of the IAM role. Pass it to eks-managed-scan-access as principal_unique_id so a recreated role replaces the access entries"
+  value       = aws_iam_role.nullify_readonly_role.unique_id
+}
+
 output "role_name" {
   description = "Name of the IAM Role created for Nullify"
   value       = aws_iam_role.nullify_readonly_role.name

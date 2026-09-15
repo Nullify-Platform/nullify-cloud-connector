@@ -101,3 +101,33 @@ variable "kms_key_arn" {
   description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
   default     = ""
 }
+
+variable "enable_managed_scan" {
+  type        = bool
+  description = "Create EKS access entries so Nullify's managed scan can list Kubernetes resources with no in-cluster agent"
+  default     = false
+}
+
+variable "managed_scan_cluster_arns" {
+  type        = list(string)
+  description = "EKS clusters for the managed scan, all in aws_region (AWS provider v5 manages access entries only in the provider's region)"
+  default     = []
+}
+
+variable "managed_scan_authorization" {
+  type        = string
+  description = "rbac (recommended): the access entry carries managed_scan_kubernetes_group, which you bind to the list-only nullify-readonly ClusterRole with the nullify-k8s-readonly-access Helm chart, manifests/nullify-readonly-rbac.yaml or the k8s-resources module. admin_view_policy: AmazonEKSAdminViewPolicy, which reads every resource including Secrets and pods/log, and allows exec into pods on EKS 1.34 and earlier"
+  default     = "rbac"
+}
+
+variable "managed_scan_kubernetes_group" {
+  type        = string
+  description = "Kubernetes group on the access entries in rbac mode"
+  default     = "nullify-readonly"
+}
+
+variable "nullify_region" {
+  type        = string
+  description = "Your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2). Required when enable_managed_scan is true"
+  default     = ""
+}

@@ -1,4 +1,6 @@
 resource "kubernetes_namespace" "nullify" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name = var.kubernetes_namespace
     labels = {
@@ -9,9 +11,11 @@ resource "kubernetes_namespace" "nullify" {
 }
 
 resource "kubernetes_service_account" "nullify_collector_sa" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name      = var.service_account_name
-    namespace = kubernetes_namespace.nullify.metadata[0].name
+    namespace = kubernetes_namespace.nullify[0].metadata[0].name
 
     annotations = {
       "eks.amazonaws.com/role-arn" = var.iam_role_arn
@@ -23,9 +27,18 @@ resource "kubernetes_service_account" "nullify_collector_sa" {
       "app.kubernetes.io/managed-by" = "terraform"
     }
   }
+
+  lifecycle {
+    precondition {
+      condition     = var.iam_role_arn != ""
+      error_message = "iam_role_arn is required when enable_collector is true: the collector's service account assumes it through IRSA."
+    }
+  }
 }
 
 resource "kubernetes_cluster_role" "nullify_readonly_role" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name = "nullify-k8s-collector-role"
     labels = {
@@ -110,6 +123,8 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
 }
 
 resource "kubernetes_cluster_role_binding" "nullify_collector_binding" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name = "nullify-k8s-collector-binding"
     labels = {
@@ -122,20 +137,22 @@ resource "kubernetes_cluster_role_binding" "nullify_collector_binding" {
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "ClusterRole"
-    name      = kubernetes_cluster_role.nullify_readonly_role.metadata[0].name
+    name      = kubernetes_cluster_role.nullify_readonly_role[0].metadata[0].name
   }
 
   subject {
     kind      = "ServiceAccount"
-    name      = kubernetes_service_account.nullify_collector_sa.metadata[0].name
-    namespace = kubernetes_namespace.nullify.metadata[0].name
+    name      = kubernetes_service_account.nullify_collector_sa[0].metadata[0].name
+    namespace = kubernetes_namespace.nullify[0].metadata[0].name
   }
 }
 
 resource "kubernetes_cron_job_v1" "k8s_collector" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name      = "k8s-info-collector"
-    namespace = kubernetes_namespace.nullify.metadata[0].name
+    namespace = kubernetes_namespace.nullify[0].metadata[0].name
     labels = {
       "app.kubernetes.io/name"      = "nullify"
       "app.kubernetes.io/component" = "k8s-collector"
@@ -168,7 +185,7 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
           }
 
           spec {
-            service_account_name = kubernetes_service_account.nullify_collector_sa.metadata[0].name
+            service_account_name = kubernetes_service_account.nullify_collector_sa[0].metadata[0].name
             restart_policy       = "OnFailure"
 
             container {
