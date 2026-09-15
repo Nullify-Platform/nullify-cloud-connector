@@ -16,6 +16,7 @@ The chart installs exactly two cluster-scoped objects:
 |---|---|
 | core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
 | `apps` | deployments, daemonsets, statefulsets, replicasets |
+| `batch` | jobs |
 | `networking.k8s.io` | ingresses, networkpolicies |
 | `discovery.k8s.io` | endpointslices |
 | `rbac.authorization.k8s.io` | roles, rolebindings, clusterroles, clusterrolebindings |
@@ -29,7 +30,9 @@ not serve ValidatingAdmissionPolicies; the rule is harmless there, and the
 scanner skips that kind.
 
 The scan runs every namespace and fails the whole cluster if any of these lists
-is denied, so the binding has to be cluster-wide.
+is denied, so the binding has to be cluster-wide. Jobs are the exception: a
+denied Jobs list is skipped, and pods started by a CronJob are then attributed
+to their Job instead of the CronJob.
 
 ## Prerequisites
 
@@ -219,7 +222,7 @@ for r in nodes namespaces persistentvolumes \
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" "${AS[@]}")"
 done
 for r in pods services persistentvolumeclaims configmaps secrets resourcequotas limitranges serviceaccounts \
-  deployments.apps daemonsets.apps statefulsets.apps replicasets.apps \
+  deployments.apps daemonsets.apps statefulsets.apps replicasets.apps jobs.batch \
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io endpointslices.discovery.k8s.io \
   roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" --all-namespaces "${AS[@]}")"

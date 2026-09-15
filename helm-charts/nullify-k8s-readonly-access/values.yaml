@@ -32,7 +32,7 @@ extraSubjects: []
 # VM console or vnc), and nonResourceURLs other than /version are rejected.
 extraRules: []
 #  - apiGroups: ["batch"]
-#    resources: ["jobs", "cronjobs"]
+#    resources: ["cronjobs"]
 #    verbs: ["list"]
 
 # Labels and annotations added to both objects.
