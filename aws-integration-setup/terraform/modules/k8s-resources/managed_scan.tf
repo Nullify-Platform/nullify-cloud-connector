@@ -26,6 +26,10 @@ locals {
       api_groups = ["admissionregistration.k8s.io"]
       resources  = ["validatingwebhookconfigurations", "mutatingwebhookconfigurations", "validatingadmissionpolicies", "validatingadmissionpolicybindings"]
     },
+    {
+      api_groups = ["batch"]
+      resources  = ["jobs"]
+    },
   ]
 }
 

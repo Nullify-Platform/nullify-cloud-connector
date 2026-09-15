@@ -48,22 +48,16 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     }
   }
 
-  # Kinds the collector lists, kept identical to the managed-scan ClusterRole
-  # (managed_scan.tf) and to collect.go in the platform monorepo
-  # (context/internal/cloudintegrations/k8sintegration/collect).
   rule {
     api_groups = [""]
     resources = [
       "pods",
       "services",
+      "endpoints",
       "namespaces",
       "nodes",
       "persistentvolumes",
       "persistentvolumeclaims",
-      "configmaps",
-      "secrets",
-      "resourcequotas",
-      "limitranges",
       "serviceaccounts",
     ]
     verbs = ["get", "list"]
@@ -72,12 +66,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
   rule {
     api_groups = ["networking.k8s.io"]
     resources  = ["ingresses", "networkpolicies"]
-    verbs      = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["discovery.k8s.io"]
-    resources  = ["endpointslices"]
     verbs      = ["get", "list"]
   }
 
@@ -104,14 +92,33 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
   }
 
   rule {
-    api_groups = ["admissionregistration.k8s.io"]
-    resources = [
-      "validatingwebhookconfigurations",
-      "mutatingwebhookconfigurations",
-      "validatingadmissionpolicies",
-      "validatingadmissionpolicybindings",
-    ]
-    verbs = ["get", "list"]
+    api_groups = ["storage.k8s.io"]
+    resources  = ["storageclasses"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["batch"]
+    resources  = ["jobs", "cronjobs"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["autoscaling"]
+    resources  = ["horizontalpodautoscalers"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["policy"]
+    resources  = ["poddisruptionbudgets"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = ["apiextensions.k8s.io"]
+    resources  = ["customresourcedefinitions"]
+    verbs      = ["get", "list"]
   }
 }
 

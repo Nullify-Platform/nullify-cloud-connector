@@ -12,6 +12,7 @@ on:
       - "gcp-integration-setup/**"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
+      - "scripts/**"
       - ".github/workflows/terraform-validate.yml"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "gcp-integration-setup/**"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
+      - "scripts/**"
       - ".github/workflows/terraform-validate.yml"
 
 permissions:

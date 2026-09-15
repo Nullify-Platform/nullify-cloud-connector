@@ -86,7 +86,7 @@ terraform/
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
-| Kinds read | Same kind list as the managed scan (both derive from the platform's collector) | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
+| Kinds read | The chart's own ClusterRole; not identical to the managed scan's list | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
@@ -110,7 +110,7 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 
 Plus `get` on the non-resource URL `/version`.
 
-Both modes list Secrets, but neither reads values. The managed scan requests Kubernetes' server-side [Table representation](https://kubernetes.io/docs/reference/using-api/api-concepts/#alternate-representations-of-resources) for Secrets, so only metadata (name, type, key count) crosses the API server boundary; values never leave the cluster. The in-cluster collector fetches full Secret objects but redacts every value before it uploads collected data. The `list` verb technically permits reading values in either mode -- Kubernetes has no metadata-only RBAC verb for Secrets -- but Nullify's collection code never exercises that.
+Both modes list Secrets in full, values included, then redact every value before anything is stored -- values never reach storage, but they do cross the wire to Nullify's collection code. Secrets and ConfigMaps collection can each be turned off per cluster with a collector flag, which stops the objects from being listed at all.
 
 ### `authorization = "admin_view_policy"` (opt-in)
 

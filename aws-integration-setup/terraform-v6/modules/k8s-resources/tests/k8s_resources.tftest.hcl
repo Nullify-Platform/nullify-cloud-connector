@@ -135,13 +135,13 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = length(kubernetes_cluster_role_v1.nullify_readonly[0].rule) == 7
-    error_message = "The managed-scan ClusterRole must have six resource rules and one /version rule"
+    condition     = length(kubernetes_cluster_role_v1.nullify_readonly[0].rule) == 8
+    error_message = "The managed-scan ClusterRole must have seven resource rules and one /version rule"
   }
 
   assert {
-    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 6) : length(rule.resources)]) == 26
-    error_message = "The managed-scan ClusterRole must list exactly the 26 kinds the scanner reads"
+    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : length(rule.resources)]) == 27
+    error_message = "The managed-scan ClusterRole must list exactly the 27 kinds the scanner reads"
   }
 
   # Pins the set, not just the size: swapping one kind for another keeps every
@@ -178,12 +178,17 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = alltrue([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 6) : tolist(rule.verbs) == tolist(["list"])])
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[6].api_groups) == tolist(["batch"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[6].resources) == toset(["jobs"])
+    error_message = "Rule 6 must grant exactly the batch API group kinds the scanner lists"
+  }
+
+  assert {
+    condition     = alltrue([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : tolist(rule.verbs) == tolist(["list"])])
     error_message = "Resource rules must grant list only"
   }
 
   assert {
-    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[6].non_resource_urls) == tolist(["/version"]) && tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[6].verbs) == tolist(["get"])
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[7].non_resource_urls) == tolist(["/version"]) && tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[7].verbs) == tolist(["get"])
     error_message = "The only non-resource grant must be get /version"
   }
 
