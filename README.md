@@ -157,7 +157,7 @@ kubectl logs -l job-name=<job-name> -n nullify
 Nullify can read an EKS cluster's configuration from Nullify's AWS account through the cluster's public API endpoint, using the read-only integration role. Nothing runs in the cluster; you grant list-only RBAC to a group and map the integration role to that group with an EKS access entry.
 
 - RBAC: the [`nullify-k8s-readonly-access`](helm-charts/nullify-k8s-readonly-access/README.md) chart, or the equivalent raw manifest [`manifests/nullify-readonly-rbac.yaml`](manifests/nullify-readonly-rbac.yaml) for kubectl and Flux.
-- Default: ClusterRole `nullify-readonly` with `list` on 26 kinds, bound to group `nullify-readonly`.
+- Default: ClusterRole `nullify-readonly` with `list` on 26 kinds and `get` on `/version`, bound to group `nullify-readonly`.
 - Do not use `AmazonEKSViewPolicy` (the scan fails); `AmazonEKSAdminViewPolicy` works but is far broader. See the chart README before choosing it.
 
 | | In-cluster collector | Managed EKS scan |
@@ -165,7 +165,7 @@ Nullify can read an EKS cluster's configuration from Nullify's AWS account throu
 | Where it runs | CronJob in your cluster | Nullify's AWS account |
 | Network | Outbound from the cluster to AWS S3/STS | Inbound to the EKS public endpoint from Nullify egress IPs |
 | Private-only endpoint | Supported | Not supported |
-| In-cluster objects | Namespace, ServiceAccount, ClusterRole, ClusterRoleBinding, CronJob | ClusterRole, ClusterRoleBinding |
+| In-cluster objects | ServiceAccount, ClusterRole, ClusterRoleBinding, CronJob | ClusterRole, ClusterRoleBinding |
 | A denied kind | Skipped | Whole cluster scan fails |
 | Platforms | EKS, GKE | EKS |
 

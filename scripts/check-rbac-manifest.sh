@@ -33,6 +33,10 @@ for side in manifest chart; do
     echo "::error::$side normalised to $count objects, expected the ClusterRole and ClusterRoleBinding"
     exit 1
   fi
+  if ! jq -e '.[] | select(.kind == "ClusterRole") | .rules[] | select(.nonResourceURLs == ["/version"] and .verbs == ["get"])' "$work/$side.json" >/dev/null; then
+    echo "::error::$side ClusterRole does not grant get on /version, which the strict managed scan needs"
+    exit 1
+  fi
 done
 
 if ! diff -u "$work/manifest.json" "$work/chart.json"; then

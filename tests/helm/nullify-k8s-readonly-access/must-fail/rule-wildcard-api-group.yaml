@@ -1,0 +1,5 @@
+# expect: extraRules apiGroup "*" is not allowed
+extraRules:
+  - apiGroups: ["*"]
+    resources: ["jobs"]
+    verbs: ["list"]

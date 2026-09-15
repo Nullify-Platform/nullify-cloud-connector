@@ -47,6 +47,8 @@ rules:
       - validatingadmissionpolicies
       - validatingadmissionpolicybindings
     verbs: ["list"]
+  - nonResourceURLs: ["/version"]
+    verbs: ["get"]
   {{- with .Values.extraRules }}
   {{- toYaml . | nindent 2 }}
   {{- end }}

@@ -8,10 +8,16 @@ extraSubjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: User
     name: nullify-scanner
+  - kind: ServiceAccount
+    name: nullify-scanner
+    namespace: nullify
 extraRules:
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
     verbs: ["list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get"]
 labels:
   team: platform
 annotations:
