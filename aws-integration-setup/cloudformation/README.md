@@ -180,7 +180,9 @@ aws cloudformation create-stack \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-IAM ignores alias ARNs for key operations, so the KMS policy grants its actions on the ARN you pass and on `arn:aws:kms:<region>:<account>:key/*` in the same Nullify account and region. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. Either form produces a working grant, so an existing stack does not need updating when the configure page changes. The `KMSPolicyResource` stack output lists both resources.
+The policy grants its actions on the ARN you pass in one statement, and on `arn:aws:kms:<region>:<account>:key/*` in that ARN's account and region in a second. IAM ignores alias ARNs for key operations, so a Nullify alias ARN needs that wildcard to work at all; a key ARN in your own account does not, and must not reach the rest of your keys. The second statement therefore carries the IAM condition `StringNotEquals` on `aws:PrincipalAccount`, which holds only when the ARN names an account other than the one you deploy into. A Nullify ARN of either form gets the wildcard; an ARN from your own account is granted alone.
+
+The account check runs on every request rather than at deploy time because CloudFormation template `Condition`s accept only `Ref`, `Fn::FindInMap` and other conditions, so `AWS::AccountId` cannot be compared with an account parsed out of a parameter. The effective permissions are the same either way. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. Either ARN form produces a working grant, so an existing stack does not need updating when the configure page changes. The `KMSPolicyResource` stack output lists both resources.
 
 Update an existing stack, keeping its current values:
 
@@ -224,7 +226,7 @@ On an existing stack, add that line to the `update-stack` command above.
 | `RoleArn`, `IAMRoleArn` | ARN of the Nullify read-only role |
 | `RoleName` | `AWSIntegration-<CustomerName>-NullifyReadOnlyRole` |
 | `KubernetesGroupName` | `nullify-readonly`, the default group for the managed EKS scan |
-| `KMSPolicyResource` | Resources of the KMS policy, comma-separated: `NullifyKMSKeyArn` and `key/*` in its account and region (only when `NullifyKMSKeyArn` is set) |
+| `KMSPolicyResource` | Resources of the KMS policy, comma-separated: `NullifyKMSKeyArn`, always granted, and `key/*` in its account and region, granted only when that account is not your own (only when `NullifyKMSKeyArn` is set) |
 
 ## Managed EKS scan (no in-cluster agent)
 
@@ -355,7 +357,7 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|ad
 | `401 Unauthorized` | No access entry, an entry for a since-recreated role, or `CONFIG_MAP` authentication mode |
 | `403 ... cannot list <resource>` | RBAC missing or incomplete for that resource |
 | Timeout connecting to the endpoint | Nullify's IPs are not in `publicAccessCidrs`, or the endpoint is private-only |
-| KMS `AccessDenied` on collector upload | `NullifyKMSKeyArn` is empty or not the value shown on the configure page. If it matches, the role already allows `key/*` in that account and region, so the denial comes from Nullify's key policy: contact Nullify support |
+| KMS `AccessDenied` on collector upload | `NullifyKMSKeyArn` is empty or not the value shown on the configure page. If it matches a Nullify ARN, the role already allows `key/*` in that account and region, so the denial comes from Nullify's key policy: contact Nullify support. An ARN in your own account is granted alone, and an alias ARN from your own account grants nothing, because IAM never resolves an alias ARN to a key |
 
 ### Removal
 

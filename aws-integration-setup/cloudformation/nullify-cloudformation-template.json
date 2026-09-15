@@ -47,7 +47,7 @@
       },
       "NullifyKMSKeyArn": {
         "Type": "String",
-        "Description": "Optional. The KMS ARN shown on the Nullify configure page. Both forms are accepted: an alias ARN (arn:aws:kms:<region>:<account>:alias/<name>) or a key ARN (arn:aws:kms:<region>:<account>:key/<key-id>, including multi-Region key/mrk-... keys). IAM ignores alias ARNs for key operations, so the policy grants the KMS actions on this ARN and on key/* in the same Nullify account and region. Nullify's key policy is the real gate: this role can only use Nullify keys whose key policy allows it.",
+        "Description": "Optional. The KMS ARN shown on the Nullify configure page. Both forms are accepted: an alias ARN (arn:aws:kms:<region>:<account>:alias/<name>) or a key ARN (arn:aws:kms:<region>:<account>:key/<key-id>, including multi-Region key/mrk-... keys). IAM ignores alias ARNs for key operations, so the policy grants the KMS actions on this ARN and, in a second statement, on key/* in the ARN's account and region. That second statement carries the IAM condition StringNotEquals aws:PrincipalAccount, so it applies only when the ARN names an account other than the one you deploy into: an ARN from your own account is granted on its own. Nullify's key policy is the real gate: this role can only use Nullify keys whose key policy allows it.",
         "Default": "",
         "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+))?$",
         "ConstraintDescription": "Must be empty, a KMS alias ARN (arn:aws:kms:<region>:<account>:alias/<name>) or a KMS key ARN (arn:aws:kms:<region>:<account>:key/<key-id>)."
@@ -859,7 +859,20 @@
                 "Resource": [
                   {
                     "Ref": "NullifyKMSKeyArn"
-                  },
+                  }
+                ],
+                "Condition": {}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "kms:DescribeKey",
+                  "kms:GenerateDataKey",
+                  "kms:GenerateDataKeyWithoutPlaintext",
+                  "kms:ReEncryptFrom",
+                  "kms:ReEncryptTo"
+                ],
+                "Resource": [
                   {
                     "Fn::Sub": [
                       "arn:${KmsPartition}:kms:${KmsRegion}:${KmsAccount}:key/*",
@@ -931,7 +944,31 @@
                     ]
                   }
                 ],
-                "Condition": {}
+                "Condition": {
+                  "StringNotEquals": {
+                    "aws:PrincipalAccount": {
+                      "Fn::Select": [
+                        4,
+                        {
+                          "Fn::Split": [
+                            ":",
+                            {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  {
+                                    "Ref": "NullifyKMSKeyArn"
+                                  },
+                                  ":::::x"
+                                ]
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
               }
             ]
           }
@@ -969,7 +1006,7 @@
       },
       "KMSPolicyResource": {
         "Condition": "KMSKeyProvided",
-        "Description": "Resources of the KMS access policy, comma-separated: NullifyKMSKeyArn and key/* in the same Nullify account and region.",
+        "Description": "Resources of the KMS access policy, comma-separated: NullifyKMSKeyArn, granted always, and key/* in the ARN's account and region, granted only on requests whose principal account differs from that account.",
         "Value": {
           "Fn::Join": [
             ",",
