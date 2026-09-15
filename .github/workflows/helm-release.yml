@@ -165,6 +165,39 @@ jobs:
             [ -n "$name" ] || continue
             tag="${name}-v${version}"
             asset="${name}-${version}.tgz"
+
+            # git ls-remote --exit-code exits 2 for "no such tag" and non-zero
+            # for anything else (e.g. an unreachable remote); only 2 may be
+            # read as "no tag" or a network blip would silently fall through
+            # to hand-creating a release with no tag verification at all.
+            git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null </dev/null && rc=0 || rc=$?
+            case "$rc" in
+              0) has_tag=true ;;
+              2) has_tag=false ;;
+              *) echo "::error::git ls-remote for tag ${tag} exited ${rc}; origin may be unreachable, refusing to assume no tag exists"; exit 1 ;;
+            esac
+
+            if [ "$has_tag" = "true" ]; then
+              # The tag pre-dates this run (normally created by an earlier
+              # release run for this same version), whether or not it already
+              # has a release, or a release with no asset yet. Never
+              # hand-create <chart>-v* tags: refuse to trust it unless its
+              # commit is on main and its tree for this chart (plus any
+              # manifest this chart's own README points at) is identical to
+              # $target's, so the release always documents the commit it
+              # actually came from.
+              git fetch -q --no-tags origin "+refs/tags/${tag}:refs/tags/${tag}" </dev/null
+              if ! git merge-base --is-ancestor "refs/tags/${tag}^{commit}" HEAD </dev/null; then
+                echo "::error::tag ${tag} exists but its commit is not on main; refusing to trust it. Hand-made <chart>-v* tags are never created outside this job; delete ${tag} and let this job recreate it."
+                exit 1
+              fi
+              manifests="$(git show "refs/tags/${tag}:helm-charts/${name}/README.md" 2>/dev/null | grep -oE '\bmanifests/[A-Za-z0-9_.-]+\.ya?ml\b' | sort -u || true)"
+              if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" ${manifests} </dev/null; then
+                echo "::error::tag ${tag} exists but its tree for helm-charts/${name} ${manifests} differs from ${target}; refusing to trust it. Hand-made <chart>-v* tags are never created outside this job; delete ${tag} and let this job recreate it."
+                exit 1
+              fi
+            fi
+
             if gh release view "$tag" >/dev/null 2>&1 </dev/null; then
               if ! gh release view "$tag" --json assets --jq '.assets[].name' </dev/null | grep -qxF "$asset"; then
                 gh release upload "$tag" "_site/${asset}" </dev/null
@@ -179,6 +212,7 @@ jobs:
               echo "release ${tag} already has ${asset} (${want})"
               continue
             fi
+
             notes="$(printf '%s\n' \
               "Chart \`${name}\` version \`${version}\`, published to ${HELM_REPO_URL}" \
               "" \
@@ -189,18 +223,7 @@ jobs:
               '```' \
               "" \
               "Chart README: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/helm-charts/${name}/README.md")"
-            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null </dev/null; then
-              # The tag pre-dates this run (normally created by an earlier
-              # release run for this same version). Never hand-create
-              # <chart>-v* tags: refuse to attach the release unless the tag's
-              # tree for this chart and manifests/ is identical to $target's,
-              # so the release always documents the commit it actually came
-              # from.
-              git fetch -q --no-tags origin "+refs/tags/${tag}:refs/tags/${tag}" </dev/null
-              if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" manifests/ </dev/null; then
-                echo "::error::tag ${tag} already exists but its tree for helm-charts/${name} and manifests/ differs from ${target}; refusing to attach ${asset} there. Hand-made <chart>-v* tags are never created outside this job; delete ${tag} and let this job recreate it."
-                exit 1
-              fi
+            if [ "$has_tag" = "true" ]; then
               gh release create "$tag" "_site/${asset}" --verify-tag \
                 --title "${name} ${version}" --notes "${notes}" </dev/null
             else
