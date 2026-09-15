@@ -666,11 +666,11 @@ record_pending_update() {
 # pending_record_tag_keys
 # Prints every tag key the pending record occupies, the update id included.
 pending_record_tag_keys() {
-  local keys="$PENDING_TAG_KEYS"
+  local tag_keys="$PENDING_TAG_KEYS"
   if [[ -n "$PENDING_UPDATE_ID" ]]; then
-    keys="${keys:+$keys }$PENDING_UPDATE_TAG_KEY"
+    tag_keys="${tag_keys:+$tag_keys }$PENDING_UPDATE_TAG_KEY"
   fi
-  echo "$keys"
+  echo "$tag_keys"
 }
 
 # drop_pending_record
