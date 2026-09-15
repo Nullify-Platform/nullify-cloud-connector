@@ -1,5 +1,5 @@
 locals {
-  collector_cluster_arns = var.enable_kubernetes_integration ? var.eks_cluster_arns : []
+  collector_cluster_arns = var.collector_cluster_arns != null ? var.collector_cluster_arns : (var.enable_kubernetes_integration ? var.eks_cluster_arns : [])
 }
 
 module "nullify_aws_integration" {

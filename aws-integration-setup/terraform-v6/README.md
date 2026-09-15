@@ -108,13 +108,16 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `kms_key_arn`: KMS key ARN or alias ARN from the Nullify configure page; see "KMS" in `../terraform/README.md`. Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `enable_kubernetes_integration`: Set to `true` for EKS integration
 - `eks_cluster_arns`: List of EKS cluster ARNs to integrate with, in any region
+- `collector_cluster_arns`: Override for which of those clusters `eks_managed_scan_access` treats as already running the collector; defaults to `eks_cluster_arns` when `enable_kubernetes_integration` is `true`. Set it explicitly when trust is granted ahead of the collector's actual deployment, or to decouple a collector-to-managed-scan cutover from revoking IRSA trust
 - `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization`, `managed_scan_kubernetes_group`: managed EKS scan
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `service_account_name`: Collector service account name (default: nullify-k8s-collector-sa)
 - `tags`: Resource tags
 - `cronjob_schedule`: Deprecated and unused here; set the schedule on `k8s-resources`
 
-`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true, with no unencrypted opt-out, and rejects `enable_collector` together with `enable_managed_scan_rbac`. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
+`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true, with no unencrypted opt-out. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
+
+A cluster cannot run the collector and the managed scan at once: the two paths register it under different identities, duplicating its inventory. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination -- `enable_collector` and `enable_managed_scan_rbac` may be set together on one `k8s-resources` instance to stage a cutover, since the ClusterRole it applies is inert until an access entry uses it. See "Kubernetes Resources" in `../terraform/README.md`.
 
 `k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, the same build as the `k8s-collector-latest` tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
 
@@ -124,6 +127,7 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `k8s-resources` now requires `kms_key_arn` while `enable_collector` is true, with no opt-out. The shipped collector images refuse to upload without KMS encryption, so a deployment that left it empty was collecting successfully and then failing every upload. Set the value from the configure page; ask Nullify for a key if you have none.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The KMS policy grants `key/*` in the account and region of `kms_key_arn` whenever that account is not your own, for alias ARNs and key ARNs alike. An ARN in your own account grants only that key.
+- The root no longer declares a `kubernetes` provider or `hashicorp/kubernetes` requirement: this tree's root never applied Kubernetes objects, so remove any provider configuration you added to satisfy it.
 
 ## Validation
 

@@ -187,7 +187,7 @@ If any cluster in `cluster_arns` also runs the collector (a `k8s-resources` inst
 
 Outputs: `access_entry_arns`, `authorization`, `kubernetes_group_name`, `nullify_egress_cidrs`, `clusters_for_nullify`, `endpoint_allowlist`.
 
-The root configuration exposes the same module through `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization` (default `rbac`) and `managed_scan_kubernetes_group`. The root has no Kubernetes provider, so in `rbac` mode apply the RBAC separately. It also derives `collector_cluster_arns` for you from `eks_cluster_arns` whenever `enable_kubernetes_integration` is true.
+The root configuration exposes the same module through `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization` (default `rbac`) and `managed_scan_kubernetes_group`. The root has no Kubernetes provider, so in `rbac` mode apply the RBAC separately. It also derives `collector_cluster_arns` for you from `eks_cluster_arns` whenever `enable_kubernetes_integration` is true — that is only a proxy (granting the collector's IRSA trust is not the same as deploying it), so override it with the root's own `collector_cluster_arns` variable when trust is granted ahead of deployment, or when migrating a cluster from collector to managed scan and you want to stop the guard blocking it before you also remove the cluster from `eks_cluster_arns` (which revokes its IRSA trust).
 
 ## Multi-Cluster Support
 
@@ -257,6 +257,7 @@ terraform init && terraform apply
 - `enable_kubernetes_integration`: Set to `true` to trust the in-cluster collector's service account
 - `eks_cluster_arns`: List of EKS cluster ARNs to integrate with
 - `eks_oidc_issuer_urls`: OIDC issuer per cluster, only needed for clusters outside `aws_region`
+- `collector_cluster_arns`: Override for which clusters the managed-scan duplicate guard treats as collector targets; defaults to `eks_cluster_arns` when `enable_kubernetes_integration` is `true`
 - `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization`, `managed_scan_kubernetes_group`: see [Managed EKS scan](#managed-eks-scan)
 
 ## Optional Variables

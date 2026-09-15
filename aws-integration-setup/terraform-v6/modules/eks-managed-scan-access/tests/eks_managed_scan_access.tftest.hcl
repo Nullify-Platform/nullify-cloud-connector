@@ -235,3 +235,21 @@ run "a_cluster_not_in_collector_cluster_arns_is_unaffected" {
     error_message = "A collector_cluster_arns entry for a different cluster must not block this one"
   }
 }
+
+run "a_same_named_cluster_in_another_region_is_unaffected" {
+  # The guard compares full ARNs, not bare cluster names. This tree supports
+  # collector_cluster_arns spanning multiple regions in one instance (see the
+  # README's multi-region example), so a cluster called "prod" in eu-west-1
+  # (cluster_arns) must not collide with an unrelated cluster also called
+  # "prod" in us-east-1 (collector_cluster_arns).
+  command = plan
+
+  variables {
+    collector_cluster_arns = ["arn:aws:eks:us-east-1:123456789012:cluster/prod"]
+  }
+
+  assert {
+    condition     = length(aws_eks_access_entry.nullify) == 1
+    error_message = "A same-named cluster in a different region must not be mistaken for the same cluster"
+  }
+}
