@@ -25,6 +25,7 @@ readonly MANAGED_BY_TAG_VALUE="nullify-connector"
 readonly ADDED_CIDRS_TAG_KEY="nullify-added-cidrs"
 readonly PENDING_CIDRS_TAG_KEY="nullify-pending-cidrs"
 readonly EKS_TAG_VALUE_MAX_LENGTH=256
+readonly EKS_MAX_TAGS_PER_RESOURCE=50
 readonly DEFAULT_GROUP="nullify-readonly"
 readonly RBAC_CLUSTER_ROLE="nullify-readonly"
 readonly RBAC_MANIFEST_RELEASE_TAG="nullify-k8s-readonly-access-v0.1.0"
@@ -73,6 +74,7 @@ PENDING_CIDRS=""
 PENDING_TAG_KEYS=""
 STORED_TAG_KEYS=""
 KUBECONFIG_TMP=""
+RBAC_MANIFEST_TMP_DIR=""
 KUBECTL=()
 VERIFY_FAILURES=0
 
@@ -82,6 +84,15 @@ warn() { log "[WARN] $*"; }
 die() {
   log "[ERROR] $*"
   exit 1
+}
+
+cleanup_tmp() {
+  if [[ -n "$KUBECONFIG_TMP" ]]; then
+    rm -f "$KUBECONFIG_TMP"
+  fi
+  if [[ -n "$RBAC_MANIFEST_TMP_DIR" ]]; then
+    rm -rf "$RBAC_MANIFEST_TMP_DIR"
+  fi
 }
 
 usage() {
@@ -108,7 +119,10 @@ Actions:
 CIDR records: apply writes ${PENDING_CIDRS_TAG_KEY} before update-cluster-config
 and moves those CIDRs to ${ADDED_CIDRS_TAG_KEY} once the update succeeds. If a run
 stops in between (timeout, Ctrl-C, expired credentials), re-running apply or
-remove reconciles ${PENDING_CIDRS_TAG_KEY} against publicAccessCidrs.
+remove reconciles ${PENDING_CIDRS_TAG_KEY} against publicAccessCidrs, and refuses
+while an EndpointAccessUpdate of the cluster is still InProgress. The records use
+up to two cluster tags at once; apply stops before changing publicAccessCidrs
+when the cluster is too close to EKS's limit of ${EKS_MAX_TAGS_PER_RESOURCE} tags.
 
 Required:
   --cluster NAME             EKS cluster name
@@ -329,7 +343,7 @@ setup_kubectl() {
     die "kubectl is required (or pass --skip-rbac)"
   fi
   KUBECONFIG_TMP="$(mktemp "${TMPDIR:-/tmp}/nullify-eks-kubeconfig.XXXXXX")"
-  trap 'rm -f "$KUBECONFIG_TMP"' EXIT
+  trap cleanup_tmp EXIT
   log "[run] aws eks update-kubeconfig --name $CLUSTER --region $REGION --kubeconfig $KUBECONFIG_TMP"
   aws eks update-kubeconfig --name "$CLUSTER" --region "$REGION" --kubeconfig "$KUBECONFIG_TMP" >/dev/null
   KUBECTL=(kubectl --kubeconfig "$KUBECONFIG_TMP")
@@ -340,19 +354,24 @@ rbac_in_scope() {
 }
 
 # use_release_rbac_manifest CHECKOUT_MANIFEST
-# Selects the manifest published at RBAC_MANIFEST_RELEASE_TAG, and dies with the
-# alternatives when that tag's file cannot be fetched (for example, the tag is
-# not published yet).
+# Downloads the manifest published at RBAC_MANIFEST_RELEASE_TAG once, to a
+# temporary file that every later kubectl call reads, so what is applied or
+# removed is what was fetched. Dies with the alternatives when that tag's file
+# cannot be fetched (for example, the tag is not published yet).
 use_release_rbac_manifest() {
   local unavailable="rbac: $1 is not in this checkout, and the manifest at release tag $RBAC_MANIFEST_RELEASE_TAG ($RBAC_MANIFEST_RELEASE_URL) could not be fetched; the tag may not be published yet. Pass --rbac-manifest PATH|URL with a copy you reviewed, or install the nullify-k8s-readonly-access Helm chart and re-run with --skip-rbac"
+  local file
   if ! command -v curl >/dev/null 2>&1; then
     die "$unavailable (curl is not installed)"
   fi
-  if ! curl --proto '=https' -fsSL --max-time 30 -o /dev/null "$RBAC_MANIFEST_RELEASE_URL"; then
+  RBAC_MANIFEST_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/nullify-readonly-rbac.XXXXXX")"
+  trap cleanup_tmp EXIT
+  file="$RBAC_MANIFEST_TMP_DIR/nullify-readonly-rbac.yaml"
+  if ! curl --proto '=https' -fsSL --max-time 30 -o "$file" "$RBAC_MANIFEST_RELEASE_URL"; then
     die "$unavailable"
   fi
-  RBAC_MANIFEST="$RBAC_MANIFEST_RELEASE_URL"
-  info "rbac: $1 is not in this checkout; using the manifest at release tag $RBAC_MANIFEST_RELEASE_TAG ($RBAC_MANIFEST). Review it, or pass --rbac-manifest PATH|URL"
+  RBAC_MANIFEST="$file"
+  info "rbac: $1 is not in this checkout; using the manifest at release tag $RBAC_MANIFEST_RELEASE_TAG ($RBAC_MANIFEST_RELEASE_URL), downloaded once to $file. Review it, or pass --rbac-manifest PATH|URL"
 }
 
 check_rbac_manifest() {
@@ -567,13 +586,86 @@ drop_cidr_tags() {
     die "could not remove the tags ${keys[*]} of $CLUSTER; re-run $ACTION"
 }
 
+# require_no_endpoint_update_in_progress
+# Dies when an EndpointAccessUpdate of the cluster is InProgress. EKS moves the
+# cluster status to UPDATING only eventually, so ACTIVE does not prove a stopped
+# run's update has finished, and publicAccessCidrs may not show it yet. Callers
+# run this before reading the CIDRs a pending record is settled against. Every
+# update id is described, because list-updates does not document an order.
+require_no_endpoint_update_in_progress() {
+  local raw id details update_type update_status
+  local -a ids
+  raw="$(aws eks list-updates --name "$CLUSTER" --region "$REGION" --query updateIds --output text)" ||
+    die "could not list the updates of $CLUSTER (needs eks:ListUpdates); publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged"
+  raw="$(cidr_normalise "$raw")"
+  if [[ "$raw" == None ]]; then
+    raw=""
+  fi
+  read -r -a ids <<< "$raw"
+  for id in ${ids[@]+"${ids[@]}"}; do
+    details="$(aws eks describe-update --name "$CLUSTER" --region "$REGION" --update-id "$id" \
+      --query 'update.[type, status]' --output text)" ||
+      die "could not describe update $id of $CLUSTER; publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged"
+    read -r update_type update_status <<< "$(cidr_normalise "$details")"
+    if [[ "$update_type" == EndpointAccessUpdate && "$update_status" == InProgress ]]; then
+      die "endpoint access update $id of $CLUSTER is still InProgress, so publicAccessCidrs may not show it yet; publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged. Re-run $ACTION when it finishes: aws eks describe-update --name $CLUSTER --region $REGION --update-id $id"
+    fi
+  done
+}
+
+# cidr_tag_part_count LIST
+# Prints how many tags (BASE, BASE-2, ...) store_cidr_record writes for LIST.
+cidr_tag_part_count() {
+  local chunks
+  chunks="$(cidr_tag_chunks "$1" "$EKS_TAG_VALUE_MAX_LENGTH")" || die "cannot store '$1' in a tag"
+  if [[ -z "$chunks" ]]; then
+    echo 0
+    return 0
+  fi
+  printf '%s\n' "$chunks" | wc -l | tr -d ' '
+}
+
+# new_tag_parts LIST EXISTING_KEYS
+# Prints how many tags storing LIST adds beyond the EXISTING_KEYS it replaces.
+new_tag_parts() {
+  local parts
+  local -a existing
+  parts="$(cidr_tag_part_count "$1")" || exit 1
+  read -r -a existing <<< "${2:-}"
+  if ((parts > ${#existing[@]})); then
+    echo $((parts - ${#existing[@]}))
+  else
+    echo 0
+  fi
+}
+
+# require_free_tag_slots NEEDED PURPOSE
+# Dies when fewer than NEEDED of the tags EKS allows per resource are free. Keys
+# starting with aws: do not count towards the limit.
+require_free_tag_slots() {
+  local needed="$1" used free
+  if ((needed <= 0)); then
+    return 0
+  fi
+  used="$(aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
+    --query "length(keys(cluster.tags || \`{}\`)[?!starts_with(@, 'aws:')])" --output text)" ||
+    die "could not count the tags of $CLUSTER"
+  if [[ ! "$used" =~ ^[0-9]+$ ]]; then
+    die "could not count the tags of $CLUSTER (got '$used')"
+  fi
+  free=$((EKS_MAX_TAGS_PER_RESOURCE - used))
+  if ((free < needed)); then
+    die "$CLUSTER has $used tags and EKS allows at most $EKS_MAX_TAGS_PER_RESOURCE per resource; $2 needs $needed free tag(s). Remove $((needed - free)) tag(s) from the cluster and re-run $ACTION. publicAccessCidrs and the CIDR records were left unchanged"
+  fi
+}
+
 # reconcile_pending_cidrs CURRENT
 # Settles a pending record left by a run that stopped after writing it: its
 # CIDRs present in CURRENT were added by that run's update and move to the added
-# record, and the rest never landed and are dropped. apply and remove run only on
-# an ACTIVE cluster, so that update is no longer in progress.
+# record, and the rest never landed and are dropped. The caller reads CURRENT
+# after require_no_endpoint_update_in_progress, so that update has finished.
 reconcile_pending_cidrs() {
-  local landed
+  local landed needed
   if [[ -z "$PENDING_TAG_KEYS" ]]; then
     return 0
   fi
@@ -581,6 +673,8 @@ reconcile_pending_cidrs() {
   if [[ -n "$landed" ]]; then
     info "network: a previous run added $landed to publicAccessCidrs without recording it; recording it in ${ADDED_CIDRS_TAG_KEY}"
     ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$landed")"
+    needed="$(new_tag_parts "$ADDED_CIDRS" "$ADDED_TAG_KEYS")" || exit 1
+    require_free_tag_slots "$needed" "recording $landed in ${ADDED_CIDRS_TAG_KEY}"
     store_cidr_record "$ADDED_CIDRS_TAG_KEY" "$ADDED_CIDRS" "$ADDED_TAG_KEYS"
     ADDED_TAG_KEYS="$STORED_TAG_KEYS"
   fi
@@ -632,7 +726,7 @@ update_public_cidrs() {
 }
 
 ensure_network() {
-  local public current merged added unrecorded
+  local public current merged added unrecorded pending_parts added_parts
   if [[ "$SKIP_NETWORK" == true ]]; then
     info "network: skipped (--skip-network)"
     return 0
@@ -642,6 +736,9 @@ ensure_network() {
     die "cluster $CLUSTER has no public endpoint. Private-only clusters are not supported by the managed scan: enable the public endpoint restricted to Nullify's egress IPs, or use the in-cluster collector"
   fi
   load_cidr_records
+  if [[ -n "$PENDING_TAG_KEYS" ]]; then
+    require_no_endpoint_update_in_progress
+  fi
   current="$(current_public_cidrs)"
   reconcile_pending_cidrs "$current"
   if ! merged="$(cidr_merge "$current" "$NULLIFY_CIDRS")"; then
@@ -656,6 +753,9 @@ ensure_network() {
     fi
     return 0
   fi
+  pending_parts="$(cidr_tag_part_count "$added")" || exit 1
+  added_parts="$(new_tag_parts "$(cidr_union "$ADDED_CIDRS" "$added")" "$ADDED_TAG_KEYS")" || exit 1
+  require_free_tag_slots $((pending_parts + added_parts)) "recording $added in ${PENDING_CIDRS_TAG_KEY} and then ${ADDED_CIDRS_TAG_KEY}"
   info "network: adding $added to publicAccessCidrs"
   update_public_cidrs "$merged" "$current" "$added"
   ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$added")"
@@ -731,6 +831,9 @@ remove_network() {
   if [[ "$public" != true ]]; then
     warn "network: the public endpoint of $CLUSTER is disabled; leaving the endpoint, publicAccessCidrs and the ${ADDED_CIDRS_TAG_KEY}/${PENDING_CIDRS_TAG_KEY} tags unchanged. publicAccessCidrs can still hold Nullify's CIDRs when the public endpoint is re-enabled; re-run remove then to take them out"
     return 0
+  fi
+  if [[ -n "$PENDING_TAG_KEYS" ]]; then
+    require_no_endpoint_update_in_progress
   fi
   current="$(current_public_cidrs)"
   owned="$(cidr_union "$ADDED_CIDRS" "$(cidr_intersect "$PENDING_CIDRS" "$current")")"

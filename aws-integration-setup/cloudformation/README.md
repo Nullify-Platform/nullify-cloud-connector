@@ -260,7 +260,7 @@ Both can run against the same cluster.
   `aws eks describe-cluster --name CLUSTER --query cluster.accessConfig.authenticationMode`.
   Switching from `CONFIG_MAP` is one-way. The script does it only with `--allow-auth-mode-change`.
 - The public endpoint is enabled. Private-only clusters are not supported; use the in-cluster collector.
-- The operator running setup has `eks:DescribeCluster`, `eks:DescribeUpdate`, `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:DeleteAccessEntry`, `eks:ListAccessEntries`, `eks:AssociateAccessPolicy`, `eks:ListAssociatedAccessPolicies`, `eks:TagResource`, `eks:UntagResource`, CloudFormation permissions on the access stacks, and Kubernetes cluster-admin (to create the ClusterRole and to impersonate in `verify`).
+- The operator running setup has `eks:DescribeCluster`, `eks:DescribeUpdate`, `eks:ListUpdates`, `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:DeleteAccessEntry`, `eks:ListAccessEntries`, `eks:AssociateAccessPolicy`, `eks:ListAssociatedAccessPolicies`, `eks:TagResource`, `eks:UntagResource`, CloudFormation permissions on the access stacks, and Kubernetes cluster-admin (to create the ClusterRole and to impersonate in `verify`).
 - AWS CLI v2, plus `kubectl` for RBAC mode.
 
 ### Step 1: access entries (CloudFormation)
@@ -313,7 +313,8 @@ Nullify connects from these IPs. Use the Nullify region that serves your tenant:
 
 - a list that contains `0.0.0.0/0` is left unchanged;
 - otherwise the missing `/32`s are appended, the result is refused above the EKS limit of 40 CIDRs, the list is re-read just before the update, and the CIDRs to add are recorded in the cluster tag `nullify-pending-cidrs` before the update and moved to `nullify-added-cidrs` once it succeeds, so `remove` takes out only those;
-- if a run stops between the two (timeout, Ctrl-C, expired credentials), the next `apply` or `remove` treats the pending CIDRs that `publicAccessCidrs` holds as added and drops the rest;
+- if a run stops between the two (timeout, Ctrl-C, expired credentials), the next `apply` or `remove` treats the pending CIDRs that `publicAccessCidrs` holds as added and drops the rest. Both first check `aws eks list-updates` and stop, leaving the pending record, while an `EndpointAccessUpdate` is still `InProgress`, because the cluster can report `ACTIVE` before the update lands;
+- the records use up to two cluster tags at once, so `apply` stops before changing `publicAccessCidrs` when the cluster has fewer free tags than it needs under the EKS limit of 50 tags per resource (`aws:` tags do not count);
 - a record longer than an EKS tag value (256 characters) continues in `nullify-added-cidrs-2`, `nullify-added-cidrs-3`, and so on.
 
 ### Setup script
@@ -359,8 +360,8 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|ad
 
 Remove in this order so no access entry outlives the role:
 
-1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs` plus any in `nullify-pending-cidrs` that `publicAccessCidrs` still holds. It refuses to leave `publicAccessCidrs` empty. If the public endpoint has since been disabled, it leaves the endpoint settings, `publicAccessCidrs` and both tags alone and says so; `publicAccessCidrs` can still hold Nullify's CIDRs when the endpoint is re-enabled, so re-run `remove` then. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
+1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs` plus any in `nullify-pending-cidrs` that `publicAccessCidrs` still holds. It refuses to leave `publicAccessCidrs` empty, and refuses to settle `nullify-pending-cidrs` while an `EndpointAccessUpdate` of the cluster is still `InProgress` (re-run once it finishes). If the public endpoint has since been disabled, it leaves the endpoint settings, `publicAccessCidrs` and both tags alone and says so; `publicAccessCidrs` can still hold Nullify's CIDRs when the endpoint is re-enabled, so re-run `remove` then. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
 2. In each region: `aws cloudformation delete-stack --region REGION --stack-name nullify-eks-managed-scan-access`.
 3. Delete the main stack.
 
-`../scripts/cleanup.sh --method cloudformation --stack-name nullify-aws-integration --eks-access-regions eu-west-1,us-east-1` does steps 2 and 3 in that order.
+`../scripts/cleanup.sh --method cloudformation --stack-name nullify-aws-integration --region <stack-region> --eks-access-regions eu-west-1,us-east-1` does steps 2 and 3 in that order. Without `--region`, the main stack is looked up in the AWS CLI's configured region.

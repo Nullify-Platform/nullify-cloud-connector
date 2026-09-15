@@ -26,6 +26,8 @@ Required:
 
 Options (CloudFormation):
   --stack-name NAME     CloudFormation stack name (default: nullify-integration)
+  --region REGION       Region of the --stack-name stack (default: the AWS CLI's
+                        configured region)
   --eks-access-regions R1,R2
                         Regions holding a managed EKS scan access stack
                         (nullify-eks-managed-scan-access.json). They are deleted
@@ -50,6 +52,7 @@ EOF
 
 METHOD=""
 STACK_NAME="nullify-integration"
+REGION=""
 EKS_ACCESS_REGIONS=""
 EKS_ACCESS_STACK_NAME="nullify-eks-managed-scan-access"
 RELEASE_NAME="nullify-collector"
@@ -61,6 +64,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --method) METHOD="$2"; shift 2 ;;
     --stack-name) STACK_NAME="$2"; shift 2 ;;
+    --region) REGION="$2"; shift 2 ;;
     --eks-access-regions) EKS_ACCESS_REGIONS="$2"; shift 2 ;;
     --eks-access-stack-name) EKS_ACCESS_STACK_NAME="$2"; shift 2 ;;
     --release) RELEASE_NAME="$2"; shift 2 ;;
@@ -154,13 +158,21 @@ case $METHOD in
 
     require_aws_credentials
 
+    MAIN_REGION_ARGS=()
+    if [[ -n "$REGION" ]]; then
+      MAIN_REGION_ARGS=(--region "$REGION")
+      MAIN_STACK_WHERE="in ${REGION}"
+    else
+      MAIN_STACK_WHERE="in the AWS CLI's configured region (pass --region if the stack is elsewhere)"
+    fi
+
     MAIN_STACK_EXISTS=true
-    if ! stack_exists "$STACK_NAME"; then
+    if ! stack_exists "$STACK_NAME" "$REGION"; then
       MAIN_STACK_EXISTS=false
     fi
 
     if [[ "$MAIN_STACK_EXISTS" != true && -z "$EKS_ACCESS_REGIONS" ]]; then
-      echo -e "${YELLOW}Stack '${STACK_NAME}' not found. Nothing to clean up.${NC}"
+      echo -e "${YELLOW}Stack '${STACK_NAME}' not found ${MAIN_STACK_WHERE}. Nothing to clean up.${NC}"
       exit 0
     fi
 
@@ -171,13 +183,13 @@ case $METHOD in
     fi
 
     if [[ "$MAIN_STACK_EXISTS" != true ]]; then
-      echo -e "${YELLOW}Stack '${STACK_NAME}' not found; deleted ${DELETED_ACCESS_STACKS} EKS access stack(s).${NC}"
+      echo -e "${YELLOW}Stack '${STACK_NAME}' not found ${MAIN_STACK_WHERE}; deleted ${DELETED_ACCESS_STACKS} EKS access stack(s).${NC}"
     else
       echo -e "${BLUE}Deleting stack...${NC}"
-      aws cloudformation delete-stack --stack-name "$STACK_NAME"
+      aws cloudformation delete-stack ${MAIN_REGION_ARGS[@]+"${MAIN_REGION_ARGS[@]}"} --stack-name "$STACK_NAME"
 
       echo -e "${BLUE}Waiting for stack deletion to complete...${NC}"
-      if aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" 2>/dev/null; then
+      if aws cloudformation wait stack-delete-complete ${MAIN_REGION_ARGS[@]+"${MAIN_REGION_ARGS[@]}"} --stack-name "$STACK_NAME" 2>/dev/null; then
         echo -e "${GREEN}Stack '${STACK_NAME}' deleted successfully.${NC}"
       else
         echo -e "${RED}Stack deletion failed or timed out. Check the AWS Console for details.${NC}"

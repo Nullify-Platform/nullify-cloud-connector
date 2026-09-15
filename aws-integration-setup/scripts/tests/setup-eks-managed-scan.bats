@@ -17,8 +17,9 @@ setup() {
   FAKE_UPDATE_STATUS=Successful
   FAKE_CIDRS_READ_FAILS=false
   FAKE_DESCRIBE_UPDATE_FAILS=false
+  FAKE_UPDATES=""
   export PATH FAKE_AWS_LOG FAKE_AWS_STATE FAKE_PUBLIC FAKE_PRIVATE FAKE_UPDATE_STATUS \
-    FAKE_CIDRS_READ_FAILS FAKE_DESCRIBE_UPDATE_FAILS
+    FAKE_CIDRS_READ_FAILS FAKE_DESCRIBE_UPDATE_FAILS FAKE_UPDATES
   mkdir -p "$FAKE_AWS_STATE/tags"
   set_cidrs "$BASE_CIDR"
 }
@@ -190,6 +191,65 @@ output_has() {
   [ "$(live_cidrs)" = "$BASE_CIDR" ]
   no_tag nullify-pending-cidrs
   [ "$(call_line 'eks describe-update')" -lt "$(call_line 'eks untag-resource')" ]
+}
+
+@test "remove keeps a pending record while an endpoint access update is InProgress, and settles it once the update finishes" {
+  set_tag nullify-pending-cidrs "$NULLIFY_EU"
+  FAKE_UPDATES="update-6:VersionUpdate:Successful update-7:EndpointAccessUpdate:InProgress"
+  run_setup remove
+  [ "$status" -ne 0 ]
+  output_has "update-7 of prod is still InProgress"
+  called 'eks list-updates --name prod --region eu-west-1'
+  not_called 'cluster.resourcesVpcConfig.publicAccessCidrs'
+  not_called 'eks update-cluster-config'
+  not_called 'eks untag-resource'
+  [ "$(tag_value nullify-pending-cidrs)" = "$NULLIFY_EU" ]
+
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_UPDATES="update-6:VersionUpdate:Successful update-7:EndpointAccessUpdate:Successful"
+  run_setup remove
+  [ "$status" -eq 0 ]
+  [ "$(live_cidrs)" = "$BASE_CIDR" ]
+  no_tag nullify-pending-cidrs
+}
+
+@test "apply keeps a pending record while an endpoint access update is InProgress" {
+  set_tag nullify-pending-cidrs "$NULLIFY_EU"
+  FAKE_UPDATES="update-7:EndpointAccessUpdate:InProgress"
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -ne 0 ]
+  output_has "update-7 of prod is still InProgress"
+  not_called 'eks update-cluster-config'
+  not_called 'eks tag-resource'
+  not_called 'eks untag-resource'
+  [ "$(live_cidrs)" = "$BASE_CIDR" ]
+  [ "$(tag_value nullify-pending-cidrs)" = "$NULLIFY_EU" ]
+}
+
+@test "apply stops before changing publicAccessCidrs when fewer than two tag slots are free" {
+  local i
+  for ((i = 1; i <= 49; i++)); do
+    set_tag "team-$i" "x"
+  done
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -ne 0 ]
+  output_has "EKS allows at most 50 per resource"
+  not_called 'eks update-cluster-config'
+  not_called 'eks tag-resource'
+  [ "$(live_cidrs)" = "$BASE_CIDR" ]
+}
+
+@test "apply records CIDRs with exactly two tag slots free, not counting aws: tags" {
+  local i
+  for ((i = 1; i <= 48; i++)); do
+    set_tag "team-$i" "x"
+  done
+  set_tag "aws:cloudformation:stack-name" "eks"
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -eq 0 ]
+  [ "$(live_cidrs)" = "$BASE_CIDR $NULLIFY_EU" ]
+  [ "$(tag_value nullify-added-cidrs)" = "$NULLIFY_EU" ]
+  no_tag nullify-pending-cidrs
 }
 
 @test "remove drops only the recorded CIDRs and keeps the endpoint flags as read" {

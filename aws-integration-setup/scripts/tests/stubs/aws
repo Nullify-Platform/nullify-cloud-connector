@@ -2,11 +2,14 @@
 # Fake AWS CLI for the bats tests. Appends every call to $FAKE_AWS_LOG, keeps
 # publicAccessCidrs and the cluster tags as files under $FAKE_AWS_STATE so a
 # later run sees what an earlier one wrote, and answers the rest from the FAKE_*
-# environment variables the test sets.
+# environment variables the test sets. FAKE_UPDATES lists the cluster's updates
+# as space-separated "<id>:<type>:<status>" entries for list-updates and
+# describe-update. tag-resource enforces EKS's 50-tag limit (aws: keys excluded).
 
 printf '%s\n' "$*" >>"$FAKE_AWS_LOG"
 
 query=""
+update_id=""
 stack_name=""
 region=""
 tags_json=""
@@ -27,6 +30,7 @@ for arg in "$@"; do
     --region) region="$arg" ;;
     --tags) tags_json="$arg" ;;
     --resources-vpc-config) vpc_config="$arg" ;;
+    --update-id) update_id="$arg" ;;
   esac
   if [[ "$arg" == --tag-keys ]]; then
     in_tag_keys=true
@@ -40,6 +44,16 @@ fail() {
 }
 
 tags_dir="${FAKE_AWS_STATE:-/nonexistent}/tags"
+
+counted_tags() {
+  local file count=0
+  for file in "$tags_dir"/*; do
+    if [[ -f "$file" && "${file##*/}" != aws:* ]]; then
+      count=$((count + 1))
+    fi
+  done
+  echo "$count"
+}
 
 case "${1:-} ${2:-}" in
   "sts get-caller-identity")
@@ -64,6 +78,9 @@ case "${1:-} ${2:-}" in
           fail AccessDeniedException DescribeCluster
         fi
         tr ' ' '\t' <"$FAKE_AWS_STATE/cidrs"
+        ;;
+      "length(keys(cluster.tags"*)
+        counted_tags
         ;;
       "keys(cluster.tags"*)
         keys=()
@@ -107,23 +124,56 @@ case "${1:-} ${2:-}" in
     esac
     echo "update-1"
     ;;
+  "eks list-updates")
+    ids=()
+    for entry in ${FAKE_UPDATES:-}; do
+      ids+=("${entry%%:*}")
+    done
+    (
+      IFS=$'\t'
+      echo "${ids[*]}"
+    )
+    ;;
   "eks describe-update")
     if [[ "${FAKE_DESCRIBE_UPDATE_FAILS:-false}" == true ]]; then
       fail ExpiredTokenException DescribeUpdate "The security token included in the request is expired"
     fi
-    if [[ "$query" == update.status ]]; then
-      echo "${FAKE_UPDATE_STATUS:-Successful}"
-    else
-      echo "[]"
-    fi
+    case "$query" in
+      update.status) echo "${FAKE_UPDATE_STATUS:-Successful}" ;;
+      "update.[type, status]")
+        details=""
+        for entry in ${FAKE_UPDATES:-}; do
+          if [[ "${entry%%:*}" == "$update_id" ]]; then
+            rest="${entry#*:}"
+            details="${rest%%:*}"$'\t'"${rest#*:}"
+          fi
+        done
+        if [[ -z "$details" ]]; then
+          fail ResourceNotFoundException DescribeUpdate "No update found for ID: $update_id"
+        fi
+        echo "$details"
+        ;;
+      *) echo "[]" ;;
+    esac
     ;;
   "eks tag-resource")
-    rest="$tags_json"
     pattern='"([^"]+)":"([^"]*)"'
+    rest="$tags_json"
+    new_keys=0
     while [[ "$rest" =~ $pattern ]]; do
       if ((${#BASH_REMATCH[2]} > 256)); then
         fail InvalidParameterException TagResource "tag value longer than 256 characters"
       fi
+      if [[ ! -f "$tags_dir/${BASH_REMATCH[1]}" && "${BASH_REMATCH[1]}" != aws:* ]]; then
+        new_keys=$((new_keys + 1))
+      fi
+      rest="${rest#*"${BASH_REMATCH[0]}"}"
+    done
+    if (($(counted_tags) + new_keys > 50)); then
+      fail BadRequestException TagResource "the resource would have more than 50 tags"
+    fi
+    rest="$tags_json"
+    while [[ "$rest" =~ $pattern ]]; do
       printf '%s' "${BASH_REMATCH[2]}" >"$tags_dir/${BASH_REMATCH[1]}"
       rest="${rest#*"${BASH_REMATCH[0]}"}"
     done
