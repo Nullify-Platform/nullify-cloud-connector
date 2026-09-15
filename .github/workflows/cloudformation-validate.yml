@@ -9,6 +9,7 @@ on:
     paths:
       - "aws-integration-setup/cloudformation/**"
       - "aws-integration-setup/scripts/**"
+      - "manifests/**"
       - ".github/workflows/cloudformation-validate.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
     paths:
       - "aws-integration-setup/cloudformation/**"
       - "aws-integration-setup/scripts/**"
+      - "manifests/**"
       - ".github/workflows/cloudformation-validate.yml"
 
 permissions:
@@ -73,3 +75,26 @@ jobs:
 
       - name: bats
         run: bats aws-integration-setup/scripts/tests
+
+  bats-bash-3-2:
+    name: bats (bash 3.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: bats-core/bats-core
+          ref: v1.11.1
+          path: .bats-core
+
+      - name: bats under bash 3.2, the macOS system bash
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work bash:3.2 bash -c '
+            set -e
+            case "$BASH_VERSION" in
+              3.2.*) echo "bash $BASH_VERSION" ;;
+              *) echo "expected bash 3.2, got $BASH_VERSION" >&2; exit 1 ;;
+            esac
+            .bats-core/bin/bats --formatter tap aws-integration-setup/scripts/tests
+          '
