@@ -69,10 +69,11 @@ collector:
         keyPrefix: k8s-collector
 
     # KMS key ARN from the Nullify configure page:
-    # arn:aws:kms:<region>:<account-id>:key/<key-id>. An alias ARN
-    # (arn:aws:kms:<region>:<account-id>:alias/<name>) needs the connector
-    # CloudFormation stack version that also grants key/* in Nullify's KMS
-    # account; with the Terraform module, use the key ARN.
+    # arn:aws:kms:<region>:<account-id>:key/<key-id>, or an alias ARN
+    # arn:aws:kms:<region>:<account-id>:alias/<name>. With an alias, the IAM
+    # role's KMS statement must cover the resolved key, for example
+    # arn:aws:kms:<region>:<account-id>:key/* (CloudFormation: connector releases
+    # that include PR #64). See "KMS alias ARNs" in the README.
     kms:
         keyArn: ""
 

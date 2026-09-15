@@ -24,11 +24,16 @@ The data collected includes (but is not limited to):
 - Schedule: {{ .Values.collector.schedule }}
 {{- if contains ":alias/" (toString .Values.collector.kms.keyArn) }}
 
-WARNING: collector.kms.keyArn is a KMS alias ARN. IAM matches the key ARN, not the alias,
-so uploads need a role policy that also grants kms:GenerateDataKey on key/* in Nullify's KMS
-account and region. The current connector CloudFormation template grants that; an older
-stack, or the Terraform module (it grants only the ARN it is given), denies the upload.
-Update the stack, or use the key ARN: the Nullify configure page will show the key ARN soon.
+WARNING: collector.kms.keyArn is a KMS alias ARN. IAM matches the key the alias resolves
+to, not the alias, so the IAM role's KMS statement must cover that key, for example
+kms:GenerateDataKey on arn:aws:kms:<region>:<account-id>:key/* in Nullify's KMS account
+and region. Otherwise uploads are denied.
+- CloudFormation: connector releases that include nullify-cloud-connector PR #64 grant
+  key/* in the account and region of the NullifyKMSKeyArn parameter. A stack created
+  from an earlier template grants only the ARN it was given.
+- Terraform: the module accepts an alias in kms_key_arn. Check that your module version's
+  KMS statement also covers key/*; if it grants only kms_key_arn, uploads are denied.
+Or use the key ARN, which every version grants.
 {{- end }}
 
 {{- if ne (include "k8s-collector.namespace" .) .Release.Namespace }}
