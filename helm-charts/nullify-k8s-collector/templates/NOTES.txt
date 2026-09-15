@@ -53,7 +53,7 @@ AWS credential is stored in the cluster. No GKE Workload Identity setup required
 {{- else }}
 
 ## Authentication (EKS IRSA)
-- IAM Role: {{ index (.Values.serviceAccount.annotations | default dict) "eks.amazonaws.com/role-arn" }}
+- IAM Role: {{ index (.Values.serviceAccount.annotations | default dict) "eks.amazonaws.com/role-arn" | default "none set; the pod needs AWS credentials from outside this chart (serviceAccount.requireRoleArn=false)" }}
 - ServiceAccount: system:serviceaccount:{{ include "k8s-collector.namespace" . }}:{{ include "k8s-collector.serviceAccountName" . }}
   (the connector CloudFormation trust only allows system:serviceaccount:nullify:nullify-k8s-collector-sa)
 {{- end }}
