@@ -49,8 +49,8 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
   }
 
   # Kinds the collector lists, kept identical to the managed-scan ClusterRole
-  # (managed_scan.tf) and to collect.go in the platform monorepo
-  # (context/internal/cloudintegrations/k8sintegration/collect).
+  # (managed_scan.tf) and to collect.go. "jobs" is granted ahead of the
+  # monorepo's fix/k8s-deployment-matching-review stack (#12807 / #12830).
   rule {
     api_groups = [""]
     resources = [
@@ -58,27 +58,15 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "services",
       "namespaces",
       "nodes",
-      "persistentvolumes",
-      "persistentvolumeclaims",
+      "serviceaccounts",
       "configmaps",
       "secrets",
       "resourcequotas",
       "limitranges",
-      "serviceaccounts",
+      "persistentvolumes",
+      "persistentvolumeclaims",
     ]
-    verbs = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["networking.k8s.io"]
-    resources  = ["ingresses", "networkpolicies"]
-    verbs      = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["discovery.k8s.io"]
-    resources  = ["endpointslices"]
-    verbs      = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
@@ -87,9 +75,27 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "deployments",
       "replicasets",
       "statefulsets",
-      "daemonsets"
+      "daemonsets",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
+  }
+
+  rule {
+    api_groups = ["batch"]
+    resources  = ["jobs"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses", "networkpolicies"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["discovery.k8s.io"]
+    resources  = ["endpointslices"]
+    verbs      = ["list"]
   }
 
   rule {
@@ -98,9 +104,9 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "roles",
       "rolebindings",
       "clusterroles",
-      "clusterrolebindings"
+      "clusterrolebindings",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
@@ -111,7 +117,12 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "validatingadmissionpolicies",
       "validatingadmissionpolicybindings",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
+  }
+
+  rule {
+    non_resource_urls = ["/version"]
+    verbs             = ["get"]
   }
 }
 
@@ -230,6 +241,16 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
                 content {
                   name  = "ENABLE_DEBUG_LOG"
                   value = "true"
+                }
+              }
+
+              security_context {
+                allow_privilege_escalation = false
+                read_only_root_filesystem  = true
+                run_as_non_root            = true
+
+                capabilities {
+                  drop = ["ALL"]
                 }
               }
 

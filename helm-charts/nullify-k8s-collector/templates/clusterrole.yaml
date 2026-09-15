@@ -7,24 +7,30 @@ metadata:
     {{- include "k8s-collector.labels" . | nindent 4 }}
 rules:
   # Kinds the collector lists, kept identical to the managed-scan ClusterRole
-  # (modules/k8s-resources/managed_scan.tf) and to collect.go in the platform
-  # monorepo (context/internal/cloudintegrations/k8sintegration/collect).
+  # (modules/k8s-resources/managed_scan.tf) and to collect.go. "jobs" is
+  # granted ahead of the monorepo's fix/k8s-deployment-matching-review stack
+  # (#12807 / #12830), which starts collecting Jobs owned by a CronJob.
   - apiGroups: [""]
-    resources: ["nodes", "namespaces", "pods", "services", "persistentvolumes", "persistentvolumeclaims", "configmaps", "secrets", "resourcequotas", "limitranges", "serviceaccounts"]
-    verbs: ["get", "list"]
+    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "secrets", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["list"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
-    verbs: ["get", "list"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
   - apiGroups: ["discovery.k8s.io"]
     resources: ["endpointslices"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
   - apiGroups: ["admissionregistration.k8s.io"]
     resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations", "validatingadmissionpolicies", "validatingadmissionpolicybindings"]
-    verbs: ["get", "list"]
-{{- end }} 
+    verbs: ["list"]
+  - nonResourceURLs: ["/version"]
+    verbs: ["get"]
+{{- end }}

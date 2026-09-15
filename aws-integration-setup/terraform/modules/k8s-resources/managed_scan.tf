@@ -11,6 +11,10 @@ locals {
       resources  = ["deployments", "daemonsets", "statefulsets", "replicasets"]
     },
     {
+      api_groups = ["batch"]
+      resources  = ["jobs"]
+    },
+    {
       api_groups = ["networking.k8s.io"]
       resources  = ["ingresses", "networkpolicies"]
     },
