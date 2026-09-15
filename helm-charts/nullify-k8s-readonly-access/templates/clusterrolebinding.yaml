@@ -16,7 +16,7 @@ roleRef:
 subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
-    name: {{ .Values.groupName | quote }}
+    name: {{ include "nullify-readonly.groupName" . | quote }}
   {{- with .Values.extraSubjects }}
   {{- toYaml . | nindent 2 }}
   {{- end }}

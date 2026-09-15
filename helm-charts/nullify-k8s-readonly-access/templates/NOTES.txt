@@ -1,7 +1,8 @@
+{{- $group := include "nullify-readonly.groupName" . -}}
 Nullify read-only access installed.
 
   ClusterRole:        {{ .Values.clusterRoleName }} (list on cluster configuration, get on /version)
-  ClusterRoleBinding: {{ .Values.clusterRoleBindingName }} -> Group "{{ .Values.groupName }}"
+  ClusterRoleBinding: {{ .Values.clusterRoleBindingName }} -> Group "{{ $group }}"
   Secrets list:       {{ .Values.grantSecretsRead }}
   ConfigMaps list:    {{ .Values.grantConfigMapsRead }}
 {{- if or (not .Values.grantSecretsRead) (not .Values.grantConfigMapsRead) }}
@@ -11,16 +12,16 @@ ConfigMaps cannot be listed. Leave both enabled unless Nullify has confirmed sup
 {{- end }}
 
 Next steps:
-  1. Map the Nullify integration role to group "{{ .Values.groupName }}" (no access policy):
+  1. Map the Nullify integration role to group "{{ $group }}" (no access policy):
        aws eks create-access-entry --cluster-name <cluster> --region <region> \
          --principal-arn arn:aws:iam::<account-id>:role/AWSIntegration-<CustomerName>-NullifyReadOnlyRole \
-         --type STANDARD --kubernetes-groups {{ .Values.groupName }}
+         --type STANDARD --kubernetes-groups {{ $group }}
   2. Allow Nullify's egress IP addresses for your Nullify region on the cluster's public API endpoint:
        ap-southeast-2: 13.55.32.104/32, 3.105.146.106/32, 13.211.99.100/32
        eu-central-1:   18.198.60.231/32, 18.157.227.250/32, 18.185.152.197/32
        us-east-2:      52.15.146.50/32, 16.58.40.80/32, 3.133.15.210/32
   3. Verify the group's RBAC (a group can only be impersonated together with a user):
-       kubectl auth can-i list secrets --all-namespaces --as nullify-verify --as-group {{ .Values.groupName }}
-       kubectl auth can-i get pods --all-namespaces --as nullify-verify --as-group {{ .Values.groupName }}   # expect: no
+       kubectl auth can-i list secrets --all-namespaces --as nullify-verify --as-group {{ $group }}
+       kubectl auth can-i get pods --all-namespaces --as nullify-verify --as-group {{ $group }}   # expect: no
 
 See https://github.com/Nullify-Platform/nullify-cloud-connector/blob/main/helm-charts/nullify-k8s-readonly-access/README.md
