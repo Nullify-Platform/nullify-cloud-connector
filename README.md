@@ -38,6 +38,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 | Method | Best For | Prerequisites |
 |--------|----------|---------------|
 | **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS or GKE cluster, Helm 3.x, kubectl |
+| **Managed EKS scan (no agent)** | EKS clusters with a public API endpoint; nothing runs in the cluster | AWS integration deployed, EKS access entry, kubectl (Helm optional) |
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
 | **🔧 Terraform (AWS)** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
 | **☁️ Terraform (GCP)** | GCP environments, Workload Identity Federation | Terraform, `gcloud` auth on the host project, org or folder admin access |
@@ -150,6 +151,23 @@ kubectl get jobs -n nullify
 # Check logs from the latest job
 kubectl logs -l job-name=<job-name> -n nullify
 ```
+
+## **Managed EKS scan (no in-cluster agent)**
+
+Nullify can read an EKS cluster's configuration from Nullify's AWS account through the cluster's public API endpoint, using the read-only integration role. Nothing runs in the cluster; you grant list-only RBAC to a group and map the integration role to that group with an EKS access entry.
+
+- RBAC: the [`nullify-k8s-readonly-access`](helm-charts/nullify-k8s-readonly-access/README.md) chart, or the equivalent raw manifest [`manifests/nullify-readonly-rbac.yaml`](manifests/nullify-readonly-rbac.yaml) for kubectl and Flux.
+- Default: ClusterRole `nullify-readonly` with `list` on 27 kinds and `get` on `/version`, bound to group `nullify-readonly`.
+- Do not use `AmazonEKSViewPolicy` (the scan fails); `AmazonEKSAdminViewPolicy` works but is far broader. See the chart README before choosing it.
+
+| | In-cluster collector | Managed EKS scan |
+|---|---|---|
+| Where it runs | CronJob in your cluster | Nullify's AWS account |
+| Network | Outbound from the cluster to AWS S3/STS | Inbound to the EKS public endpoint from Nullify egress IPs |
+| Private-only endpoint | Supported | Not supported |
+| In-cluster objects | ServiceAccount, ClusterRole, ClusterRoleBinding, CronJob | ClusterRole, ClusterRoleBinding |
+| A denied kind | Skipped | Whole cluster scan fails |
+| Platforms | EKS, GKE | EKS |
 
 ## 🏗️ **CloudFormation Deployment**
 
@@ -265,7 +283,7 @@ nullify-cloud-connector/
 │   └── test-helm-charts.sh               # Lint and render one chart (used by CI)
 │
 ├── ⚙️ helm-charts/                       # 🎯 KUBERNETES DEPLOYMENT
-│   └── nullify-k8s-collector/            # Main Helm chart for K8s collector
+│   ├── nullify-k8s-collector/            # Main Helm chart for K8s collector
 │       ├── Chart.yaml                    # Chart metadata and version
 │       ├── values.yaml                   # Default values (generic/safe)
 │       ├── values-example.yaml           # Example production configuration
@@ -277,6 +295,10 @@ nullify-cloud-connector/
 │           ├── clusterrolebinding.yaml   # RBAC binding
 │           ├── cronjob.yaml              # Main collector CronJob
 │           └── pre-install-job.yaml      # Pre-installation validation
+│   └── nullify-k8s-readonly-access/      # List-only RBAC for the managed EKS scan
+│
+├── manifests/
+│   └── nullify-readonly-rbac.yaml        # Raw manifest equal to the readonly chart's default render
 │
 ├── aws-integration-setup/               # 🏗️ AWS INFRASTRUCTURE
 │   ├── 🏗️ cloudformation/               # CloudFormation Templates
@@ -435,6 +457,7 @@ kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nul
 |----------|-------------|
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
 | [Chart README](helm-charts/nullify-k8s-collector/README.md) | Helm chart documentation (EKS + GKE) |
+| [Read-only access chart README](helm-charts/nullify-k8s-readonly-access/README.md) | Managed EKS scan: access entry, RBAC install (Helm, Flux, kubectl) and verification |
 | [CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
 | [AWS Terraform README](aws-integration-setup/terraform/README.md) | AWS Terraform modules documentation |
 | [GCP Terraform README](gcp-integration-setup/terraform/README.md) | GCP Terraform modules documentation |

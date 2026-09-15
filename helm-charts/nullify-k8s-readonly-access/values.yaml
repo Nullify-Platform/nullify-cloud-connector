@@ -1,0 +1,40 @@
+# Kubernetes group that your EKS access entry (--kubernetes-groups) or aws-auth
+# mapRoles entry maps the Nullify integration role to. The two MUST match.
+# Must not start with "system:".
+groupName: nullify-readonly
+
+# Names of the two cluster-scoped objects. Change them only if they collide with
+# objects that already exist in the cluster.
+clusterRoleName: nullify-readonly
+clusterRoleBindingName: nullify-readonly
+
+# `list` on Secrets returns their values to the caller. Nullify redacts values
+# before storing anything, but the scanner process receives them.
+#
+# Keep both true for now: the managed EKS scan currently fails the whole cluster
+# when either list is denied. Setting either to false only works once the
+# Nullify-side change that makes these kinds optional has shipped.
+grantSecretsRead: true
+grantConfigMapsRead: true
+
+# Extra subjects appended to the ClusterRoleBinding, for example the username
+# given to an access entry with --username. Kinds are User, Group or
+# ServiceAccount. Any name starting with "system:" (trimmed, any case) is
+# rejected, as are ServiceAccounts in kube-system, kube-public and kube-node-lease.
+extraSubjects: []
+#  - apiGroup: rbac.authorization.k8s.io
+#    kind: User
+#    name: nullify-scanner
+
+# Extra rules appended verbatim to the ClusterRole. Only the get, list and watch
+# verbs are accepted. Wildcard apiGroups or resources, every subresource other
+# than status and scale (exec, log and proxy, and CRD subresources such as a
+# VM console or vnc), and nonResourceURLs other than /version are rejected.
+extraRules: []
+#  - apiGroups: ["batch"]
+#    resources: ["cronjobs"]
+#    verbs: ["list"]
+
+# Labels and annotations added to both objects.
+labels: {}
+annotations: {}

@@ -1,0 +1,24 @@
+# Every optional value set, with both sensitive kinds withheld.
+groupName: acme-nullify-readonly
+clusterRoleName: acme-nullify-readonly
+clusterRoleBindingName: acme-nullify-readonly
+grantSecretsRead: false
+grantConfigMapsRead: false
+extraSubjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: nullify-scanner
+  - kind: ServiceAccount
+    name: nullify-scanner
+    namespace: nullify
+extraRules:
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get"]
+labels:
+  team: platform
+annotations:
+  example.com/owner: platform
