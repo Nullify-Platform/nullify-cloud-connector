@@ -13,7 +13,7 @@ extraSubjects:
     namespace: nullify
 extraRules:
   - apiGroups: ["batch"]
-    resources: ["jobs", "cronjobs"]
+    resources: ["cronjobs"]
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]

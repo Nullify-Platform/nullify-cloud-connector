@@ -1,4 +1,4 @@
-# Nullify managed EKS scan: read-only Kubernetes access (list on 26 kinds, get on /version).
+# Nullify managed EKS scan: read-only Kubernetes access (list on 27 kinds, get on /version).
 #
 # This is the default render of helm-charts/nullify-k8s-readonly-access without
 # Helm's bookkeeping labels; CI (scripts/check-rbac-manifest.sh) fails if the two

@@ -9,7 +9,7 @@ The chart installs exactly two cluster-scoped objects:
 
 | Object | Name (default) | Grants |
 |---|---|---|
-| ClusterRole | `nullify-readonly` | `list` on the 26 kinds below, and `get` on the `/version` URL. No `get` or `watch` on resources, exec, logs, proxy, custom resources or writes. |
+| ClusterRole | `nullify-readonly` | `list` on the 27 kinds below, and `get` on the `/version` URL. No `get` or `watch` on resources, exec, logs, proxy, custom resources or writes. |
 | ClusterRoleBinding | `nullify-readonly` | Binds the ClusterRole to Group `nullify-readonly` |
 
 | API group | Kinds (verb `list`) |
