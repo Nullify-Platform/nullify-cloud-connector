@@ -74,8 +74,10 @@ jobs:
 
       - name: Published version is unchanged or bumped
         env:
+          GH_TOKEN: ${{ github.token }}
           PUBLISH_ONLY_CHART: ${{ matrix.chart }}
           PUBLISH_STRICT: "true"
+          PUBLISH_CHECK_RELEASE_ASSETS: "true"
         run: scripts/publish-helm-repo.sh "$RUNNER_TEMP/site"
 
   publish-dry-run:
@@ -83,6 +85,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
@@ -92,12 +96,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_RUN_CHART_TESTS: "true"
+          PUBLISH_CHECK_RELEASE_ASSETS: "true"
           HELM_REPO_RECOVER_FROM_RELEASES: ${{ inputs.recover_from_releases }}
         run: |
           scripts/publish-helm-repo.sh _site
           echo "Versions a merge to main would newly publish:"
           cat published.txt
-          echo "Tags and releases a merge to main would ensure exist:"
+          echo "Tags and releases a merge to main would ensure exist (name, version, tag target):"
           cat release.txt
           echo "Charts a merge to main would skip:"
           cat skipped.txt
@@ -128,6 +133,8 @@ jobs:
       GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
@@ -136,32 +143,33 @@ jobs:
       - name: Build Helm repository
         env:
           PUBLISH_RUN_CHART_TESTS: "true"
+          PUBLISH_CHECK_RELEASE_ASSETS: "true"
           HELM_REPO_RECOVER_FROM_RELEASES: ${{ inputs.recover_from_releases }}
         run: scripts/publish-helm-repo.sh _site
 
-      - uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d # v4.0.0
-
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
-        with:
-          path: ./_site
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
-
+      # Before the deploy, so every version the site serves is tagged and the
+      # next run's tag cross-check catches a stale index. A deploy that fails
+      # after this step is restored from the release assets.
       # Driven by every published chart version at HEAD, not only new ones, so a
       # re-run after a failure here still creates the missing tags and releases.
       - name: Ensure a tag and release for every published chart version
         run: |
-          while read -r name version; do
+          while read -r name version target; do
             [ -n "$name" ] || continue
             tag="${name}-v${version}"
             asset="${name}-${version}.tgz"
             if gh release view "$tag" >/dev/null 2>&1 </dev/null; then
-              if gh release view "$tag" --json assets --jq '.assets[].name' </dev/null | grep -qxF "$asset"; then
-                echo "release ${tag} already has ${asset}"
-              else
+              if ! gh release view "$tag" --json assets --jq '.assets[].name' </dev/null | grep -qxF "$asset"; then
                 gh release upload "$tag" "_site/${asset}" </dev/null
+                continue
               fi
+              want="sha256:$(sha256sum "_site/${asset}" | cut -d' ' -f1)"
+              have="$(gh release view "$tag" --json assets --jq ".assets[] | select(.name == \"${asset}\") | .digest" </dev/null)"
+              if [ "$have" != "$want" ]; then
+                echo "::error::release ${tag} asset ${asset} has digest ${have:-none}; the site serves ${want}"
+                exit 1
+              fi
+              echo "release ${tag} already has ${asset} (${want})"
               continue
             fi
             notes="$(printf '%s\n' \
@@ -178,10 +186,19 @@ jobs:
               gh release create "$tag" "_site/${asset}" --verify-tag \
                 --title "${name} ${version}" --notes "${notes}" </dev/null
             else
-              gh release create "$tag" "_site/${asset}" --target "${GITHUB_SHA}" \
+              gh release create "$tag" "_site/${asset}" --target "${target}" \
                 --title "${name} ${version}" --notes "${notes}" </dev/null
             fi
           done < release.txt
+
+      - uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d # v4.0.0
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
 
       - name: Fail when a chart was skipped
         run: |
