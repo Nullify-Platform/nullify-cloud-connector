@@ -89,12 +89,46 @@ confirm() {
   fi
 }
 
+require_aws_credentials() {
+  local err
+  if ! err="$({ aws sts get-caller-identity >/dev/null; } 2>&1)"; then
+    echo -e "${RED}aws sts get-caller-identity failed, so no stack was checked or deleted: ${err}${NC}" >&2
+    exit 1
+  fi
+}
+
+# stack_exists NAME [REGION]
+# Succeeds when the stack exists and fails when describe-stacks reports that it
+# does not exist. Any other describe-stacks error (expired credentials, access
+# denied, throttling) exits the script.
+stack_exists() {
+  local name="$1" region="${2:-}" err
+  local -a args
+  args=(--stack-name "$name")
+  if [[ -n "$region" ]]; then
+    args+=(--region "$region")
+  fi
+  if err="$({ aws cloudformation describe-stacks "${args[@]}" >/dev/null; } 2>&1)"; then
+    return 0
+  fi
+  if [[ "$err" == *ValidationError* && "$err" == *"does not exist"* ]]; then
+    return 1
+  fi
+  echo -e "${RED}Could not check stack '${name}'${region:+ in ${region}}; stopping without deleting it or any later stack: ${err}${NC}" >&2
+  exit 1
+}
+
+DELETED_ACCESS_STACKS=0
+
 delete_eks_access_stacks() {
   local region
   local -a regions
   IFS=',' read -r -a regions <<< "$EKS_ACCESS_REGIONS"
-  for region in "${regions[@]}"; do
-    if ! aws cloudformation describe-stacks --region "$region" --stack-name "$EKS_ACCESS_STACK_NAME" &>/dev/null; then
+  for region in ${regions[@]+"${regions[@]}"}; do
+    if [[ -z "$region" ]]; then
+      continue
+    fi
+    if ! stack_exists "$EKS_ACCESS_STACK_NAME" "$region"; then
       echo -e "${YELLOW}No stack '${EKS_ACCESS_STACK_NAME}' in ${region}; skipping.${NC}"
       continue
     fi
@@ -105,6 +139,7 @@ delete_eks_access_stacks() {
       exit 1
     fi
     echo -e "${GREEN}Stack '${EKS_ACCESS_STACK_NAME}' in ${region} deleted.${NC}"
+    DELETED_ACCESS_STACKS=$((DELETED_ACCESS_STACKS + 1))
   done
 }
 
@@ -117,8 +152,10 @@ case $METHOD in
       echo -e "${YELLOW}Access entries created by setup-eks-managed-scan.sh need its 'remove' action.${NC}"
     fi
 
+    require_aws_credentials
+
     MAIN_STACK_EXISTS=true
-    if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" &>/dev/null; then
+    if ! stack_exists "$STACK_NAME"; then
       MAIN_STACK_EXISTS=false
     fi
 
@@ -134,7 +171,7 @@ case $METHOD in
     fi
 
     if [[ "$MAIN_STACK_EXISTS" != true ]]; then
-      echo -e "${YELLOW}Stack '${STACK_NAME}' not found; only the EKS access stacks were removed.${NC}"
+      echo -e "${YELLOW}Stack '${STACK_NAME}' not found; deleted ${DELETED_ACCESS_STACKS} EKS access stack(s).${NC}"
     else
       echo -e "${BLUE}Deleting stack...${NC}"
       aws cloudformation delete-stack --stack-name "$STACK_NAME"

@@ -23,10 +23,12 @@ source "$SCRIPT_DIR/lib/cidr-merge.sh"
 readonly MANAGED_BY_TAG_KEY="ManagedBy"
 readonly MANAGED_BY_TAG_VALUE="nullify-connector"
 readonly ADDED_CIDRS_TAG_KEY="nullify-added-cidrs"
+readonly PENDING_CIDRS_TAG_KEY="nullify-pending-cidrs"
+readonly EKS_TAG_VALUE_MAX_LENGTH=256
 readonly DEFAULT_GROUP="nullify-readonly"
 readonly RBAC_CLUSTER_ROLE="nullify-readonly"
-readonly RBAC_MANIFEST_PINNED_COMMIT="9cf0271a7f5bf03a84ca61aae4d95d1ffdc17cf5"
-readonly RBAC_MANIFEST_PINNED_URL="https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/${RBAC_MANIFEST_PINNED_COMMIT}/manifests/nullify-readonly-rbac.yaml"
+readonly RBAC_MANIFEST_RELEASE_TAG="nullify-k8s-readonly-access-v0.1.0"
+readonly RBAC_MANIFEST_RELEASE_URL="https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/${RBAC_MANIFEST_RELEASE_TAG}/manifests/nullify-readonly-rbac.yaml"
 readonly ADMIN_VIEW_WARNING="AmazonEKSAdminViewPolicy grants get, list and watch on every resource, including Secrets, custom resources and pods/log, and on EKS 1.34 and earlier get pods/exec is enough to exec into pods. Its grants do not show in kubectl auth can-i --list."
 readonly VERIFY_USER="nullify-verify"
 readonly UPDATE_POLL_SECONDS=15
@@ -65,6 +67,11 @@ DRY_RUN=false
 CLUSTER_ARN=""
 ADMIN_VIEW_POLICY_ARN=""
 NULLIFY_CIDRS=""
+ADDED_CIDRS=""
+ADDED_TAG_KEYS=""
+PENDING_CIDRS=""
+PENDING_TAG_KEYS=""
+STORED_TAG_KEYS=""
 KUBECONFIG_TMP=""
 KUBECTL=()
 VERIFY_FAILURES=0
@@ -93,8 +100,15 @@ Actions:
   verify   Check the access entry, RBAC (kubectl auth can-i) and publicAccessCidrs.
   remove   Undo apply: RBAC manifest objects (except Helm-managed ones), access
            entries tagged ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}, and the CIDRs
-           recorded in the ${ADDED_CIDRS_TAG_KEY} cluster tag. A public endpoint
-           disabled since apply is left alone; only the tag is dropped.
+           recorded in the ${ADDED_CIDRS_TAG_KEY} cluster tag, plus any CIDRs in
+           ${PENDING_CIDRS_TAG_KEY} that publicAccessCidrs includes. A public
+           endpoint disabled since apply is left alone and both tags are kept, so
+           remove can still take the CIDRs out after the endpoint is re-enabled.
+
+CIDR records: apply writes ${PENDING_CIDRS_TAG_KEY} before update-cluster-config
+and moves those CIDRs to ${ADDED_CIDRS_TAG_KEY} once the update succeeds. If a run
+stops in between (timeout, Ctrl-C, expired credentials), re-running apply or
+remove reconciles ${PENDING_CIDRS_TAG_KEY} against publicAccessCidrs.
 
 Required:
   --cluster NAME             EKS cluster name
@@ -118,9 +132,10 @@ Options:
   --kube-context NAME        Use this kubeconfig context instead of a temporary
                              kubeconfig written by aws eks update-kubeconfig
   --rbac-manifest PATH|URL   RBAC manifest (default: manifests/nullify-readonly-rbac.yaml
-                             in this checkout, or that file at commit
-                             ${RBAC_MANIFEST_PINNED_COMMIT:0:12} of this repository when the
-                             checkout lacks it). Pin URLs to a commit SHA.
+                             in this checkout, or that file at release tag
+                             ${RBAC_MANIFEST_RELEASE_TAG} when the checkout lacks it;
+                             the run stops if that tag is not published). Pin URLs
+                             to a commit SHA or a release tag.
   --skip-access-entry        The access entry is owned by the CloudFormation stack
                              nullify-eks-managed-scan-access.json
   --skip-rbac                RBAC is applied elsewhere (Helm chart
@@ -324,14 +339,29 @@ rbac_in_scope() {
   [[ "$AUTHORIZATION" == rbac && "$SKIP_RBAC" != true ]]
 }
 
+# use_release_rbac_manifest CHECKOUT_MANIFEST
+# Selects the manifest published at RBAC_MANIFEST_RELEASE_TAG, and dies with the
+# alternatives when that tag's file cannot be fetched (for example, the tag is
+# not published yet).
+use_release_rbac_manifest() {
+  local unavailable="rbac: $1 is not in this checkout, and the manifest at release tag $RBAC_MANIFEST_RELEASE_TAG ($RBAC_MANIFEST_RELEASE_URL) could not be fetched; the tag may not be published yet. Pass --rbac-manifest PATH|URL with a copy you reviewed, or install the nullify-k8s-readonly-access Helm chart and re-run with --skip-rbac"
+  if ! command -v curl >/dev/null 2>&1; then
+    die "$unavailable (curl is not installed)"
+  fi
+  if ! curl --proto '=https' -fsSL --max-time 30 -o /dev/null "$RBAC_MANIFEST_RELEASE_URL"; then
+    die "$unavailable"
+  fi
+  RBAC_MANIFEST="$RBAC_MANIFEST_RELEASE_URL"
+  info "rbac: $1 is not in this checkout; using the manifest at release tag $RBAC_MANIFEST_RELEASE_TAG ($RBAC_MANIFEST). Review it, or pass --rbac-manifest PATH|URL"
+}
+
 check_rbac_manifest() {
   local checkout_manifest="$REPO_ROOT/manifests/nullify-readonly-rbac.yaml"
   if [[ -z "$RBAC_MANIFEST" ]]; then
     if [[ -f "$checkout_manifest" ]]; then
       RBAC_MANIFEST="$checkout_manifest"
     else
-      RBAC_MANIFEST="$RBAC_MANIFEST_PINNED_URL"
-      info "rbac: $checkout_manifest is not in this checkout; using the manifest pinned at commit $RBAC_MANIFEST_PINNED_COMMIT ($RBAC_MANIFEST). Review it, or pass --rbac-manifest PATH|URL"
+      use_release_rbac_manifest "$checkout_manifest"
     fi
     return 0
   fi
@@ -447,13 +477,116 @@ current_public_cidrs() {
   echo "$raw"
 }
 
-added_cidrs_tag() {
+cluster_tag_keys() {
+  local raw query="keys(cluster.tags || \`{}\`)"
+  raw="$(aws eks describe-cluster --name "$CLUSTER" --region "$REGION" --query "$query" --output text)" ||
+    die "could not read the tag keys of $CLUSTER"
+  raw="$(cidr_normalise "$raw")"
+  if [[ "$raw" == None ]]; then
+    raw=""
+  fi
+  echo "$raw"
+}
+
+cidr_tag_value() {
   local raw
-  raw="$(cluster_query "tags.\"${ADDED_CIDRS_TAG_KEY}\"")" || die "could not read the ${ADDED_CIDRS_TAG_KEY} tag of $CLUSTER"
+  raw="$(cluster_query "tags.\"$1\"")" || die "could not read the $1 tag of $CLUSTER"
   if [[ "$raw" == None ]]; then
     raw=""
   fi
   cidr_normalise "$raw"
+}
+
+# load_cidr_records
+# Reads every part of the added and pending CIDR records into ADDED_CIDRS,
+# ADDED_TAG_KEYS, PENDING_CIDRS and PENDING_TAG_KEYS. Dies when a read fails.
+load_cidr_records() {
+  local raw key value
+  local -a keys
+  ADDED_CIDRS=""
+  ADDED_TAG_KEYS=""
+  PENDING_CIDRS=""
+  PENDING_TAG_KEYS=""
+  raw="$(cluster_tag_keys)" || exit 1
+  read -r -a keys <<< "$raw"
+  for key in ${keys[@]+"${keys[@]}"}; do
+    if cidr_tag_is_part "$ADDED_CIDRS_TAG_KEY" "$key"; then
+      value="$(cidr_tag_value "$key")" || exit 1
+      ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$value")"
+      ADDED_TAG_KEYS="${ADDED_TAG_KEYS:+$ADDED_TAG_KEYS }$key"
+    elif cidr_tag_is_part "$PENDING_CIDRS_TAG_KEY" "$key"; then
+      value="$(cidr_tag_value "$key")" || exit 1
+      PENDING_CIDRS="$(cidr_union "$PENDING_CIDRS" "$value")"
+      PENDING_TAG_KEYS="${PENDING_TAG_KEYS:+$PENDING_TAG_KEYS }$key"
+    fi
+  done
+}
+
+# store_cidr_record BASE LIST EXISTING_KEYS
+# Writes LIST under BASE, BASE-2, ... in one tag-resource call, no value longer
+# than EKS allows, then untags the EXISTING_KEYS the new record no longer uses.
+# Sets STORED_TAG_KEYS to the keys written.
+store_cidr_record() {
+  local base="$1" chunks chunk key tags="" index=0
+  local -a existing written stale
+  read -r -a existing <<< "${3:-}"
+  written=()
+  stale=()
+  chunks="$(cidr_tag_chunks "$2" "$EKS_TAG_VALUE_MAX_LENGTH")" || die "cannot store '$2' in the $base tag"
+  while IFS= read -r chunk; do
+    if [[ -z "$chunk" ]]; then
+      continue
+    fi
+    index=$((index + 1))
+    key="$(cidr_tag_part_key "$base" "$index")"
+    tags="${tags:+$tags,}\"${key}\":\"${chunk}\""
+    written+=("$key")
+  done <<< "$chunks"
+  if [[ -n "$tags" ]]; then
+    mutate aws eks tag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" --tags "{${tags}}" ||
+      die "could not write the $base tag of $CLUSTER; re-run $ACTION"
+  fi
+  for key in ${existing[@]+"${existing[@]}"}; do
+    if ! cidr_list_contains "$key" ${written[@]+"${written[@]}"}; then
+      stale+=("$key")
+    fi
+  done
+  if ((${#stale[@]} > 0)); then
+    drop_cidr_tags "${stale[*]}"
+  fi
+  STORED_TAG_KEYS="${written[*]:-}"
+}
+
+drop_cidr_tags() {
+  local -a keys
+  read -r -a keys <<< "${1:-}"
+  if ((${#keys[@]} == 0)); then
+    return 0
+  fi
+  mutate aws eks untag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" --tag-keys "${keys[@]}" ||
+    die "could not remove the tags ${keys[*]} of $CLUSTER; re-run $ACTION"
+}
+
+# reconcile_pending_cidrs CURRENT
+# Settles a pending record left by a run that stopped after writing it: its
+# CIDRs present in CURRENT were added by that run's update and move to the added
+# record, and the rest never landed and are dropped. apply and remove run only on
+# an ACTIVE cluster, so that update is no longer in progress.
+reconcile_pending_cidrs() {
+  local landed
+  if [[ -z "$PENDING_TAG_KEYS" ]]; then
+    return 0
+  fi
+  landed="$(cidr_intersect "$PENDING_CIDRS" "$1")"
+  if [[ -n "$landed" ]]; then
+    info "network: a previous run added $landed to publicAccessCidrs without recording it; recording it in ${ADDED_CIDRS_TAG_KEY}"
+    ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$landed")"
+    store_cidr_record "$ADDED_CIDRS_TAG_KEY" "$ADDED_CIDRS" "$ADDED_TAG_KEYS"
+    ADDED_TAG_KEYS="$STORED_TAG_KEYS"
+  fi
+  drop_cidr_tags "$PENDING_TAG_KEYS"
+  PENDING_CIDRS=""
+  PENDING_TAG_KEYS=""
 }
 
 # endpoint_access_json FIELD
@@ -469,13 +602,14 @@ endpoint_access_json() {
   esac
 }
 
-# update_public_cidrs DESIRED EXPECTED_CURRENT
+# update_public_cidrs DESIRED EXPECTED_CURRENT [PENDING]
 # Re-reads publicAccessCidrs and both endpoint flags immediately before the
 # update, aborts if the CIDRs no longer match what the caller planned against or
 # the public endpoint is now disabled, and sends the flags as read so neither is
-# changed.
+# changed. PENDING, when given, is recorded in the pending tag just before
+# update-cluster-config.
 update_public_cidrs() {
-  local desired="$1" expected="$2" latest public private vpc_config update_id
+  local desired="$1" expected="$2" pending="${3:-}" latest public private vpc_config update_id
   latest="$(current_public_cidrs)"
   if [[ "$latest" != "$expected" ]]; then
     die "publicAccessCidrs changed while this script ran (was: ${expected:-empty}, now: ${latest:-empty}); re-run"
@@ -487,13 +621,18 @@ update_public_cidrs() {
   private="$(endpoint_access_json endpointPrivateAccess)"
   vpc_config="$(printf '{"endpointPublicAccess":%s,"endpointPrivateAccess":%s,"publicAccessCidrs":%s}' \
     "$public" "$private" "$(cidr_json_array "$desired")")"
+  if [[ -n "$pending" ]]; then
+    store_cidr_record "$PENDING_CIDRS_TAG_KEY" "$pending" "$PENDING_TAG_KEYS"
+    PENDING_CIDRS="$pending"
+    PENDING_TAG_KEYS="$STORED_TAG_KEYS"
+  fi
   update_id="$(mutate aws eks update-cluster-config --name "$CLUSTER" --region "$REGION" \
     --resources-vpc-config "$vpc_config" --query update.id --output text)"
   wait_for_update "$update_id"
 }
 
 ensure_network() {
-  local public current merged added recorded tag_value
+  local public current merged added unrecorded
   if [[ "$SKIP_NETWORK" == true ]]; then
     info "network: skipped (--skip-network)"
     return 0
@@ -502,23 +641,29 @@ ensure_network() {
   if [[ "$public" != true ]]; then
     die "cluster $CLUSTER has no public endpoint. Private-only clusters are not supported by the managed scan: enable the public endpoint restricted to Nullify's egress IPs, or use the in-cluster collector"
   fi
+  load_cidr_records
   current="$(current_public_cidrs)"
+  reconcile_pending_cidrs "$current"
   if ! merged="$(cidr_merge "$current" "$NULLIFY_CIDRS")"; then
     die "cannot add Nullify egress IPs ($NULLIFY_CIDRS) to publicAccessCidrs (${current:-empty})"
   fi
   added="$(cidr_missing "$current" "$merged")"
   if [[ -z "$added" ]]; then
     info "network: publicAccessCidrs already admits Nullify (${current})"
+    unrecorded="$(cidr_difference "$(cidr_intersect "$NULLIFY_CIDRS" "$current")" "$ADDED_CIDRS")"
+    if [[ -n "$unrecorded" ]]; then
+      warn "network: $unrecorded is not recorded in ${ADDED_CIDRS_TAG_KEY}, so remove will leave it in publicAccessCidrs. If this script added it, record it with: aws eks tag-resource --resource-arn $CLUSTER_ARN --region $REGION --tags '{\"${ADDED_CIDRS_TAG_KEY}\":\"$(cidr_union "$ADDED_CIDRS" "$unrecorded")\"}'"
+    fi
     return 0
   fi
-  recorded="$(added_cidrs_tag)"
-  tag_value="$(cidr_union "$recorded" "$added")"
   info "network: adding $added to publicAccessCidrs"
-  update_public_cidrs "$merged" "$current"
-  if ! mutate aws eks tag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" \
-    --tags "$(printf '{"%s":"%s"}' "$ADDED_CIDRS_TAG_KEY" "$tag_value")"; then
-    die "publicAccessCidrs now includes $added, but tagging the cluster failed, so remove will not take those CIDRs out. Record them with: aws eks tag-resource --resource-arn $CLUSTER_ARN --region $REGION --tags '{\"${ADDED_CIDRS_TAG_KEY}\":\"${tag_value}\"}'"
-  fi
+  update_public_cidrs "$merged" "$current" "$added"
+  ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$added")"
+  store_cidr_record "$ADDED_CIDRS_TAG_KEY" "$ADDED_CIDRS" "$ADDED_TAG_KEYS"
+  ADDED_TAG_KEYS="$STORED_TAG_KEYS"
+  drop_cidr_tags "$PENDING_TAG_KEYS"
+  PENDING_CIDRS=""
+  PENDING_TAG_KEYS=""
 }
 
 remove_rbac() {
@@ -572,33 +717,36 @@ remove_access_entry() {
 }
 
 remove_network() {
-  local recorded public current remaining
+  local public current owned remaining
   if [[ "$SKIP_NETWORK" == true ]]; then
     info "network: skipped (--skip-network)"
     return 0
   fi
-  recorded="$(added_cidrs_tag)"
-  if [[ -z "$recorded" ]]; then
-    info "network: no ${ADDED_CIDRS_TAG_KEY} tag; publicAccessCidrs left unchanged"
+  load_cidr_records
+  if [[ -z "$ADDED_TAG_KEYS" && -z "$PENDING_TAG_KEYS" ]]; then
+    info "network: no ${ADDED_CIDRS_TAG_KEY} or ${PENDING_CIDRS_TAG_KEY} tag; publicAccessCidrs left unchanged"
     return 0
   fi
   public="$(endpoint_access_json endpointPublicAccess)"
   if [[ "$public" != true ]]; then
-    warn "network: the public endpoint of $CLUSTER is disabled; leaving the endpoint and publicAccessCidrs unchanged and dropping the ${ADDED_CIDRS_TAG_KEY} tag"
-    mutate aws eks untag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" --tag-keys "$ADDED_CIDRS_TAG_KEY"
+    warn "network: the public endpoint of $CLUSTER is disabled; leaving the endpoint, publicAccessCidrs and the ${ADDED_CIDRS_TAG_KEY}/${PENDING_CIDRS_TAG_KEY} tags unchanged. publicAccessCidrs can still hold Nullify's CIDRs when the public endpoint is re-enabled; re-run remove then to take them out"
     return 0
   fi
   current="$(current_public_cidrs)"
-  if ! remaining="$(cidr_remove "$current" "$recorded")"; then
-    die "removing $recorded would leave publicAccessCidrs empty. Add the CIDRs you want to keep, or disable the public endpoint, then re-run"
+  owned="$(cidr_union "$ADDED_CIDRS" "$(cidr_intersect "$PENDING_CIDRS" "$current")")"
+  remaining="$current"
+  if [[ -n "$owned" ]]; then
+    if ! remaining="$(cidr_remove "$current" "$owned")"; then
+      die "removing $owned would leave publicAccessCidrs empty. Add the CIDRs you want to keep, or disable the public endpoint, then re-run"
+    fi
   fi
   if [[ "$remaining" != "$current" ]]; then
-    info "network: removing $recorded from publicAccessCidrs"
+    info "network: removing $owned from publicAccessCidrs"
     update_public_cidrs "$remaining" "$current"
   else
-    info "network: the recorded CIDRs are no longer in publicAccessCidrs"
+    info "network: none of the recorded CIDRs are in publicAccessCidrs"
   fi
-  mutate aws eks untag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" --tag-keys "$ADDED_CIDRS_TAG_KEY"
+  drop_cidr_tags "$ADDED_TAG_KEYS $PENDING_TAG_KEYS"
 }
 
 check_pass() { log "[PASS] $*"; }
