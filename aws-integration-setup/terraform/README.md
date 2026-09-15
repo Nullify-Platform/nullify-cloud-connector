@@ -86,7 +86,7 @@ terraform/
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
-| Kinds read | Same kind list as the managed scan in `k8s-resources` and chart 0.3.0 and later (chart 0.2.0 grants extra kinds it never collects) | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
+| Kinds read | Same kind list as the managed scan in `k8s-resources` and chart 0.4.0 and later. Chart 0.2.0 grants a different set: it adds endpoints, cronjobs and CRDs, and lacks configmaps, secrets, resourcequotas, limitranges, endpointslices and the admission kinds | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.

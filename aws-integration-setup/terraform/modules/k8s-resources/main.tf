@@ -88,8 +88,11 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
 
   rule {
     api_groups = ["networking.k8s.io"]
-    resources  = ["ingresses", "networkpolicies"]
-    verbs      = ["list"]
+    resources = [
+      "ingresses",
+      "networkpolicies",
+    ]
+    verbs = ["list"]
   }
 
   rule {
