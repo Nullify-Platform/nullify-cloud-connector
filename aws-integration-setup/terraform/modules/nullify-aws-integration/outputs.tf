@@ -3,6 +3,11 @@ output "role_arn" {
   value       = aws_iam_role.nullify_readonly_role.arn
 }
 
+output "role_unique_id" {
+  description = "Stable ID of the IAM role. Pass it to eks-managed-scan-access as principal_unique_id so a recreated role replaces the access entries"
+  value       = aws_iam_role.nullify_readonly_role.unique_id
+}
+
 output "role_name" {
   description = "Name of the IAM Role created for Nullify"
   value       = aws_iam_role.nullify_readonly_role.name
@@ -75,6 +80,11 @@ output "policy_arns" {
   }
 }
 
+output "kms_policy_resources" {
+  description = "Resources the KMS policy grants: kms_key_arn, plus key/* in its account and region when that account is not this one (empty when kms_key_arn is not set)"
+  value       = local.kms_policy_resources
+}
+
 # Configuration summary
 output "deployment_summary" {
   description = "Summary of the Nullify integration deployment"
@@ -88,4 +98,4 @@ output "deployment_summary" {
     kubernetes_integration    = var.enable_kubernetes_integration
     total_clusters_configured = var.enable_kubernetes_integration ? length(local.all_oidc_ids) : 0
   }
-} 
+}

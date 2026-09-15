@@ -50,4 +50,24 @@ output "policy_arns" {
 output "deployment_summary" {
   description = "Summary of the Nullify integration deployment"
   value       = module.nullify_aws_integration.deployment_summary
-} 
+}
+
+output "managed_scan_clusters_for_nullify" {
+  description = "Clusters to register in Nullify for the managed scan (null when enable_managed_scan is false)"
+  value       = one(module.eks_managed_scan_access[*].clusters_for_nullify)
+}
+
+output "managed_scan_kubernetes_group" {
+  description = "Kubernetes group to bind to the nullify-readonly ClusterRole (null when disabled or for admin_view_policy)"
+  value       = one(module.eks_managed_scan_access[*].kubernetes_group_name)
+}
+
+output "managed_scan_endpoint_allowlist" {
+  description = "Per cluster: whether Nullify's egress IPs can reach the public endpoint, and a command that adds any missing CIDRs"
+  value       = one(module.eks_managed_scan_access[*].endpoint_allowlist)
+}
+
+output "nullify_egress_cidrs" {
+  description = "Nullify egress CIDRs for nullify_region (null when enable_managed_scan is false)"
+  value       = one(module.eks_managed_scan_access[*].nullify_egress_cidrs)
+}

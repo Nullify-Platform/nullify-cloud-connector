@@ -1,4 +1,6 @@
 resource "kubernetes_namespace" "nullify" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name = var.kubernetes_namespace
     labels = {
@@ -9,9 +11,11 @@ resource "kubernetes_namespace" "nullify" {
 }
 
 resource "kubernetes_service_account" "nullify_collector_sa" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name      = var.service_account_name
-    namespace = kubernetes_namespace.nullify.metadata[0].name
+    namespace = kubernetes_namespace.nullify[0].metadata[0].name
 
     annotations = {
       "eks.amazonaws.com/role-arn" = var.iam_role_arn
@@ -23,9 +27,18 @@ resource "kubernetes_service_account" "nullify_collector_sa" {
       "app.kubernetes.io/managed-by" = "terraform"
     }
   }
+
+  lifecycle {
+    precondition {
+      condition     = var.iam_role_arn != ""
+      error_message = "iam_role_arn is required when enable_collector is true: the collector's service account assumes it through IRSA."
+    }
+  }
 }
 
 resource "kubernetes_cluster_role" "nullify_readonly_role" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name = "nullify-k8s-collector-role"
     labels = {
@@ -35,25 +48,25 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     }
   }
 
+  # Kinds the collector lists, kept identical to the managed-scan ClusterRole
+  # (managed_scan.tf) and to collect.go. "jobs" is granted ahead of the
+  # monorepo's fix/k8s-deployment-matching-review stack (#12807 / #12830).
   rule {
     api_groups = [""]
     resources = [
       "pods",
       "services",
-      "endpoints",
       "namespaces",
       "nodes",
+      "serviceaccounts",
+      "configmaps",
+      "secrets",
+      "resourcequotas",
+      "limitranges",
       "persistentvolumes",
       "persistentvolumeclaims",
-      "serviceaccounts",
     ]
-    verbs = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["networking.k8s.io"]
-    resources  = ["ingresses", "networkpolicies"]
-    verbs      = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
@@ -62,9 +75,30 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "deployments",
       "replicasets",
       "statefulsets",
-      "daemonsets"
+      "daemonsets",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
+  }
+
+  rule {
+    api_groups = ["batch"]
+    resources  = ["jobs"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources = [
+      "ingresses",
+      "networkpolicies",
+    ]
+    verbs = ["list"]
+  }
+
+  rule {
+    api_groups = ["discovery.k8s.io"]
+    resources  = ["endpointslices"]
+    verbs      = ["list"]
   }
 
   rule {
@@ -73,43 +107,31 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "roles",
       "rolebindings",
       "clusterroles",
-      "clusterrolebindings"
+      "clusterrolebindings",
     ]
-    verbs = ["get", "list"]
+    verbs = ["list"]
   }
 
   rule {
-    api_groups = ["storage.k8s.io"]
-    resources  = ["storageclasses"]
-    verbs      = ["get", "list"]
+    api_groups = ["admissionregistration.k8s.io"]
+    resources = [
+      "validatingwebhookconfigurations",
+      "mutatingwebhookconfigurations",
+      "validatingadmissionpolicies",
+      "validatingadmissionpolicybindings",
+    ]
+    verbs = ["list"]
   }
 
   rule {
-    api_groups = ["batch"]
-    resources  = ["jobs", "cronjobs"]
-    verbs      = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["autoscaling"]
-    resources  = ["horizontalpodautoscalers"]
-    verbs      = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["policy"]
-    resources  = ["poddisruptionbudgets"]
-    verbs      = ["get", "list"]
-  }
-
-  rule {
-    api_groups = ["apiextensions.k8s.io"]
-    resources  = ["customresourcedefinitions"]
-    verbs      = ["get", "list"]
+    non_resource_urls = ["/version"]
+    verbs             = ["get"]
   }
 }
 
 resource "kubernetes_cluster_role_binding" "nullify_collector_binding" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name = "nullify-k8s-collector-binding"
     labels = {
@@ -122,23 +144,37 @@ resource "kubernetes_cluster_role_binding" "nullify_collector_binding" {
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "ClusterRole"
-    name      = kubernetes_cluster_role.nullify_readonly_role.metadata[0].name
+    name      = kubernetes_cluster_role.nullify_readonly_role[0].metadata[0].name
   }
 
   subject {
     kind      = "ServiceAccount"
-    name      = kubernetes_service_account.nullify_collector_sa.metadata[0].name
-    namespace = kubernetes_namespace.nullify.metadata[0].name
+    name      = kubernetes_service_account.nullify_collector_sa[0].metadata[0].name
+    namespace = kubernetes_namespace.nullify[0].metadata[0].name
   }
 }
 
 resource "kubernetes_cron_job_v1" "k8s_collector" {
+  count = var.enable_collector ? 1 : 0
+
   metadata {
     name      = "k8s-info-collector"
-    namespace = kubernetes_namespace.nullify.metadata[0].name
+    namespace = kubernetes_namespace.nullify[0].metadata[0].name
     labels = {
       "app.kubernetes.io/name"      = "nullify"
       "app.kubernetes.io/component" = "k8s-collector"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = var.cluster_name != ""
+      error_message = "cluster_name is required when enable_collector is true. It must match your actual cluster name exactly, as AWS reports it, and it must match a cluster registered on the Nullify configure page: Nullify joins the upload on this name and silently drops or skips it otherwise. It also names the upload, <prefix>/k8s-collector/<cluster_name>-data.json, so collectors without a name all overwrite the same k8s-collector/default-name-data.json object."
+    }
+
+    precondition {
+      condition     = var.kms_key_arn != ""
+      error_message = "kms_key_arn is required when enable_collector is true: the collector walks the cluster, then refuses to upload without KMS encryption and exits 1, so every CronJob run fails and Nullify receives nothing. There is no opt-out. Nullify's upload bucket sets SSE-KMS as its default encryption, so an upload sent with no encryption headers is still encrypted with Nullify's key, and S3 rejects it unless the caller holds kms:GenerateDataKey on that key -- which this role only gets from kms_key_arn. Take the value from the Nullify configure page."
     }
   }
 
@@ -168,12 +204,17 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
           }
 
           spec {
-            service_account_name = kubernetes_service_account.nullify_collector_sa.metadata[0].name
+            service_account_name = kubernetes_service_account.nullify_collector_sa[0].metadata[0].name
             restart_policy       = "OnFailure"
 
             container {
               name  = "k8s-collector"
               image = var.collector_image
+
+              env {
+                name  = "CLUSTER_NAME"
+                value = var.cluster_name
+              }
 
               env {
                 name  = "NULLIFY_S3_BUCKET_NAME"
@@ -203,6 +244,16 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
                 content {
                   name  = "ENABLE_DEBUG_LOG"
                   value = "true"
+                }
+              }
+
+              security_context {
+                allow_privilege_escalation = false
+                read_only_root_filesystem  = true
+                run_as_non_root            = true
+
+                capabilities {
+                  drop = ["ALL"]
                 }
               }
 

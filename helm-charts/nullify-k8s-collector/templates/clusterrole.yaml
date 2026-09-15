@@ -6,23 +6,35 @@ metadata:
   labels:
     {{- include "k8s-collector.labels" . | nindent 4 }}
 rules:
-  # Access for collecting cluster information
+  # Kinds the collector actually lists (context/internal/cloudintegrations/
+  # k8sintegration/collect/collect.go in the platform monorepo), plus "jobs":
+  # the fix/k8s-deployment-matching-review stack (monorepo #12807, which
+  # #12830 sits on) starts collecting Jobs owned by a CronJob to resolve
+  # scheduled-run pod ownership, so that grant is added ahead of the
+  # collector code landing rather than dropped and re-added. No other kind
+  # here is collected today; each one removed a grant this role held with no
+  # reader.
   - apiGroups: [""]
-    resources: ["nodes", "namespaces", "pods", "services", "endpoints", "persistentvolumes", "persistentvolumeclaims", "serviceaccounts"]
-    verbs: ["get", "list"]
+    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "secrets", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["list"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
-    verbs: ["get", "list"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["list"]
   - apiGroups: ["batch"]
-    resources: ["jobs", "cronjobs"]
-    verbs: ["get", "list"]
+    resources: ["jobs"]
+    verbs: ["list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["list"]
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
-    verbs: ["get", "list"]
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources: ["customresourcedefinitions"]
-    verbs: ["get", "list"]
+    verbs: ["list"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations", "validatingadmissionpolicies", "validatingadmissionpolicybindings"]
+    verbs: ["list"]
+  - nonResourceURLs: ["/version"]
+    verbs: ["get"]
 {{- end }} 

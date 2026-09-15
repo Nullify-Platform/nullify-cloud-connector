@@ -24,25 +24,31 @@ variable "nullify_role_arn" {
 
   validation {
     condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.nullify_role_arn))
-    error_message = "Must be a valid ARN for an IAM role in the format arn:aws:iam::<account-id>:role/<role-name>"
+    error_message = "Must be a valid ARN for an IAM role in the format arn:aws:iam::<account-id>:role/<role-name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected."
   }
 }
 
 variable "enable_kubernetes_integration" {
   type        = bool
-  description = "Whether to enable Kubernetes integration resources"
+  description = "Whether the role trusts the in-cluster collector's service account (IRSA) on the clusters in eks_cluster_arns"
   default     = false
 }
 
 variable "eks_cluster_arns" {
   type        = list(string)
-  description = "List of ARNs of EKS clusters to integrate with (OIDC provider IDs will be fetched automatically)"
+  description = "ARNs of the EKS clusters whose collector service account the role trusts (required when enable_kubernetes_integration is true). Clusters must be in aws_region unless eks_oidc_issuer_urls is set"
   default     = []
 
   validation {
-    condition     = !var.enable_kubernetes_integration || (var.enable_kubernetes_integration && length(var.eks_cluster_arns) > 0)
-    error_message = "When Kubernetes integration is enabled, you must provide at least one cluster ARN in eks_cluster_arns"
+    condition     = alltrue([for arn in var.eks_cluster_arns : can(regex("^arn:aws:eks:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9][A-Za-z0-9_-]*$", arn))])
+    error_message = "Each entry must be an EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected."
   }
+}
+
+variable "eks_oidc_issuer_urls" {
+  type        = list(string)
+  description = "OIDC issuer URLs of the clusters in eks_cluster_arns, in the same order. Needed only when a cluster is outside aws_region: aws eks describe-cluster --region <region> --name <name> --query cluster.identity.oidc.issuer --output text"
+  default     = []
 }
 
 variable "aws_region" {
@@ -54,6 +60,12 @@ variable "aws_region" {
 variable "s3_bucket_name" {
   type        = string
   description = "The name of the S3 bucket for storing scan results (optional, provided by Nullify if needed)"
+  default     = ""
+}
+
+variable "nullify_s3_access_point_arn" {
+  type        = string
+  description = "The S3 access point ARN Nullify provides as the collector upload target (optional)"
   default     = ""
 }
 
@@ -71,7 +83,7 @@ variable "service_account_name" {
 
 variable "cronjob_schedule" {
   type        = string
-  description = "Cron schedule for the Kubernetes collector job"
+  description = "Deprecated and unused: this configuration deploys no collector. Set the schedule on the k8s-resources module instead"
   default     = "0 0 * * *"
 }
 
@@ -86,11 +98,42 @@ variable "tags" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed)"
+  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
   default     = ""
+}
 
-  validation {
-    condition     = var.kms_key_arn == "" || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+)$", var.kms_key_arn))
-    error_message = "Must be a valid KMS key ARN (key ID or alias format) or empty string. Example: arn:aws:kms:region:account-id:key/key-id or arn:aws:kms:region:account-id:alias/alias-name"
-  }
-} 
+variable "enable_managed_scan" {
+  type        = bool
+  description = "Create EKS access entries so Nullify's managed scan can list Kubernetes resources with no in-cluster agent"
+  default     = false
+}
+
+variable "managed_scan_cluster_arns" {
+  type        = list(string)
+  description = "EKS clusters for the managed scan, all in aws_region (AWS provider v5 manages access entries only in the provider's region)"
+  default     = []
+}
+
+variable "collector_cluster_arns" {
+  type        = list(string)
+  description = "Override for which clusters eks_managed_scan_access treats as already running the collector, for its duplicate-registration guard. Defaults to eks_cluster_arns when enable_kubernetes_integration is true, since granting the collector's IRSA trust is the closest available signal that a collector is deployed there -- but trust and deployment can diverge: a staged rollout may grant trust ahead of deploying k8s-resources' CronJob (or the Helm chart, or an equivalent manifest) to those clusters, incorrectly blocking their managed scan. It also decouples a collector-to-managed-scan cutover from revoking IRSA trust: disable or remove the collector on that cluster first, then set this to eks_cluster_arns minus the cluster being migrated so the guard stops blocking it, and drop the cluster from eks_cluster_arns itself only once the cutover is confirmed. null keeps the default derivation from eks_cluster_arns"
+  default     = null
+}
+
+variable "managed_scan_authorization" {
+  type        = string
+  description = "rbac (recommended): the access entry carries managed_scan_kubernetes_group, which you bind to a list-only nullify-readonly ClusterRole. The k8s-resources module applies that ClusterRole with enable_managed_scan_rbac = true; the root has no Kubernetes provider, so apply it separately. admin_view_policy: AmazonEKSAdminViewPolicy, which reads every resource including Secrets and pods/log, and allows exec into pods on EKS 1.34 and earlier"
+  default     = "rbac"
+}
+
+variable "managed_scan_kubernetes_group" {
+  type        = string
+  description = "Kubernetes group on the access entries in rbac mode"
+  default     = "nullify-readonly"
+}
+
+variable "nullify_region" {
+  type        = string
+  description = "Your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2). Required when enable_managed_scan is true"
+  default     = ""
+}

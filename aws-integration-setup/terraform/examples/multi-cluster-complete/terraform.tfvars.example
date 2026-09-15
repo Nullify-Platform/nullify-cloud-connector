@@ -10,11 +10,19 @@ external_id = "your-external-id-from-nullify"
 # REQUIRED: Nullify cross-account role ARN (provided by Nullify)
 nullify_role_arn = "arn:aws:iam::123456789012:role/NullifyRole"
 
-# REQUIRED: EKS cluster ARNs to integrate (must provide at least 2 for this example)
+# REQUIRED: exactly two EKS cluster ARNs, primary first. They can be in different regions.
 eks_cluster_arns = [
   "arn:aws:eks:ap-southeast-2:123456789012:cluster/primary-cluster",
   "arn:aws:eks:us-east-1:123456789012:cluster/secondary-cluster"
 ]
+
+# collector (default): in-cluster CronJob. managed: EKS access entry plus the list-only
+# nullify-readonly ClusterRole, nothing runs in the cluster. Pick one: the two paths
+# register the same cluster twice, under different identities.
+# scan_mode = "managed"
+
+# Your Nullify region from the configure page, required for managed
+# nullify_region = "eu-central-1"
 
 # Primary AWS region (where IAM resources are created)
 aws_region = "ap-southeast-2"
@@ -22,8 +30,14 @@ aws_region = "ap-southeast-2"
 # S3 bucket name for storing scan results (optional, provided by Nullify if needed)
 # s3_bucket_name = "nullify-scan-results-acme-corp"
 
-# KMS key ARN for encryption (optional, provided by Nullify if needed)
-# kms_key_arn = "arn:aws:kms:ap-southeast-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+# S3 access point ARN for collector uploads (optional, shown on the Nullify configure page if used)
+# nullify_s3_access_point_arn = "arn:aws:s3:ap-southeast-2:123456789012:accesspoint/acme-corp-k8s-collector"
+
+# KMS ARN from the Nullify configure page. A key ARN or an alias ARN both work.
+# REQUIRED when scan_mode is collector: the collector refuses to upload without KMS
+# encryption, and there is no opt-out. The key lives in Nullify's account, not yours,
+# so it is not the account id used for nullify_role_arn or eks_cluster_arns above.
+# kms_key_arn = "arn:aws:kms:<nullify-region>:<nullify-account-id>:key/<from-the-configure-page>"
 
 # Kubernetes namespace for Nullify resources
 kubernetes_namespace = "nullify"
@@ -31,8 +45,8 @@ kubernetes_namespace = "nullify"
 # Cron schedule for the collector
 cronjob_schedule = "0 0 * * *"
 
-# Collector image
-collector_image = "nullify/k8s-collector:latest"
+# Collector image (defaults to a pinned tag of Nullify's ECR Public image)
+# collector_image = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
 
 # Tags to apply to all AWS resources
 tags = {

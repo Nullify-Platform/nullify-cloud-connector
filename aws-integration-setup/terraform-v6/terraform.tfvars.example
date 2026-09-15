@@ -17,25 +17,35 @@ aws_region = "ap-southeast-2"
 # S3 bucket name for storing scan results (optional, provided by Nullify if needed)
 # s3_bucket_name = "nullify-scan-results-acme-corp"
 
-# KMS key ARN for encryption (optional, provided by Nullify if needed)
-# kms_key_arn = "arn:aws:kms:ap-southeast-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+# S3 access point ARN for collector uploads (optional, shown on the Nullify configure page if used)
+# nullify_s3_access_point_arn = "arn:aws:s3:ap-southeast-2:123456789012:accesspoint/acme-corp-k8s-collector"
+
+# KMS ARN from the Nullify configure page (optional). A key ARN or an alias ARN both work.
+# The key lives in Nullify's account, not yours.
+# kms_key_arn = "arn:aws:kms:<nullify-region>:<nullify-account-id>:key/<from-the-configure-page>"
 
 # Enable Kubernetes integration (set to true if you have EKS clusters)
 enable_kubernetes_integration = false
 
-# EKS cluster ARNs (required when enable_kubernetes_integration = true)
+# EKS cluster ARNs in any region (required when enable_kubernetes_integration = true)
 # eks_cluster_arns = [
 #   "arn:aws:eks:ap-southeast-2:123456789012:cluster/my-cluster"
 # ]
+
+# Managed EKS scan: access entries so Nullify lists Kubernetes resources with no in-cluster agent.
+# Clusters can be in any region but must already exist when you plan. In rbac mode, bind the group
+# to a list-only nullify-readonly ClusterRole: the k8s-resources module applies one with
+# enable_managed_scan_rbac = true.
+# enable_managed_scan        = true
+# managed_scan_cluster_arns  = ["arn:aws:eks:eu-west-1:123456789012:cluster/my-cluster"]
+# nullify_region             = "eu-central-1"
+# managed_scan_authorization = "rbac"
 
 # Kubernetes namespace for Nullify resources
 # kubernetes_namespace = "nullify"
 
 # Kubernetes service account name
 # service_account_name = "nullify-k8s-collector-sa"
-
-# Cron schedule for the collector (default: daily at midnight)
-# cronjob_schedule = "0 0 * * *"
 
 # Tags to apply to all AWS resources
 tags = {

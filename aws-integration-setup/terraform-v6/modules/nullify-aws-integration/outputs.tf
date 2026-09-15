@@ -3,6 +3,11 @@ output "role_arn" {
   value       = aws_iam_role.nullify_readonly_role.arn
 }
 
+output "role_unique_id" {
+  description = "Stable ID of the IAM role. Pass it to eks-managed-scan-access as principal_unique_id so a recreated role replaces the access entries"
+  value       = aws_iam_role.nullify_readonly_role.unique_id
+}
+
 output "role_name" {
   description = "Name of the IAM Role created for Nullify"
   value       = aws_iam_role.nullify_readonly_role.name
@@ -73,6 +78,11 @@ output "policy_arns" {
     kms_access     = local.enable_kms_access ? aws_iam_policy.kms_access_policy[0].arn : null
     deny_actions   = aws_iam_policy.deny_actions_policy.arn
   }
+}
+
+output "kms_policy_resources" {
+  description = "Resources the KMS policy grants: kms_key_arn, plus key/* in its account and region when that account is not this one (empty when kms_key_arn is not set)"
+  value       = local.kms_policy_resources
 }
 
 # Configuration summary

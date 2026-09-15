@@ -1,0 +1,10 @@
+# EKS without IRSA (Pod Identity, instance profile, kube2iam): no role-arn annotation.
+cloudProvider: aws
+collector:
+  clusterName: example-eks-cluster
+  s3:
+    bucket: example-nullify-bucket
+  kms:
+    keyArn: arn:aws:kms:us-east-2:123456789012:key/00000000-0000-0000-0000-000000000000
+serviceAccount:
+  requireRoleArn: false

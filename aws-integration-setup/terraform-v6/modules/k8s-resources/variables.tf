@@ -1,6 +1,48 @@
+variable "enable_collector" {
+  type        = bool
+  description = "Deploy the in-cluster collector: namespace, IRSA service account, RBAC and CronJob"
+  default     = true
+}
+
+variable "enable_managed_scan_rbac" {
+  type        = bool
+  description = "Create the list-only ClusterRole and ClusterRoleBinding for Nullify's managed EKS scan, bound to managed_scan_kubernetes_group. Pair it with the eks-managed-scan-access module in rbac mode. Applying it needs rights to grant every listed permission, which in practice means cluster-admin"
+  default     = false
+}
+
+variable "managed_scan_kubernetes_group" {
+  type        = string
+  description = "Kubernetes group on the Nullify access entry that the managed-scan ClusterRole is bound to"
+  default     = "nullify-readonly"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$", var.managed_scan_kubernetes_group))
+    error_message = "Lowercase letters, digits, '.' and '-' only (max 63 characters). ':' is not allowed, which excludes system: groups."
+  }
+}
+
+variable "managed_scan_cluster_role_name" {
+  type        = string
+  description = "Name of the managed-scan ClusterRole. Keep the default unless you also change kubernetes_group_name on the access entry: Nullify only needs the binding to reach a role with these list permissions"
+  default     = "nullify-readonly"
+}
+
+variable "managed_scan_cluster_role_binding_name" {
+  type        = string
+  description = "Name of the managed-scan ClusterRoleBinding"
+  default     = "nullify-readonly"
+}
+
 variable "iam_role_arn" {
   type        = string
-  description = "The ARN of the IAM role for the service account annotation"
+  description = "The ARN of the IAM role for the collector service account annotation (required when enable_collector is true)"
+  default     = ""
+}
+
+variable "cluster_name" {
+  type        = string
+  description = "Name of the cluster this collector runs in, required when enable_collector is true. It must match your actual cluster name exactly, as AWS reports it, and it must match a cluster registered on the Nullify configure page: Nullify joins the upload on this name and silently drops or skips it otherwise. It becomes the collector's CLUSTER_NAME and names the upload, <prefix>/k8s-collector/<cluster_name>-data.json, so two clusters sharing a name overwrite each other's inventory. Same value as collector.clusterName in the nullify-k8s-collector Helm chart"
+  default     = ""
 }
 
 variable "service_account_name" {
@@ -11,7 +53,7 @@ variable "service_account_name" {
 
 variable "s3_bucket_name" {
   type        = string
-  description = "The name of the S3 bucket for storing scan results"
+  description = "The collector's S3 upload target: the bucket name, or the S3 access point ARN Nullify provides"
   default     = ""
 }
 
@@ -29,8 +71,8 @@ variable "kubernetes_namespace" {
 
 variable "collector_image" {
   type        = string
-  description = "Docker image for the Kubernetes collector"
-  default     = "nullify/k8s-collector:latest"
+  description = "Container image for the Kubernetes collector. Defaults to a pinned tag of Nullify's ECR Public image"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
 }
 
 variable "cronjob_schedule" {
@@ -41,8 +83,13 @@ variable "cronjob_schedule" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The ARN of the KMS key for key management operations (optional)"
+  description = "The KMS ARN shown on the Nullify configure page, required when enable_collector is true: a key ARN or an alias ARN. The collector sends it to S3 as SSEKMSKeyId and refuses to upload without it, and there is no unencrypted path -- Nullify's bucket defaults to SSE-KMS, so an unencrypted upload needs kms:GenerateDataKey on Nullify's key anyway. The key is in Nullify's account, so a bare key ID or a bare alias/<name> would resolve against your own account and is rejected here"
   default     = ""
+
+  validation {
+    condition     = var.kms_key_arn == "" || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+)$", var.kms_key_arn))
+    error_message = "Must be empty, a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>) or a KMS alias ARN (arn:aws:kms:<region>:<account-id>:alias/<name>)"
+  }
 }
 
 variable "enable_debug" {
