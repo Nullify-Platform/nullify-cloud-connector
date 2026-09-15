@@ -66,19 +66,7 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
 
   rule {
     api_groups = ["batch"]
-    resources  = ["jobs", "cronjobs"]
-    verbs      = ["list"]
-  }
-
-  rule {
-    api_groups = ["autoscaling"]
-    resources  = ["horizontalpodautoscalers"]
-    verbs      = ["list"]
-  }
-
-  rule {
-    api_groups = ["policy"]
-    resources  = ["poddisruptionbudgets"]
+    resources  = ["jobs"]
     verbs      = ["list"]
   }
 
@@ -86,7 +74,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     api_groups = ["networking.k8s.io"]
     resources = [
       "ingresses",
-      "ingressclasses",
       "networkpolicies",
     ]
     verbs = ["list"]
@@ -110,36 +97,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
   }
 
   rule {
-    api_groups = ["storage.k8s.io"]
-    resources  = ["storageclasses", "csidrivers"]
-    verbs      = ["list"]
-  }
-
-  rule {
-    api_groups = ["node.k8s.io"]
-    resources  = ["runtimeclasses"]
-    verbs      = ["list"]
-  }
-
-  rule {
-    api_groups = ["scheduling.k8s.io"]
-    resources  = ["priorityclasses"]
-    verbs      = ["list"]
-  }
-
-  rule {
-    api_groups = ["flowcontrol.apiserver.k8s.io"]
-    resources  = ["flowschemas"]
-    verbs      = ["list"]
-  }
-
-  rule {
-    api_groups = ["certificates.k8s.io"]
-    resources  = ["certificatesigningrequests"]
-    verbs      = ["list"]
-  }
-
-  rule {
     api_groups = ["admissionregistration.k8s.io"]
     resources = [
       "validatingwebhookconfigurations",
@@ -148,12 +105,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "validatingadmissionpolicybindings",
     ]
     verbs = ["list"]
-  }
-
-  rule {
-    api_groups = ["apiextensions.k8s.io"]
-    resources  = ["customresourcedefinitions"]
-    verbs      = ["list"]
   }
 
   rule {
