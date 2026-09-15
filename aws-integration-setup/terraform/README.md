@@ -86,7 +86,7 @@ terraform/
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
-| Kinds read | Same kind list as the managed scan (both derive from the platform's collector) | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
+| Kinds read | Same kind list as the managed scan in `k8s-resources` and chart 0.3.0 and later (chart 0.2.0 grants extra kinds it never collects) | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
@@ -103,6 +103,7 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 |---|---|
 | core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
 | apps | deployments, daemonsets, statefulsets, replicasets |
+| batch | jobs |
 | networking.k8s.io | ingresses, networkpolicies |
 | discovery.k8s.io | endpointslices |
 | rbac.authorization.k8s.io | roles, rolebindings, clusterroles, clusterrolebindings |
@@ -110,7 +111,7 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 
 Plus `get` on the non-resource URL `/version`.
 
-Both modes list Secrets, but neither reads values. The managed scan requests Kubernetes' server-side [Table representation](https://kubernetes.io/docs/reference/using-api/api-concepts/#alternate-representations-of-resources) for Secrets, so only metadata (name, type, key count) crosses the API server boundary; values never leave the cluster. The in-cluster collector fetches full Secret objects but redacts every value before it uploads collected data. The `list` verb technically permits reading values in either mode -- Kubernetes has no metadata-only RBAC verb for Secrets -- but Nullify's collection code never exercises that.
+Both modes list Secrets. The in-cluster collector redacts every Secret value inside the cluster before it uploads collected data. The managed scan receives Secret objects from the API server and redacts every value before anything is stored. The `list` verb permits reading values in either mode -- Kubernetes has no metadata-only RBAC verb for Secrets.
 
 ### `authorization = "admin_view_policy"` (opt-in)
 
