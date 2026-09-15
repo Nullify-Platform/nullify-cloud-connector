@@ -83,19 +83,13 @@ variable "cronjob_schedule" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The KMS ARN shown on the Nullify configure page, required when enable_collector is true: a key ARN or an alias ARN. The collector sends it to S3 as SSEKMSKeyId and refuses to upload without it. The key is in Nullify's account, so a bare key ID or a bare alias/<name> would resolve against your own account and is rejected here"
+  description = "The KMS ARN shown on the Nullify configure page, required when enable_collector is true: a key ARN or an alias ARN. The collector sends it to S3 as SSEKMSKeyId and refuses to upload without it, and there is no unencrypted path -- Nullify's bucket defaults to SSE-KMS, so an unencrypted upload needs kms:GenerateDataKey on Nullify's key anyway. The key is in Nullify's account, so a bare key ID or a bare alias/<name> would resolve against your own account and is rejected here"
   default     = ""
 
   validation {
     condition     = var.kms_key_arn == "" || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+)$", var.kms_key_arn))
     error_message = "Must be empty, a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>) or a KMS alias ARN (arn:aws:kms:<region>:<account-id>:alias/<name>)"
   }
-}
-
-variable "allow_unencrypted_upload" {
-  type        = bool
-  description = "WARNING: send the cluster inventory to Nullify's S3 area with no KMS encryption. Sets ALLOW_UNENCRYPTED_UPLOAD on the collector, which otherwise exits 1 rather than upload unencrypted. This is the only thing that sets that variable. Use it only if Nullify issued you no KMS key; otherwise leave it false and set kms_key_arn"
-  default     = false
 }
 
 variable "enable_debug" {
