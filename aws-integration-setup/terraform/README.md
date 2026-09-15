@@ -362,6 +362,7 @@ module "nullify_k8s" {
 
 - Terraform >= 1.5 is now required (the module already used cross-variable validation, which needs 1.9; those checks are now preconditions).
 - The root and examples require AWS provider `>= 5.33`. Run `terraform init -upgrade` if your lock file pins an older 5.x.
+- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`, and the old object is left behind for you to delete.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The root configuration no longer declares the Kubernetes provider. It never deployed Kubernetes resources.
 - A cluster outside the AWS provider's region now fails at plan time with an explanation instead of a not-found error.
