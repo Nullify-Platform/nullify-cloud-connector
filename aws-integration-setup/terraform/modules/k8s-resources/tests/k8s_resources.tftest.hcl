@@ -5,7 +5,13 @@ run "collector_only_is_the_default" {
 
   variables {
     iam_role_arn   = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    cluster_name   = "acme-prod"
     s3_bucket_name = "nullify-collector-uploads"
+  }
+
+  assert {
+    condition     = length([for env in kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env : env if env.name == "CLUSTER_NAME" && env.value == "acme-prod"]) == 1
+    error_message = "The CronJob must set CLUSTER_NAME: it names the upload, and collectors without one all write k8s-collector/default-name-data.json"
   }
 
   assert {
@@ -14,7 +20,7 @@ run "collector_only_is_the_default" {
   }
 
   assert {
-    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0"
+    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
     error_message = "The collector image must default to the pinned Nullify ECR Public tag"
   }
 
@@ -27,7 +33,22 @@ run "collector_only_is_the_default" {
 run "collector_requires_a_role_arn" {
   command = plan
 
+  variables {
+    cluster_name = "acme-prod"
+  }
+
   expect_failures = [kubernetes_service_account.nullify_collector_sa]
+}
+
+run "collector_requires_a_cluster_name" {
+  command = plan
+
+  variables {
+    iam_role_arn   = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    s3_bucket_name = "nullify-collector-uploads"
+  }
+
+  expect_failures = [kubernetes_cron_job_v1.k8s_collector]
 }
 
 run "managed_scan_rbac_only" {
@@ -58,6 +79,39 @@ run "managed_scan_rbac_only" {
     error_message = "The managed-scan ClusterRole must list exactly the 26 kinds the scanner reads"
   }
 
+  # Pins the set, not just the size: swapping one kind for another keeps every
+  # count assertion green. Anything else that binds this group -- a chart, a
+  # manifest -- has to grant exactly these kinds.
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].api_groups) == tolist([""]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].resources) == toset(["nodes", "namespaces", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "configmaps", "secrets", "resourcequotas", "limitranges", "serviceaccounts"])
+    error_message = "Rule 0 must grant exactly the core API group kinds the scanner lists"
+  }
+
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[1].api_groups) == tolist(["apps"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[1].resources) == toset(["deployments", "daemonsets", "statefulsets", "replicasets"])
+    error_message = "Rule 1 must grant exactly the apps API group kinds the scanner lists"
+  }
+
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].api_groups) == tolist(["networking.k8s.io"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].resources) == toset(["ingresses", "networkpolicies"])
+    error_message = "Rule 2 must grant exactly the networking.k8s.io API group kinds the scanner lists"
+  }
+
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[3].api_groups) == tolist(["discovery.k8s.io"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[3].resources) == toset(["endpointslices"])
+    error_message = "Rule 3 must grant exactly the discovery.k8s.io API group kinds the scanner lists"
+  }
+
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[4].api_groups) == tolist(["rbac.authorization.k8s.io"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[4].resources) == toset(["roles", "rolebindings", "clusterroles", "clusterrolebindings"])
+    error_message = "Rule 4 must grant exactly the rbac.authorization.k8s.io API group kinds the scanner lists"
+  }
+
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[5].api_groups) == tolist(["admissionregistration.k8s.io"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[5].resources) == toset(["validatingwebhookconfigurations", "mutatingwebhookconfigurations", "validatingadmissionpolicies", "validatingadmissionpolicybindings"])
+    error_message = "Rule 5 must grant exactly the admissionregistration.k8s.io API group kinds the scanner lists"
+  }
+
   assert {
     condition     = alltrue([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 6) : tolist(rule.verbs) == tolist(["list"])])
     error_message = "Resource rules must grant list only"
@@ -80,7 +134,7 @@ run "managed_scan_rbac_only" {
 
   assert {
     condition     = kubernetes_cluster_role_v1.nullify_readonly[0].metadata[0].name == "nullify-readonly"
-    error_message = "The ClusterRole name must match the Helm chart and manifest"
+    error_message = "The ClusterRole name must stay nullify-readonly: it is the name every other install path for this role uses"
   }
 }
 
@@ -89,6 +143,7 @@ run "kms_alias_arns_are_accepted" {
 
   variables {
     iam_role_arn = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    cluster_name = "acme-prod"
     kms_key_arn  = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
   }
 }
@@ -98,6 +153,7 @@ run "invalid_kms_arns_are_rejected" {
 
   variables {
     iam_role_arn = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    cluster_name = "acme-prod"
     kms_key_arn  = "arn:aws:s3:::not-a-key"
   }
 

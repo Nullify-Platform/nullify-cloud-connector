@@ -85,7 +85,7 @@ terraform/
 | Runs in the cluster | CronJob with an IRSA service account | Nothing |
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
-| Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true`, the `nullify-k8s-readonly-access` Helm chart, or `manifests/nullify-readonly-rbac.yaml` |
+| Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
@@ -115,10 +115,11 @@ Associates `AmazonEKSAdminViewPolicy` at cluster scope, so no Kubernetes objects
 
 ### Prerequisites
 
+- **The clusters must already exist when you plan.** `cluster_arns` drives `for_each` and each cluster is read with `data "aws_eks_cluster"`, so every ARN must be a literal or a value known at plan time. Calling this module in the same apply that creates the cluster fails with *"Invalid for_each argument ... depends on resource attributes that cannot be determined until apply"*. Create the cluster first (`terraform apply -target=module.eks`), then run a normal `terraform apply`; from then on the ARNs are in state and every later apply is a single step. The module is deliberately not restructured to defer the lookup: the preconditions below, and the endpoint `check`, only work against a cluster that can be read at plan.
 - **Authentication mode.** Access entries need `API` or `API_AND_CONFIG_MAP`. Check with `aws eks describe-cluster --name <cluster> --query cluster.accessConfig.authenticationMode`. Switch (one-way) with `aws eks update-cluster-config --name <cluster> --access-config authenticationMode=API_AND_CONFIG_MAP`. The module fails at plan for `CONFIG_MAP` clusters.
 - **Same account.** Nullify assumes the role in the cluster's own account, so deploy `nullify-aws-integration` in every account that owns a scanned cluster. The module rejects clusters in another account.
 - **One region per module instance (AWS provider v5).** Instantiate `eks-managed-scan-access` once per region with `providers = { aws = aws.<region> }`, as `examples/multi-cluster-complete` does. `../terraform-v6/` handles every region in one instance.
-- **Terraform identity.** `eks:DescribeCluster`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:UpdateAccessEntry`, `eks:DeleteAccessEntry` and `eks:TagResource`, plus `eks:AssociateAccessPolicy`, `eks:DisassociateAccessPolicy` and `eks:ListAssociatedAccessPolicies` for `admin_view_policy`. Creating the ClusterRole with `k8s-resources` needs rights to grant every permission in it, which in practice means cluster-admin. A GitOps controller (Flux, Argo CD) that already holds those rights can apply the Helm chart instead.
+- **Terraform identity.** `eks:DescribeCluster`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:UpdateAccessEntry`, `eks:DeleteAccessEntry` and `eks:TagResource`, plus `eks:AssociateAccessPolicy`, `eks:DisassociateAccessPolicy` and `eks:ListAssociatedAccessPolicies` for `admin_view_policy`. Creating the ClusterRole with `k8s-resources` needs rights to grant every permission in it, which in practice means cluster-admin. A GitOps controller (Flux, Argo CD) that already holds those rights can apply the same ClusterRole itself.
 - **Pass `principal_unique_id`.** EKS ties an access entry to the role's ID, so a recreated role with the same ARN is silently not authorized. With `principal_unique_id = module.nullify_aws_integration.role_unique_id`, the entries are replaced with the role.
 - **Existing access entry.** If this role is already mapped on a cluster, import it: `terraform import 'module.eks_managed_scan_access.aws_eks_access_entry.nullify["<cluster-arn>"]' <cluster-name>:<role-arn>`.
 
@@ -151,7 +152,7 @@ Private-only clusters cannot use the managed scan; use the in-cluster collector.
 
 ### CONFIG_MAP clusters (aws-auth)
 
-These modules do not manage `aws-auth`: writing it from Terraform replaces the whole `mapRoles` string and can drop node roles. If you cannot switch the authentication mode, add the role yourself and apply the RBAC with `k8s-resources` or the Helm chart:
+These modules do not manage `aws-auth`: writing it from Terraform replaces the whole `mapRoles` string and can drop node roles. If you cannot switch the authentication mode, add the role yourself and apply the RBAC with `k8s-resources`:
 
 ```yaml
 mapRoles: |
@@ -274,7 +275,7 @@ terraform init && terraform apply
 - a key ARN: `arn:aws:kms:<region>:<account>:key/<key-id>`, including multi-Region `key/mrk-...` keys
 - an alias ARN: `arn:aws:kms:<region>:<account>:alias/<name>`
 
-IAM ignores alias ARNs in a policy's `Resource`, so the KMS policy grants the ARN you pass and `arn:aws:kms:<region>:<account>:key/*` in the same Nullify account and region. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. The `kms_policy_resources` module output lists both resources.
+A key ARN is granted on its own. IAM does not resolve an alias in a policy's `Resource`, so an alias ARN also grants `arn:aws:kms:<region>:<account>:key/*` in the same Nullify account and region. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. The `kms_policy_resources` module output lists what was granted.
 
 ## Module Usage
 
@@ -309,6 +310,7 @@ module "k8s_resources" {
   }
 
   iam_role_arn   = module.nullify_aws_integration.role_arn
+  cluster_name   = "cluster-a"
   s3_bucket_name = "my-scan-results-bucket" # or the S3 access point ARN from Nullify
   kms_key_arn    = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
   aws_region     = "us-west-2"
@@ -316,9 +318,11 @@ module "k8s_resources" {
 }
 ```
 
+`cluster_name` is required whenever `enable_collector` is true, and must differ per cluster. The collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory and Nullify only ever sees the one that ran last.
+
 `k8s-resources` variables include `enable_collector` (default `true`), `enable_managed_scan_rbac` (default `false`), `collector_image`, `cronjob_schedule` (default `0 0 * * *`), `kubernetes_namespace`, `service_account_name` and `enable_debug`.
 
-`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0`, a pinned tag of Nullify's ECR Public image. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
+`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, a pinned tag of Nullify's ECR Public image. It is the same build as `k8s-collector-latest`, which the `nullify-k8s-collector` Helm chart deploys, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
 
 ## Outputs
 
@@ -358,10 +362,11 @@ module "nullify_k8s" {
 
 - Terraform >= 1.5 is now required (the module already used cross-variable validation, which needs 1.9; those checks are now preconditions).
 - The root and examples require AWS provider `>= 5.33`. Run `terraform init -upgrade` if your lock file pins an older 5.x.
+- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`, and the old object is left behind for you to delete.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The root configuration no longer declares the Kubernetes provider. It never deployed Kubernetes resources.
 - A cluster outside the AWS provider's region now fails at plan time with an explanation instead of a not-found error.
-- The KMS policy now also grants `key/*` in the account and region of `kms_key_arn`.
+- The KMS policy grants `key/*` in the account and region of `kms_key_arn` when that value is an alias ARN. A key ARN grants only itself, as the CloudFormation template does.
 
 ## Security Considerations
 
@@ -378,7 +383,7 @@ module "nullify_k8s" {
 terraform fmt -recursive
 terraform validate
 
-# Module tests (mocked providers, Terraform >= 1.7)
+# Module tests (mocked providers, Terraform >= 1.8; CI runs them at 1.8.5 and 1.10.5)
 (cd modules/eks-managed-scan-access && terraform init -backend=false && terraform test)
 
 # Plan deployment

@@ -20,15 +20,14 @@ locals {
   enable_s3_access = var.s3_bucket_name != "" || var.nullify_s3_access_point_arn != ""
   s3_bucket_arn    = var.s3_bucket_name != "" ? "arn:aws:s3:::${var.s3_bucket_name}" : ""
 
-  # KMS configuration. IAM ignores alias ARNs in Resource, so key/* in the same
-  # account and region is granted too; Nullify's key policy is the real gate.
-  enable_kms_access = var.kms_key_arn != ""
-  kms_arn_parts     = split(":", var.kms_key_arn)
-
-  kms_policy_resources = local.enable_kms_access ? [
-    var.kms_key_arn,
-    "arn:aws:kms:${element(local.kms_arn_parts, 3)}:${element(local.kms_arn_parts, 4)}:key/*",
-  ] : []
+  # KMS configuration. IAM ignores an alias ARN in Resource, so an alias also
+  # grants key/* in its own account and region; Nullify's key policy is the
+  # real gate. A key ARN resolves in IAM on its own and is granted alone.
+  enable_kms_access      = var.kms_key_arn != ""
+  kms_arn_parts          = split(":", var.kms_key_arn)
+  kms_arn_is_alias       = length(local.kms_arn_parts) == 6 && startswith(element(local.kms_arn_parts, 5), "alias/")
+  kms_alias_key_wildcard = local.kms_arn_is_alias ? ["arn:aws:kms:${element(local.kms_arn_parts, 3)}:${element(local.kms_arn_parts, 4)}:key/*"] : []
+  kms_policy_resources   = local.enable_kms_access ? concat([var.kms_key_arn], local.kms_alias_key_wildcard) : []
 
   # Common tags
   common_tags = merge(var.tags, {

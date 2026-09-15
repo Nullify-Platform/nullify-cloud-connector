@@ -1,6 +1,6 @@
 locals {
-  # The kinds Nullify's managed EKS scan lists. Keep in step with
-  # manifests/nullify-readonly-rbac.yaml and the nullify-k8s-readonly-access chart.
+  # The kinds Nullify's managed EKS scan lists. Any other manifest or chart that
+  # grants this role must list exactly these kinds; the test suite pins the set.
   managed_scan_rules = [
     {
       api_groups = [""]

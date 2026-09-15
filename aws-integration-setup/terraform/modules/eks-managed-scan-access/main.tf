@@ -47,7 +47,7 @@ resource "aws_eks_access_entry" "nullify" {
   cluster_name      = data.aws_eks_cluster.this[each.key].name
   principal_arn     = var.principal_arn
   type              = "STANDARD"
-  kubernetes_groups = var.authorization == "rbac" ? [var.kubernetes_group_name] : null
+  kubernetes_groups = var.authorization == "rbac" ? [var.kubernetes_group_name] : []
   tags              = var.tags
 
   lifecycle {

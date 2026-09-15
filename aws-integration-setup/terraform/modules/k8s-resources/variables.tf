@@ -23,7 +23,7 @@ variable "managed_scan_kubernetes_group" {
 
 variable "managed_scan_cluster_role_name" {
   type        = string
-  description = "Name of the managed-scan ClusterRole. The default matches the nullify-k8s-readonly-access Helm chart and manifests/nullify-readonly-rbac.yaml"
+  description = "Name of the managed-scan ClusterRole. Keep the default unless you also change kubernetes_group_name on the access entry: Nullify only needs the binding to reach a role with these list permissions"
   default     = "nullify-readonly"
 }
 
@@ -36,6 +36,12 @@ variable "managed_scan_cluster_role_binding_name" {
 variable "iam_role_arn" {
   type        = string
   description = "The ARN of the IAM role for the collector service account annotation (required when enable_collector is true)"
+  default     = ""
+}
+
+variable "cluster_name" {
+  type        = string
+  description = "Name of the cluster this collector runs in, required when enable_collector is true. It becomes the collector's CLUSTER_NAME, which names its upload: <prefix>/k8s-collector/<cluster_name>-data.json. Two clusters sharing a name overwrite each other's inventory, so give every cluster its own. Same value as collector.clusterName in the nullify-k8s-collector Helm chart"
   default     = ""
 }
 
@@ -66,7 +72,7 @@ variable "kubernetes_namespace" {
 variable "collector_image" {
   type        = string
   description = "Container image for the Kubernetes collector. Defaults to a pinned tag of Nullify's ECR Public image"
-  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
 }
 
 variable "cronjob_schedule" {

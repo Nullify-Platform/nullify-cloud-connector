@@ -110,7 +110,7 @@ variable "managed_scan_cluster_arns" {
 
 variable "managed_scan_authorization" {
   type        = string
-  description = "rbac (recommended): the access entry carries managed_scan_kubernetes_group, which you bind to the list-only nullify-readonly ClusterRole with the nullify-k8s-readonly-access Helm chart, manifests/nullify-readonly-rbac.yaml or the k8s-resources module. admin_view_policy: AmazonEKSAdminViewPolicy, which reads every resource including Secrets and pods/log, and allows exec into pods on EKS 1.34 and earlier"
+  description = "rbac (recommended): the access entry carries managed_scan_kubernetes_group, which you bind to a list-only nullify-readonly ClusterRole. The k8s-resources module applies that ClusterRole with enable_managed_scan_rbac = true; the root has no Kubernetes provider, so apply it separately. admin_view_policy: AmazonEKSAdminViewPolicy, which reads every resource including Secrets and pods/log, and allows exec into pods on EKS 1.34 and earlier"
   default     = "rbac"
 }
 

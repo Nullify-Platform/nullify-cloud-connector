@@ -80,7 +80,7 @@ variable "cronjob_schedule" {
 variable "collector_image" {
   type        = string
   description = "Container image for the Kubernetes collector"
-  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.45.0"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
 }
 
 variable "tags" {

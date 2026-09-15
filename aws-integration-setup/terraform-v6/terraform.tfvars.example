@@ -32,8 +32,9 @@ enable_kubernetes_integration = false
 # ]
 
 # Managed EKS scan: access entries so Nullify lists Kubernetes resources with no in-cluster agent.
-# Clusters can be in any region. In rbac mode, bind the group with the nullify-k8s-readonly-access
-# Helm chart, manifests/nullify-readonly-rbac.yaml or the k8s-resources module.
+# Clusters can be in any region but must already exist when you plan. In rbac mode, bind the group
+# to a list-only nullify-readonly ClusterRole: the k8s-resources module applies one with
+# enable_managed_scan_rbac = true.
 # enable_managed_scan        = true
 # managed_scan_cluster_arns  = ["arn:aws:eks:eu-west-1:123456789012:cluster/my-cluster"]
 # nullify_region             = "eu-central-1"
