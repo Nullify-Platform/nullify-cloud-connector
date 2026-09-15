@@ -114,7 +114,7 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `tags`: Resource tags
 - `cronjob_schedule`: Deprecated and unused here; set the schedule on `k8s-resources`
 
-`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
+`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true, with no unencrypted opt-out, and rejects `enable_collector` together with `enable_managed_scan_rbac`. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
 
 `k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, the same build as the `k8s-collector-latest` tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
 

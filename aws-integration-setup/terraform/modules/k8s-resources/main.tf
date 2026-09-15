@@ -166,8 +166,8 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
     }
 
     precondition {
-      condition     = var.kms_key_arn != "" || var.allow_unencrypted_upload
-      error_message = "kms_key_arn is required when enable_collector is true: the collector walks the cluster, then refuses to upload without KMS encryption and exits 1, so every CronJob run fails and Nullify receives nothing. Take the value from the Nullify configure page. Set allow_unencrypted_upload = true only if Nullify issued you no key."
+      condition     = var.kms_key_arn != ""
+      error_message = "kms_key_arn is required when enable_collector is true: the collector walks the cluster, then refuses to upload without KMS encryption and exits 1, so every CronJob run fails and Nullify receives nothing. There is no opt-out. Nullify's upload bucket sets SSE-KMS as its default encryption, so an upload sent with no encryption headers is still encrypted with Nullify's key, and S3 rejects it unless the caller holds kms:GenerateDataKey on that key -- which this role only gets from kms_key_arn. Take the value from the Nullify configure page."
     }
   }
 
@@ -229,14 +229,6 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
                 content {
                   name  = "NULLIFY_KMS_KEY_ARN"
                   value = var.kms_key_arn
-                }
-              }
-
-              dynamic "env" {
-                for_each = var.kms_key_arn == "" && var.allow_unencrypted_upload ? [1] : []
-                content {
-                  name  = "ALLOW_UNENCRYPTED_UPLOAD"
-                  value = "true"
                 }
               }
 
