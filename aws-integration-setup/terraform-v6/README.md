@@ -108,7 +108,7 @@ The default `authorization = "rbac"` needs the list-only `nullify-readonly` Clus
 - `kms_key_arn`: KMS key ARN or alias ARN from the Nullify configure page; see "KMS" in `../terraform/README.md`. Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `enable_kubernetes_integration`: Set to `true` for EKS integration
 - `eks_cluster_arns`: List of EKS cluster ARNs to integrate with, in any region
-- `collector_cluster_arns`: Override for which of those clusters `eks_managed_scan_access` treats as already running the collector; defaults to `eks_cluster_arns` when `enable_kubernetes_integration` is `true`. Set it explicitly when trust is granted ahead of the collector's actual deployment, or to decouple a collector-to-managed-scan cutover from revoking IRSA trust
+- `collector_cluster_arns`: Override for which of those clusters `eks_managed_scan_access` treats as already running the collector; defaults to `eks_cluster_arns` when `enable_kubernetes_integration` is `true`. Set it explicitly when trust is granted ahead of the collector's actual deployment, or to decouple a collector-to-managed-scan cutover from revoking IRSA trust -- disable or remove the collector on that cluster first, before setting the override
 - `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization`, `managed_scan_kubernetes_group`: managed EKS scan
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `service_account_name`: Collector service account name (default: nullify-k8s-collector-sa)
