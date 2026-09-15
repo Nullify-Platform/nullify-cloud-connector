@@ -1,0 +1,11 @@
+# EKS install with the KMS alias ARN the configure page shows today; the region comes from the alias ARN.
+cloudProvider: aws
+collector:
+  clusterName: example-eks-cluster
+  s3:
+    bucket: example-nullify-bucket
+  kms:
+    keyArn: arn:aws:kms:ap-southeast-2:123456789012:alias/example-customer-upload
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AWSIntegration-example-NullifyReadOnlyRole

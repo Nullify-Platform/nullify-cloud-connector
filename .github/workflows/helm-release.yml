@@ -43,6 +43,30 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Using Chart.yaml version: $VERSION"
 
+    # This job rebuilds the whole Pages site from this one chart, so deploying
+    # it drops every other version the live index serves. The publish rework
+    # (PR #65 -> #70 -> #75) replaces this workflow with one that keeps them;
+    # until that is on main, fail here rather than unpublish.
+    - name: Refuse to unpublish versions the live index serves
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        INDEX_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.yaml
+      run: |
+        index="$(mktemp)"
+        status="$(curl -sSL -o "$index" -w '%{http_code}' "$INDEX_URL")"
+        case "$status" in
+          200) ;;
+          404) echo "no published index yet"; exit 0 ;;
+          *) echo "::error::fetching $INDEX_URL returned HTTP $status"; exit 1 ;;
+        esac
+        published="$(grep -oE '[A-Za-z0-9_.-]+-[0-9]+\.[0-9]+\.[0-9]+[A-Za-z0-9_.+-]*\.tgz' "$index" | sort -u || true)"
+        dropped="$(printf '%s\n' "$published" | grep -v '^$' | grep -vxF "nullify-k8s-collector-${VERSION}.tgz" || true)"
+        if [ -n "$dropped" ]; then
+          echo "::error::deploying would unpublish: $(echo $dropped). Merge the Helm publish rework (PR #65 -> #70 -> #75) to main first; its workflow republishes every version."
+          exit 1
+        fi
+        echo "the live index serves only nullify-k8s-collector-${VERSION}.tgz or nothing"
+
     - name: Add Helm repos (if chart has dependencies)
       run: |
         helm repo add bitnami https://charts.bitnami.com/bitnami || true
