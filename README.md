@@ -255,9 +255,12 @@ nullify-cloud-connector/
 ├── 📖 IMPLEMENTATION.md                  # Technical implementation details
 │
 ├── 🤖 .github/workflows/                 # CI/CD Automation
-│   ├── helm-release.yml                  # Auto-publish Helm charts to GitHub Pages
-│   ├── terraform-validate.yml            # Terraform validation on PRs
-│   └── auto-tag.yml                      # Auto-tag releases on version changes
+│   ├── helm-release.yml                  # Lint charts on PRs; publish, tag and release them from main
+│   └── terraform-validate.yml            # Terraform validation on PRs
+│
+├── 🔧 scripts/                           # Repository tooling
+│   ├── publish-helm-repo.sh              # Build the GitHub Pages Helm repository (keeps every published version)
+│   └── test-helm-charts.sh               # Lint and render one chart (used by CI)
 │
 ├── ⚙️ helm-charts/                       # 🎯 KUBERNETES DEPLOYMENT
 │   └── nullify-k8s-collector/            # Main Helm chart for K8s collector
@@ -284,7 +287,6 @@ nullify-cloud-connector/
 │   │   └── README.md                     # Terraform documentation
 │   └── 🔧 scripts/                       # Utility Scripts
 │       ├── validate-deployment.sh        # Deployment validation
-│       ├── update-helm-repo.sh           # Update Helm repository
 │       ├── cleanup.sh                    # Clean removal script
 │       └── setup-aws-integration.sh      # AWS setup automation
 │
@@ -399,6 +401,10 @@ helm search repo nullify/nullify-k8s-collector --versions
 helm show chart nullify/nullify-k8s-collector
 helm show values nullify/nullify-k8s-collector
 ```
+
+Every chart version merged to `main` stays published, so `--version` pins keep working.
+Each release is tagged `<chart>-v<version>` (for example `nullify-k8s-collector-v0.3.0`).
+Collector releases up to 0.2.0 were tagged `vX.Y.Z`; only 0.2.0 of those is still in the repository.
 
 ### **Deployment Management**
 ```bash
