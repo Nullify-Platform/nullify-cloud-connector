@@ -143,3 +143,68 @@ run "kubernetes_integration_needs_clusters" {
 
   expect_failures = [data.aws_iam_policy_document.assume_role_policy]
 }
+
+# The mock above fakes every aws_iam_policy_document's computed `json`, so a
+# passing test only proves the module plans, not that a policy grants any
+# action. `statement` blocks are the data source's own configuration -- they
+# are plan-time known even when the resulting document is mocked -- so assert
+# on those instead. Only the KMS, S3 access point and readonly policies are
+# covered here: the trust and deny-list policies aren't in W58/N78's scope.
+run "kms_policy_grants_the_expected_actions_and_resources" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
+  }
+
+  assert {
+    condition = toset(data.aws_iam_policy_document.kms_access_policy[0].statement[0].actions) == toset([
+      "kms:DescribeKey",
+      "kms:GenerateDataKey",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo",
+    ])
+    error_message = "The KMS policy must grant exactly these actions, no more and no less"
+  }
+
+  assert {
+    condition     = tolist(data.aws_iam_policy_document.kms_access_policy[0].statement[0].resources) == tolist(output.kms_policy_resources)
+    error_message = "The KMS policy statement's resources must be exactly the derived kms_policy_resources output"
+  }
+}
+
+run "s3_access_point_policy_grants_put_only_under_the_collector_prefix" {
+  command = plan
+
+  variables {
+    nullify_s3_access_point_arn = "arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads"
+  }
+
+  assert {
+    condition = toset(data.aws_iam_policy_document.s3_access_policy[0].statement[0].actions) == toset([
+      "s3:PutObject",
+      "s3:PutObjectAcl",
+    ])
+    error_message = "The access point statement must grant only PutObject and PutObjectAcl"
+  }
+
+  assert {
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/*"])
+    error_message = "The access point statement must be scoped to the k8s-collector object prefix, not the whole access point"
+  }
+}
+
+run "readonly_policy_grants_a_read_only_action" {
+  command = plan
+
+  assert {
+    condition     = contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "access-analyzer:GetFinding")
+    error_message = "The readonly policy's first statement must contain the expected access-analyzer read action"
+  }
+
+  assert {
+    condition     = data.aws_iam_policy_document.readonly_policy_part1.statement[0].effect == "Allow"
+    error_message = "The readonly policy statement must Allow, not Deny"
+  }
+}

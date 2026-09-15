@@ -4,7 +4,7 @@ variable "principal_arn" {
 
   validation {
     condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/.+$", var.principal_arn))
-    error_message = "principal_arn must be an IAM role ARN: arn:aws:iam::<account-id>:role/<name>"
+    error_message = "principal_arn must be an IAM role ARN: arn:aws:iam::<account-id>:role/<name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected."
   }
 }
 
@@ -20,7 +20,7 @@ variable "cluster_arns" {
 
   validation {
     condition     = length(var.cluster_arns) > 0 && alltrue([for arn in var.cluster_arns : can(regex("^arn:aws:eks:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9][A-Za-z0-9_-]*$", arn))])
-    error_message = "Provide at least one EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>. Every ARN must be known at plan time and its cluster must already exist: they drive for_each and a data source lookup, so a cluster created in the same apply has to be applied first (see 'Ordering' in the README)."
+    error_message = "Provide at least one EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected. Every ARN must be known at plan time and its cluster must already exist: they drive for_each and a data source lookup, so a cluster created in the same apply has to be applied first (see 'Ordering' in the README)."
   }
 }
 
@@ -69,6 +69,6 @@ variable "collector_cluster_arns" {
 
   validation {
     condition     = alltrue([for arn in var.collector_cluster_arns : can(regex("^arn:aws:eks:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9][A-Za-z0-9_-]*$", arn))])
-    error_message = "Each entry must be an EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>"
+    error_message = "Each entry must be an EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>. Only the commercial aws partition is supported; arn:aws-us-gov: and arn:aws-cn: ARNs are rejected."
   }
 }
