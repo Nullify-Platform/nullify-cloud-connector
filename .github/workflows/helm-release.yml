@@ -1,88 +1,253 @@
-name: Release Helm Chart
+name: Helm charts
 
 on:
-  push:
-    branches: [ main ]
+  pull_request:
     paths:
-      - 'helm-charts/**'
-      - '.github/workflows/helm-release.yml'
+      - "helm-charts/**"
+      - "manifests/**"
+      - "scripts/publish-helm-repo.sh"
+      - "scripts/test-helm-charts.sh"
+      - "tests/helm/**"
+      - ".github/workflows/helm-release.yml"
+  push:
+    branches: [main]
+    paths:
+      - "helm-charts/**"
+      - "manifests/**"
+      - "scripts/publish-helm-repo.sh"
+      - "scripts/test-helm-charts.sh"
+      - "tests/helm/**"
+      - ".github/workflows/helm-release.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
+# Pull requests cancel their own superseded runs. Every other run gets a unique
+# group here; publishing is serialised by the release job's own group instead.
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('helm-pr-{0}', github.ref) || format('helm-run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  HELM_VERSION: v3.22.0
+  HELM_REPO_URL: https://nullify-platform.github.io/nullify-cloud-connector/
 
 jobs:
-  release:
+  charts:
     runs-on: ubuntu-latest
+    outputs:
+      charts: ${{ steps.list.outputs.charts }}
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-    - name: Configure Git
-      run: |
-        git config user.name "$GITHUB_ACTOR"
-        git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
-    - name: Install Helm
-      uses: azure/setup-helm@v4
-      with:
-        version: v3.14.0
-
-    - name: Get Chart Version
-      id: version
-      run: |
-        VERSION=$(grep '^version:' helm-charts/nullify-k8s-collector/Chart.yaml | awk '{print $2}' | tr -d '"')
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "Using Chart.yaml version: $VERSION"
-
-    - name: Add Helm repos (if chart has dependencies)
-      run: |
-        helm repo add bitnami https://charts.bitnami.com/bitnami || true
-        helm repo update || true
-
-    - name: Package Helm Chart
-      run: |
-        # Create docs directory if it doesn't exist
-        mkdir -p docs
-        
-        # Package the chart
-        helm package helm-charts/nullify-k8s-collector -d docs/
-        
-        # Generate/update the index
-        helm repo index docs/ --url https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-
-    - name: Setup Pages
-      uses: actions/configure-pages@v4
-
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v3
-      with:
-        path: ./docs
-
-    - name: Deploy to GitHub Pages
-      id: deployment
-      uses: actions/deploy-pages@v4
+      - name: List charts
+        id: list
+        run: |
+          charts="$(find helm-charts -mindepth 2 -maxdepth 2 -name Chart.yaml -printf '%h\n' | sort | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+          echo "charts=$charts" >> "$GITHUB_OUTPUT"
+          echo "$charts"
 
   validate:
+    needs: charts
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: ${{ fromJSON(needs.charts.outputs.charts) }}
+    env:
+      CHART: ${{ matrix.chart }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Lint and render
+        run: scripts/test-helm-charts.sh "$CHART"
+
+      # A tagged version missing from the live index (a deploy failed after
+      # tagging, or a stale CDN copy) is a ::warning:: here once its release
+      # asset verifies, because the release job on main restores it the same way.
+      # A tag with no release, or no asset, is a ::warning:: too: nothing was
+      # ever published for it, so failing here would only stop the release job
+      # from creating it.
+      - name: Published version is unchanged or bumped
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_ONLY_CHART: ${{ matrix.chart }}
+          PUBLISH_STRICT: "true"
+          PUBLISH_CHECK_RELEASE_ASSETS: "true"
+          HELM_REPO_RECOVER_FROM_RELEASES: "true"
+        run: scripts/publish-helm-repo.sh "$RUNNER_TEMP/site"
+
+  publish-dry-run:
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
 
-    - name: Install Helm
-      uses: azure/setup-helm@v4
-      with:
-        version: v3.14.0
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: ${{ env.HELM_VERSION }}
 
-    - name: Validate Helm Chart
-      run: |
-        helm lint helm-charts/nullify-k8s-collector
-        helm template helm-charts/nullify-k8s-collector --debug
+      - name: Build the Helm repository without deploying it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RUN_CHART_TESTS: "true"
+          PUBLISH_CHECK_RELEASE_ASSETS: "true"
+          HELM_REPO_RECOVER_FROM_RELEASES: "true"
+        run: |
+          scripts/publish-helm-repo.sh _site
+          echo "Versions a merge to main would newly publish:"
+          cat published.txt
+          echo "Tags and releases a merge to main would ensure exist (name, version, tag target):"
+          cat release.txt
+          echo "Charts a merge to main would skip:"
+          cat skipped.txt
+
+  release:
+    needs: [charts, validate]
+    # Runs even when a chart's validate leg fails: the publish script re-runs
+    # each chart's tests and skips only the failing chart.
+    if: >-
+      !cancelled()
+      && github.event_name != 'pull_request'
+      && github.ref == 'refs/heads/main'
+      && needs.charts.result == 'success'
+    runs-on: ubuntu-latest
+    environment: github-pages
+    # A newer pending run replaces an older pending one (GitHub keeps one per
+    # group). The replaced run's chart versions are published by the next run
+    # only if they are still in HEAD.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      # Tagged versions missing from the live index are restored from their
+      # release assets, after the script checks the tag is on main and the asset
+      # matches the chart re-packaged from the tag (legacy 0.2.0: its pinned
+      # digest). A version that fails those checks stops the build. A tag with
+      # no release is only a warning, so the next step can create it.
+      - name: Build Helm repository
+        env:
+          PUBLISH_RUN_CHART_TESTS: "true"
+          PUBLISH_CHECK_RELEASE_ASSETS: "true"
+          HELM_REPO_RECOVER_FROM_RELEASES: "true"
+        run: scripts/publish-helm-repo.sh _site
+
+      # Before the deploy, so every version the site serves is tagged and the
+      # next run's tag cross-check catches a stale index. A deploy that fails
+      # after this step is restored by the next run's recovery.
+      # Driven by every published chart version at HEAD, not only new ones, so a
+      # re-run after a failure here still creates the missing tags and releases.
+      - name: Ensure a tag and release for every published chart version
+        run: |
+          while read -r name version target; do
+            [ -n "$name" ] || continue
+            tag="${name}-v${version}"
+            asset="${name}-${version}.tgz"
+
+            # git ls-remote --exit-code exits 2 for "no such tag" and non-zero
+            # for anything else (e.g. an unreachable remote); only 2 may be
+            # read as "no tag" or a network blip would silently fall through
+            # to hand-creating a release with no tag verification at all.
+            git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null </dev/null && rc=0 || rc=$?
+            case "$rc" in
+              0) has_tag=true ;;
+              2) has_tag=false ;;
+              *) echo "::error::git ls-remote for tag ${tag} exited ${rc}; origin may be unreachable, refusing to assume no tag exists"; exit 1 ;;
+            esac
+
+            # Never hand-create <chart>-v* tags: before this job attaches an
+            # asset to one, refuse to trust it unless its commit is on main
+            # and its tree for this chart (plus any manifest this chart's own
+            # README points at) is identical to $target's, so the release
+            # always documents the commit it actually came from. Not run when
+            # the release already has the asset: nothing gets attached there,
+            # so an unbumped, unrelated edit to $target must not wedge it.
+            verify_hand_made_tag() {
+              git fetch -q --no-tags origin "+refs/tags/${tag}:refs/tags/${tag}" </dev/null
+              git merge-base --is-ancestor "refs/tags/${tag}^{commit}" HEAD </dev/null && mb_rc=0 || mb_rc=$?
+              if [ "$mb_rc" != 0 ]; then
+                echo "::error::git merge-base for tag ${tag} exited ${mb_rc}; the existing tag does not match; investigate before re-running."
+                exit 1
+              fi
+              manifests="$(git show "refs/tags/${tag}:helm-charts/${name}/README.md" 2>/dev/null | grep -oE '\bmanifests/[A-Za-z0-9_.-]+\.ya?ml\b' | sort -u | tr '\n' ' ' || true)"
+              if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" ${manifests} </dev/null; then
+                echo "::error::tag ${tag} exists but its tree for helm-charts/${name} ${manifests}differs from ${target}; the existing tag does not match; investigate before re-running."
+                exit 1
+              fi
+            }
+
+            if gh release view "$tag" >/dev/null 2>&1 </dev/null; then
+              if ! gh release view "$tag" --json assets --jq '.assets[].name' </dev/null | grep -qxF "$asset"; then
+                [ "$has_tag" = "true" ] && verify_hand_made_tag
+                gh release upload "$tag" "_site/${asset}" </dev/null
+                continue
+              fi
+              want="sha256:$(sha256sum "_site/${asset}" | cut -d' ' -f1)"
+              have="$(gh release view "$tag" --json assets --jq ".assets[] | select(.name == \"${asset}\") | .digest" </dev/null)"
+              if [ "$have" != "$want" ]; then
+                echo "::error::release ${tag} asset ${asset} has digest ${have:-none}; the site serves ${want}"
+                exit 1
+              fi
+              echo "release ${tag} already has ${asset} (${want})"
+              continue
+            fi
+
+            notes="$(printf '%s\n' \
+              "Chart \`${name}\` version \`${version}\`, published to ${HELM_REPO_URL}" \
+              "" \
+              '```bash' \
+              "helm repo add nullify ${HELM_REPO_URL}" \
+              "helm repo update" \
+              "helm show readme nullify/${name} --version ${version}" \
+              '```' \
+              "" \
+              "Chart README: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/helm-charts/${name}/README.md")"
+            if [ "$has_tag" = "true" ]; then
+              verify_hand_made_tag
+              gh release create "$tag" "_site/${asset}" --verify-tag \
+                --title "${name} ${version}" --notes "${notes}" </dev/null
+            else
+              gh release create "$tag" "_site/${asset}" --target "${target}" \
+                --title "${name} ${version}" --notes "${notes}" </dev/null
+            fi
+          done < release.txt
+
+      - uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d # v4.0.0
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: ./_site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+      - name: Fail when a chart was skipped
+        run: |
+          if [ -s skipped.txt ]; then
+            while read -r line; do
+              echo "::error::not published: ${line}"
+            done < skipped.txt
+            exit 1
+          fi
