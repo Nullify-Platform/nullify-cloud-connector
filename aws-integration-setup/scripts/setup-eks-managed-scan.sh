@@ -24,6 +24,7 @@ readonly MANAGED_BY_TAG_KEY="ManagedBy"
 readonly MANAGED_BY_TAG_VALUE="nullify-connector"
 readonly ADDED_CIDRS_TAG_KEY="nullify-added-cidrs"
 readonly PENDING_CIDRS_TAG_KEY="nullify-pending-cidrs"
+readonly PENDING_UPDATE_TAG_KEY="nullify-pending-update"
 readonly EKS_TAG_VALUE_MAX_LENGTH=256
 readonly EKS_MAX_TAGS_PER_RESOURCE=50
 readonly DEFAULT_GROUP="nullify-readonly"
@@ -72,6 +73,7 @@ ADDED_CIDRS=""
 ADDED_TAG_KEYS=""
 PENDING_CIDRS=""
 PENDING_TAG_KEYS=""
+PENDING_UPDATE_ID=""
 STORED_TAG_KEYS=""
 KUBECONFIG_TMP=""
 RBAC_MANIFEST_TMP_DIR=""
@@ -116,13 +118,15 @@ Actions:
            endpoint disabled since apply is left alone and both tags are kept, so
            remove can still take the CIDRs out after the endpoint is re-enabled.
 
-CIDR records: apply writes ${PENDING_CIDRS_TAG_KEY} before update-cluster-config
-and moves those CIDRs to ${ADDED_CIDRS_TAG_KEY} once the update succeeds. If a run
-stops in between (timeout, Ctrl-C, expired credentials), re-running apply or
-remove reconciles ${PENDING_CIDRS_TAG_KEY} against publicAccessCidrs, and refuses
-while an EndpointAccessUpdate of the cluster is still InProgress. The records use
-up to two cluster tags at once; apply stops before changing publicAccessCidrs
-when the cluster is too close to EKS's limit of ${EKS_MAX_TAGS_PER_RESOURCE} tags.
+CIDR records: apply writes ${PENDING_CIDRS_TAG_KEY} before update-cluster-config,
+records that update's id in ${PENDING_UPDATE_TAG_KEY}, and moves those CIDRs to
+${ADDED_CIDRS_TAG_KEY} once the update succeeds. If a run stops in between
+(timeout, Ctrl-C, expired credentials), re-running apply or remove reconciles
+${PENDING_CIDRS_TAG_KEY} against publicAccessCidrs, and refuses while the recorded
+update - or, when none was recorded, any EndpointAccessUpdate of the cluster - is
+still InProgress. The records use up to three cluster tags at once; apply stops
+before changing publicAccessCidrs when the cluster is too close to EKS's limit of
+${EKS_MAX_TAGS_PER_RESOURCE} tags, counting every tag key.
 
 Required:
   --cluster NAME             EKS cluster name
@@ -518,7 +522,9 @@ cidr_tag_value() {
 
 # load_cidr_records
 # Reads every part of the added and pending CIDR records into ADDED_CIDRS,
-# ADDED_TAG_KEYS, PENDING_CIDRS and PENDING_TAG_KEYS. Dies when a read fails.
+# ADDED_TAG_KEYS, PENDING_CIDRS and PENDING_TAG_KEYS, and the id of the update
+# a pending record was written for into PENDING_UPDATE_ID. Dies when a read
+# fails.
 load_cidr_records() {
   local raw key value
   local -a keys
@@ -526,10 +532,13 @@ load_cidr_records() {
   ADDED_TAG_KEYS=""
   PENDING_CIDRS=""
   PENDING_TAG_KEYS=""
+  PENDING_UPDATE_ID=""
   raw="$(cluster_tag_keys)" || exit 1
   read -r -a keys <<< "$raw"
   for key in ${keys[@]+"${keys[@]}"}; do
-    if cidr_tag_is_part "$ADDED_CIDRS_TAG_KEY" "$key"; then
+    if [[ "$key" == "$PENDING_UPDATE_TAG_KEY" ]]; then
+      PENDING_UPDATE_ID="$(cidr_tag_value "$key")" || exit 1
+    elif cidr_tag_is_part "$ADDED_CIDRS_TAG_KEY" "$key"; then
       value="$(cidr_tag_value "$key")" || exit 1
       ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$value")"
       ADDED_TAG_KEYS="${ADDED_TAG_KEYS:+$ADDED_TAG_KEYS }$key"
@@ -586,15 +595,51 @@ drop_cidr_tags() {
     die "could not remove the tags ${keys[*]} of $CLUSTER; re-run $ACTION"
 }
 
+# require_update_not_in_progress ID
+# Dies when update ID is an EndpointAccessUpdate that is still InProgress. An
+# id EKS no longer knows about is skipped: update records age out, and one that
+# is gone cannot be in progress. Any other describe-update failure dies, since
+# it is a permission or connectivity problem.
+require_update_not_in_progress() {
+  local id="$1" details errors update_type update_status
+  errors="$(mktemp "${TMPDIR:-/tmp}/nullify-describe-update.XXXXXX")"
+  if ! details="$(aws eks describe-update --name "$CLUSTER" --region "$REGION" --update-id "$id" \
+    --query 'update.[type, status]' --output text 2>"$errors")"; then
+    if grep -q ResourceNotFoundException "$errors"; then
+      rm -f "$errors"
+      warn "network: update $id of $CLUSTER is no longer known to EKS; it cannot be in progress"
+      return 0
+    fi
+    cat "$errors" >&2
+    rm -f "$errors"
+    die "could not describe update $id of $CLUSTER; publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged"
+  fi
+  rm -f "$errors"
+  read -r update_type update_status <<< "$(cidr_normalise "$details")"
+  if [[ "$update_type" == EndpointAccessUpdate && "$update_status" == InProgress ]]; then
+    die "endpoint access update $id of $CLUSTER is still InProgress, so publicAccessCidrs may not show it yet; publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged. Re-run $ACTION when it finishes: aws eks describe-update --name $CLUSTER --region $REGION --update-id $id"
+  fi
+}
+
 # require_no_endpoint_update_in_progress
-# Dies when an EndpointAccessUpdate of the cluster is InProgress. EKS moves the
-# cluster status to UPDATING only eventually, so ACTIVE does not prove a stopped
-# run's update has finished, and publicAccessCidrs may not show it yet. Callers
-# run this before reading the CIDRs a pending record is settled against. Every
-# update id is described, because list-updates does not document an order.
+# Dies when the endpoint update a pending record was written for is still
+# InProgress. EKS moves the cluster status to UPDATING only eventually, so
+# ACTIVE does not prove a stopped run's update has finished, and
+# publicAccessCidrs may not show it yet. Callers run this before reading the
+# CIDRs a pending record is settled against.
+#
+# ${PENDING_UPDATE_TAG_KEY} names that update, and EKS refuses a second cluster
+# update while one is in progress, so describing that one id is enough and does
+# not depend on list-updates showing an update accepted seconds earlier. Only a
+# record written before that tag existed falls back to describing every update
+# list-updates returns, in no documented order.
 require_no_endpoint_update_in_progress() {
-  local raw id details update_type update_status
+  local raw id
   local -a ids
+  if [[ -n "$PENDING_UPDATE_ID" ]]; then
+    require_update_not_in_progress "$PENDING_UPDATE_ID"
+    return 0
+  fi
   raw="$(aws eks list-updates --name "$CLUSTER" --region "$REGION" --query updateIds --output text)" ||
     die "could not list the updates of $CLUSTER (needs eks:ListUpdates); publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged"
   raw="$(cidr_normalise "$raw")"
@@ -603,14 +648,38 @@ require_no_endpoint_update_in_progress() {
   fi
   read -r -a ids <<< "$raw"
   for id in ${ids[@]+"${ids[@]}"}; do
-    details="$(aws eks describe-update --name "$CLUSTER" --region "$REGION" --update-id "$id" \
-      --query 'update.[type, status]' --output text)" ||
-      die "could not describe update $id of $CLUSTER; publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged"
-    read -r update_type update_status <<< "$(cidr_normalise "$details")"
-    if [[ "$update_type" == EndpointAccessUpdate && "$update_status" == InProgress ]]; then
-      die "endpoint access update $id of $CLUSTER is still InProgress, so publicAccessCidrs may not show it yet; publicAccessCidrs and the ${PENDING_CIDRS_TAG_KEY} record were left unchanged. Re-run $ACTION when it finishes: aws eks describe-update --name $CLUSTER --region $REGION --update-id $id"
-    fi
+    require_update_not_in_progress "$id"
   done
+}
+
+# record_pending_update ID
+# Stores the id of the update a pending CIDR record was written for, so a run
+# stopped right after update-cluster-config was accepted does not have to trust
+# list-updates to show it.
+record_pending_update() {
+  mutate aws eks tag-resource --resource-arn "$CLUSTER_ARN" --region "$REGION" \
+    --tags "{\"${PENDING_UPDATE_TAG_KEY}\":\"$1\"}" ||
+    die "could not record update $1 in the ${PENDING_UPDATE_TAG_KEY} tag of $CLUSTER; re-run $ACTION"
+  PENDING_UPDATE_ID="$1"
+}
+
+# pending_record_tag_keys
+# Prints every tag key the pending record occupies, the update id included.
+pending_record_tag_keys() {
+  local keys="$PENDING_TAG_KEYS"
+  if [[ -n "$PENDING_UPDATE_ID" ]]; then
+    keys="${keys:+$keys }$PENDING_UPDATE_TAG_KEY"
+  fi
+  echo "$keys"
+}
+
+# drop_pending_record
+# Removes every tag of the pending record and forgets it.
+drop_pending_record() {
+  drop_cidr_tags "$(pending_record_tag_keys)"
+  PENDING_CIDRS=""
+  PENDING_TAG_KEYS=""
+  PENDING_UPDATE_ID=""
 }
 
 # cidr_tag_part_count LIST
@@ -640,19 +709,21 @@ new_tag_parts() {
 }
 
 # require_free_tag_slots NEEDED PURPOSE
-# Dies when fewer than NEEDED of the tags EKS allows per resource are free. Keys
-# starting with aws: do not count towards the limit.
+# Dies when fewer than NEEDED of the tags EKS allows per resource are free.
+# Every key counts, aws:-prefixed ones included: EKS documents a limit of 50
+# tags per resource and says nothing about excluding them, and a precheck that
+# passes where the write fails leaves publicAccessCidrs changed with no record
+# of it. The keys come from the same query load_cidr_records reads, rather than
+# a JMESPath filter nothing exercises.
 require_free_tag_slots() {
-  local needed="$1" used free
+  local needed="$1" raw used free
+  local -a keys
   if ((needed <= 0)); then
     return 0
   fi
-  used="$(aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
-    --query "length(keys(cluster.tags || \`{}\`)[?!starts_with(@, 'aws:')])" --output text)" ||
-    die "could not count the tags of $CLUSTER"
-  if [[ ! "$used" =~ ^[0-9]+$ ]]; then
-    die "could not count the tags of $CLUSTER (got '$used')"
-  fi
+  raw="$(cluster_tag_keys)" || exit 1
+  read -r -a keys <<< "$raw"
+  used=${#keys[@]}
   free=$((EKS_MAX_TAGS_PER_RESOURCE - used))
   if ((free < needed)); then
     die "$CLUSTER has $used tags and EKS allows at most $EKS_MAX_TAGS_PER_RESOURCE per resource; $2 needs $needed free tag(s). Remove $((needed - free)) tag(s) from the cluster and re-run $ACTION. publicAccessCidrs and the CIDR records were left unchanged"
@@ -667,6 +738,7 @@ require_free_tag_slots() {
 reconcile_pending_cidrs() {
   local landed needed
   if [[ -z "$PENDING_TAG_KEYS" ]]; then
+    drop_pending_record
     return 0
   fi
   landed="$(cidr_intersect "$PENDING_CIDRS" "$1")"
@@ -678,9 +750,7 @@ reconcile_pending_cidrs() {
     store_cidr_record "$ADDED_CIDRS_TAG_KEY" "$ADDED_CIDRS" "$ADDED_TAG_KEYS"
     ADDED_TAG_KEYS="$STORED_TAG_KEYS"
   fi
-  drop_cidr_tags "$PENDING_TAG_KEYS"
-  PENDING_CIDRS=""
-  PENDING_TAG_KEYS=""
+  drop_pending_record
 }
 
 # endpoint_access_json FIELD
@@ -722,6 +792,10 @@ update_public_cidrs() {
   fi
   update_id="$(mutate aws eks update-cluster-config --name "$CLUSTER" --region "$REGION" \
     --resources-vpc-config "$vpc_config" --query update.id --output text)"
+  # A dry run has no id to record, but still prints the call it would make.
+  if [[ -n "$pending" ]] && [[ -n "$update_id" || "$DRY_RUN" == true ]]; then
+    record_pending_update "${update_id:-UPDATE_ID}"
+  fi
   wait_for_update "$update_id"
 }
 
@@ -736,7 +810,7 @@ ensure_network() {
     die "cluster $CLUSTER has no public endpoint. Private-only clusters are not supported by the managed scan: enable the public endpoint restricted to Nullify's egress IPs, or use the in-cluster collector"
   fi
   load_cidr_records
-  if [[ -n "$PENDING_TAG_KEYS" ]]; then
+  if [[ -n "$PENDING_TAG_KEYS" || -n "$PENDING_UPDATE_ID" ]]; then
     require_no_endpoint_update_in_progress
   fi
   current="$(current_public_cidrs)"
@@ -755,15 +829,15 @@ ensure_network() {
   fi
   pending_parts="$(cidr_tag_part_count "$added")" || exit 1
   added_parts="$(new_tag_parts "$(cidr_union "$ADDED_CIDRS" "$added")" "$ADDED_TAG_KEYS")" || exit 1
-  require_free_tag_slots $((pending_parts + added_parts)) "recording $added in ${PENDING_CIDRS_TAG_KEY} and then ${ADDED_CIDRS_TAG_KEY}"
+  # One slot beyond the two records for the update id written with the pending
+  # one, so the whole sequence fits before publicAccessCidrs is touched.
+  require_free_tag_slots $((pending_parts + 1 + added_parts)) "recording $added in ${PENDING_CIDRS_TAG_KEY}, its update id in ${PENDING_UPDATE_TAG_KEY} and then ${ADDED_CIDRS_TAG_KEY}"
   info "network: adding $added to publicAccessCidrs"
   update_public_cidrs "$merged" "$current" "$added"
   ADDED_CIDRS="$(cidr_union "$ADDED_CIDRS" "$added")"
   store_cidr_record "$ADDED_CIDRS_TAG_KEY" "$ADDED_CIDRS" "$ADDED_TAG_KEYS"
   ADDED_TAG_KEYS="$STORED_TAG_KEYS"
-  drop_cidr_tags "$PENDING_TAG_KEYS"
-  PENDING_CIDRS=""
-  PENDING_TAG_KEYS=""
+  drop_pending_record
 }
 
 remove_rbac() {
@@ -823,7 +897,7 @@ remove_network() {
     return 0
   fi
   load_cidr_records
-  if [[ -z "$ADDED_TAG_KEYS" && -z "$PENDING_TAG_KEYS" ]]; then
+  if [[ -z "$ADDED_TAG_KEYS" && -z "$PENDING_TAG_KEYS" && -z "$PENDING_UPDATE_ID" ]]; then
     info "network: no ${ADDED_CIDRS_TAG_KEY} or ${PENDING_CIDRS_TAG_KEY} tag; publicAccessCidrs left unchanged"
     return 0
   fi
@@ -832,7 +906,7 @@ remove_network() {
     warn "network: the public endpoint of $CLUSTER is disabled; leaving the endpoint, publicAccessCidrs and the ${ADDED_CIDRS_TAG_KEY}/${PENDING_CIDRS_TAG_KEY} tags unchanged. publicAccessCidrs can still hold Nullify's CIDRs when the public endpoint is re-enabled; re-run remove then to take them out"
     return 0
   fi
-  if [[ -n "$PENDING_TAG_KEYS" ]]; then
+  if [[ -n "$PENDING_TAG_KEYS" || -n "$PENDING_UPDATE_ID" ]]; then
     require_no_endpoint_update_in_progress
   fi
   current="$(current_public_cidrs)"
@@ -849,7 +923,7 @@ remove_network() {
   else
     info "network: none of the recorded CIDRs are in publicAccessCidrs"
   fi
-  drop_cidr_tags "$ADDED_TAG_KEYS $PENDING_TAG_KEYS"
+  drop_cidr_tags "$ADDED_TAG_KEYS $(pending_record_tag_keys)"
 }
 
 check_pass() { log "[PASS] $*"; }

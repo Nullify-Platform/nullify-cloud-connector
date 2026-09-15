@@ -81,6 +81,7 @@ output_has() {
   [ "$(live_cidrs)" = "$BASE_CIDR $NULLIFY_EU" ]
   [ "$(tag_value nullify-added-cidrs)" = "$NULLIFY_EU" ]
   no_tag nullify-pending-cidrs
+  no_tag nullify-pending-update
   [ "$(call_line '"nullify-pending-cidrs":')" -lt "$(call_line 'eks update-cluster-config')" ]
   [ "$(call_line 'eks update-cluster-config')" -lt "$(call_line 'eks describe-update')" ]
   [ "$(call_line 'eks describe-update')" -lt "$(call_line '"nullify-added-cidrs":')" ]
@@ -226,9 +227,51 @@ output_has() {
   [ "$(tag_value nullify-pending-cidrs)" = "$NULLIFY_EU" ]
 }
 
-@test "apply stops before changing publicAccessCidrs when fewer than two tag slots are free" {
+@test "apply records the id of the update its pending record was written for" {
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -eq 0 ]
+  called '"nullify-pending-update":"update-1"'
+  [ "$(call_line 'eks update-cluster-config')" -lt "$(call_line '"nullify-pending-update":')" ]
+  [ "$(call_line '"nullify-pending-update":')" -lt "$(call_line 'eks describe-update')" ]
+  no_tag nullify-pending-update
+}
+
+@test "a pending record naming an InProgress update stops apply without listing every update" {
+  set_tag nullify-pending-cidrs "$NULLIFY_EU"
+  set_tag nullify-pending-update "update-9"
+  FAKE_UPDATES="update-9:EndpointAccessUpdate:InProgress"
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -ne 0 ]
+  output_has "update-9 of prod is still InProgress"
+  not_called 'eks list-updates'
+  not_called 'eks update-cluster-config'
+  not_called 'eks untag-resource'
+  [ "$(tag_value nullify-pending-update)" = "update-9" ]
+}
+
+@test "a recorded update EKS no longer knows about does not stop apply" {
+  set_tag nullify-pending-cidrs "$NULLIFY_EU"
+  set_tag nullify-pending-update "update-gone"
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -eq 0 ]
+  output_has "update-gone of prod is no longer known to EKS"
+  [ "$(live_cidrs)" = "$BASE_CIDR $NULLIFY_EU" ]
+  [ "$(tag_value nullify-added-cidrs)" = "$NULLIFY_EU" ]
+  no_tag nullify-pending-cidrs
+  no_tag nullify-pending-update
+}
+
+@test "remove drops a pending-update tag left with no CIDR record" {
+  set_tag nullify-pending-update "update-1"
+  run_setup remove
+  [ "$status" -eq 0 ]
+  not_called 'eks update-cluster-config'
+  no_tag nullify-pending-update
+}
+
+@test "apply stops before changing publicAccessCidrs when fewer than three tag slots are free" {
   local i
-  for ((i = 1; i <= 49; i++)); do
+  for ((i = 1; i <= 48; i++)); do
     set_tag "team-$i" "x"
   done
   run_setup apply --nullify-region eu-central-1
@@ -239,17 +282,34 @@ output_has() {
   [ "$(live_cidrs)" = "$BASE_CIDR" ]
 }
 
-@test "apply records CIDRs with exactly two tag slots free, not counting aws: tags" {
+@test "apply records CIDRs with exactly three tag slots free" {
   local i
-  for ((i = 1; i <= 48; i++)); do
+  for ((i = 1; i <= 47; i++)); do
     set_tag "team-$i" "x"
   done
-  set_tag "aws:cloudformation:stack-name" "eks"
   run_setup apply --nullify-region eu-central-1
   [ "$status" -eq 0 ]
   [ "$(live_cidrs)" = "$BASE_CIDR $NULLIFY_EU" ]
   [ "$(tag_value nullify-added-cidrs)" = "$NULLIFY_EU" ]
   no_tag nullify-pending-cidrs
+  no_tag nullify-pending-update
+}
+
+# EKS documents a limit of 50 tags per resource and does not say aws: keys are
+# exempt, so the precheck counts them. Excluding them would let this cluster
+# pass the precheck and then fail the write with publicAccessCidrs changed.
+@test "aws: tags count towards the EKS tag limit" {
+  local i
+  for ((i = 1; i <= 47; i++)); do
+    set_tag "team-$i" "x"
+  done
+  set_tag "aws:cloudformation:stack-name" "eks"
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -ne 0 ]
+  output_has "prod has 48 tags"
+  not_called 'eks update-cluster-config'
+  not_called 'eks tag-resource'
+  [ "$(live_cidrs)" = "$BASE_CIDR" ]
 }
 
 @test "remove drops only the recorded CIDRs and keeps the endpoint flags as read" {
