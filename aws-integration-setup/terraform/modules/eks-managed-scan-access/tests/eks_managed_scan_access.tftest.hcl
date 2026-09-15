@@ -264,3 +264,21 @@ run "a_cluster_not_in_collector_cluster_arns_is_unaffected" {
     error_message = "A collector_cluster_arns entry for a different cluster must not block this one"
   }
 }
+
+run "a_same_named_cluster_in_another_region_is_unaffected" {
+  # The guard compares full ARNs, not bare cluster names: cluster_arns names
+  # a cluster called "prod" in eu-west-1, and this collector_cluster_arns
+  # entry names a different cluster that happens to share the name "prod" in
+  # us-east-1. Comparing names alone would collide the two and reject the
+  # entry, even though nothing is duplicated.
+  command = plan
+
+  variables {
+    collector_cluster_arns = ["arn:aws:eks:us-east-1:123456789012:cluster/prod"]
+  }
+
+  assert {
+    condition     = length(aws_eks_access_entry.nullify) == 1
+    error_message = "A same-named cluster in a different region must not be mistaken for the same cluster"
+  }
+}

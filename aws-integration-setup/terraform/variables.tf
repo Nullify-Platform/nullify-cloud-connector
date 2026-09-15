@@ -114,6 +114,12 @@ variable "managed_scan_cluster_arns" {
   default     = []
 }
 
+variable "collector_cluster_arns" {
+  type        = list(string)
+  description = "Override for which clusters eks_managed_scan_access treats as already running the collector, for its duplicate-registration guard. Defaults to eks_cluster_arns when enable_kubernetes_integration is true, since granting the collector's IRSA trust is the closest available signal that a collector is deployed there -- but trust and deployment can diverge: a staged rollout may grant trust ahead of deploying k8s-resources' CronJob (or the Helm chart, or an equivalent manifest) to those clusters, incorrectly blocking their managed scan. It also decouples a collector-to-managed-scan cutover from revoking IRSA trust: set this to eks_cluster_arns minus the cluster being migrated so the guard stops blocking it, and drop the cluster from eks_cluster_arns itself only once the cutover is confirmed. null keeps the default derivation from eks_cluster_arns"
+  default     = null
+}
+
 variable "managed_scan_authorization" {
   type        = string
   description = "rbac (recommended): the access entry carries managed_scan_kubernetes_group, which you bind to a list-only nullify-readonly ClusterRole. The k8s-resources module applies that ClusterRole with enable_managed_scan_rbac = true; the root has no Kubernetes provider, so apply it separately. admin_view_policy: AmazonEKSAdminViewPolicy, which reads every resource including Secrets and pods/log, and allows exec into pods on EKS 1.34 and earlier"

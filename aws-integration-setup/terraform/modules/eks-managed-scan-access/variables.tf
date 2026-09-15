@@ -64,6 +64,11 @@ variable "tags" {
 
 variable "collector_cluster_arns" {
   type        = list(string)
-  description = "The subset of cluster_arns where a k8s-resources instance with enable_collector = true (or an equivalent manifest, or the nullify-k8s-collector Helm chart) already registers the cluster as an on-prem collector target. The module refuses to also create an access entry for one of these: the collector keys the cluster on cluster_name, this module's access entry keys the same cluster on its EKS ARN, and nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Checked for every authorization mode, including admin_view_policy, which creates no Kubernetes objects and so is invisible to any precondition inside k8s-resources"
+  description = "The subset of cluster_arns where a k8s-resources instance with enable_collector = true (or an equivalent manifest, or the nullify-k8s-collector Helm chart) already registers the cluster as an on-prem collector target. The module refuses to also create an access entry for one of these: the collector keys the cluster on cluster_name, this module's access entry keys the same cluster on its EKS ARN, and nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Checked for every authorization mode, including admin_view_policy, which creates no Kubernetes objects and so is invisible to any precondition inside k8s-resources. Compared as full ARNs, so a same-named cluster in a different account or region is never mistaken for a match"
   default     = []
+
+  validation {
+    condition     = alltrue([for arn in var.collector_cluster_arns : can(regex("^arn:aws:eks:[a-z0-9-]+:[0-9]{12}:cluster/[A-Za-z0-9][A-Za-z0-9_-]*$", arn))])
+    error_message = "Each entry must be an EKS cluster ARN: arn:aws:eks:<region>:<account-id>:cluster/<name>"
+  }
 }

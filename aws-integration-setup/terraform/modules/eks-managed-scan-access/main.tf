@@ -17,7 +17,7 @@ locals {
     }
   }
 
-  collector_cluster_names = toset([for arn in var.collector_cluster_arns : split("/", arn)[1]])
+  collector_cluster_arns = toset(var.collector_cluster_arns)
 }
 
 data "aws_region" "current" {}
@@ -39,8 +39,8 @@ data "aws_eks_cluster" "this" {
     }
 
     precondition {
-      condition     = !contains(local.collector_cluster_names, each.value.name)
-      error_message = "Cluster ${each.value.name} is also in collector_cluster_arns. The collector's upload registers it as an on-prem cluster keyed on cluster_name; this module's access entry registers the same cluster as its EKS ARN. Nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Pick one mode per cluster: drop it from collector_cluster_arns and cluster_arns here, or disable enable_collector on that cluster's k8s-resources instance."
+      condition     = !contains(local.collector_cluster_arns, each.key)
+      error_message = "Cluster ${each.value.name} (${each.key}) is also in collector_cluster_arns. The collector's upload registers it as an on-prem cluster keyed on cluster_name; this module's access entry registers the same cluster as its EKS ARN. Nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Pick one mode per cluster: drop its ARN from collector_cluster_arns and cluster_arns here, or stop treating it as a collector target (disable enable_collector on its k8s-resources instance, or remove it from the Helm chart or manifest that registers it)."
     }
   }
 }
