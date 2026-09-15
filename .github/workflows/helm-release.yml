@@ -19,12 +19,19 @@ on:
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   workflow_dispatch:
+    inputs:
+      recover_from_releases:
+        description: Restore tagged chart versions missing from the live index from their GitHub release assets
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# Pull requests cancel their own superseded runs. Every other run gets a unique
+# group here; publishing is serialised by the release job's own group instead.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('helm-pr-{0}', github.ref) || 'pages' }}
+  group: ${{ github.event_name == 'pull_request' && format('helm-pr-{0}', github.ref) || format('helm-run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -37,7 +44,7 @@ jobs:
     outputs:
       charts: ${{ steps.list.outputs.charts }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: List charts
         id: list
@@ -53,68 +60,108 @@ jobs:
       fail-fast: false
       matrix:
         chart: ${{ fromJSON(needs.charts.outputs.charts) }}
+    env:
+      CHART: ${{ matrix.chart }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: ${{ env.HELM_VERSION }}
 
       - name: Lint and render
-        run: scripts/test-helm-charts.sh "${{ matrix.chart }}"
+        run: scripts/test-helm-charts.sh "$CHART"
+
+      - name: Published version is unchanged or bumped
+        env:
+          PUBLISH_ONLY_CHART: ${{ matrix.chart }}
+          PUBLISH_STRICT: "true"
+        run: scripts/publish-helm-repo.sh "$RUNNER_TEMP/site"
 
   publish-dry-run:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: ${{ env.HELM_VERSION }}
 
       - name: Build the Helm repository without deploying it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_RUN_CHART_TESTS: "true"
+          HELM_REPO_RECOVER_FROM_RELEASES: ${{ inputs.recover_from_releases }}
         run: |
           scripts/publish-helm-repo.sh _site
-          echo "Versions a merge would newly publish:"
+          echo "Versions a merge to main would newly publish:"
           cat published.txt
+          echo "Tags and releases a merge to main would ensure exist:"
+          cat release.txt
+          echo "Charts a merge to main would skip:"
+          cat skipped.txt
 
   release:
-    if: github.event_name != 'pull_request'
-    needs: validate
+    needs: [charts, validate]
+    # Runs even when a chart's validate leg fails: the publish script re-runs
+    # each chart's tests and skips only the failing chart.
+    if: >-
+      !cancelled()
+      && github.event_name != 'pull_request'
+      && github.ref == 'refs/heads/main'
+      && needs.charts.result == 'success'
     runs-on: ubuntu-latest
+    environment: github-pages
+    # A newer pending run replaces an older pending one (GitHub keeps one per
+    # group). The replaced run's chart versions are published by the next run
+    # only if they are still in HEAD.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     permissions:
       contents: write
       pages: write
       id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: ${{ env.HELM_VERSION }}
 
       - name: Build Helm repository
+        env:
+          PUBLISH_RUN_CHART_TESTS: "true"
+          HELM_REPO_RECOVER_FROM_RELEASES: ${{ inputs.recover_from_releases }}
         run: scripts/publish-helm-repo.sh _site
 
-      - uses: actions/configure-pages@v4
+      - uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d # v4.0.0
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: ./_site
 
       - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
 
-      - name: Tag and release newly published chart versions
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # Driven by every published chart version at HEAD, not only new ones, so a
+      # re-run after a failure here still creates the missing tags and releases.
+      - name: Ensure a tag and release for every published chart version
         run: |
           while read -r name version; do
             [ -n "$name" ] || continue
             tag="${name}-v${version}"
-            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then
-              echo "tag ${tag} already exists"
+            asset="${name}-${version}.tgz"
+            if gh release view "$tag" >/dev/null 2>&1 </dev/null; then
+              if gh release view "$tag" --json assets --jq '.assets[].name' </dev/null | grep -qxF "$asset"; then
+                echo "release ${tag} already has ${asset}"
+              else
+                gh release upload "$tag" "_site/${asset}" </dev/null
+              fi
               continue
             fi
             notes="$(printf '%s\n' \
@@ -127,8 +174,20 @@ jobs:
               '```' \
               "" \
               "Chart README: https://github.com/${GITHUB_REPOSITORY}/blob/${tag}/helm-charts/${name}/README.md")"
-            gh release create "${tag}" "_site/${name}-${version}.tgz" \
-              --target "${GITHUB_SHA}" \
-              --title "${name} ${version}" \
-              --notes "${notes}"
-          done < published.txt
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null </dev/null; then
+              gh release create "$tag" "_site/${asset}" --verify-tag \
+                --title "${name} ${version}" --notes "${notes}" </dev/null
+            else
+              gh release create "$tag" "_site/${asset}" --target "${GITHUB_SHA}" \
+                --title "${name} ${version}" --notes "${notes}" </dev/null
+            fi
+          done < release.txt
+
+      - name: Fail when a chart was skipped
+        run: |
+          if [ -s skipped.txt ]; then
+            while read -r line; do
+              echo "::error::not published: ${line}"
+            done < skipped.txt
+            exit 1
+          fi

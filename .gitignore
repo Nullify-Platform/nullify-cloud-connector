@@ -169,3 +169,5 @@ values-secret.yml
 # Helm repository build output (scripts/publish-helm-repo.sh)
 /_site/
 /published.txt
+/release.txt
+/skipped.txt
