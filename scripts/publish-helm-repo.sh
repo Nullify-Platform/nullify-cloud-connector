@@ -23,10 +23,15 @@
 #
 # A tag with no release, or a release with no such asset, has nothing to restore
 # and nothing was ever published for it, so it is a ::warning:: and the version
-# is dropped from the cross-check. Otherwise a hand-made tag would fail every
-# job, including the release job that would have created its release. An asset
-# whose release records no digest (uploaded before GitHub recorded them) is
-# still verified against the tag's tree.
+# is dropped from the cross-check, whether or not the tag is on MAIN_BRANCH and
+# names a real chart version (that fact only changes the warning's wording).
+# Otherwise a hand-made tag would fail every job, including the release job
+# that would have created its release; the release job separately refuses to
+# attach a release to a pre-existing tag whose tree does not match what it
+# intends to publish. An asset whose release records no digest (uploaded
+# before GitHub recorded them) is still verified against the tag's tree. The
+# release lookup is a REST-only call so its failures are explicit HTTP status
+# codes: only a 404 means "no release"; anything else stops the build.
 #
 # Charts are independent. A chart is skipped with an ::error:: annotation and
 # listed in SKIPPED_LIST when it fails scripts/test-helm-charts.sh, when its
@@ -219,27 +224,38 @@ chart_dir_at() {
   return 1
 }
 
-# Requires <tag> to be on MAIN_BRANCH and the chart named <name> in CHARTS_DIR,
-# packaged from the tag's tree, to have the same contents as <asset>.
-verify_against_tag_tree() {
-  local tag="$1" name="$2" version="$3" asset="$4"
-  local chart src="$work/recover-src/$tag"
+# Fetches MAIN_BRANCH and <tag> from TAG_REMOTE (unshallowing first if needed)
+# and, on success, prints the CHARTS_DIR subdirectory that proves <tag> is a
+# real release of chart <name> at <version>: its commit is on MAIN_BRANCH and
+# its Chart.yaml there names <name> at <version>. A tag that fails either check
+# is not a real chart release, whether or not it has a GitHub release; callers
+# treat that as non-fatal, since a tag alone never publishes anything.
+verify_tag_chart_version() {
+  local tag="$1" name="$2" version="$3" chart
   if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
     git fetch -q --unshallow "$TAG_REMOTE" </dev/null || die "could not unshallow the checkout to verify tag $tag"
   fi
   git fetch -q --no-tags "$TAG_REMOTE" \
     "+refs/heads/$MAIN_BRANCH:refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" \
     "+refs/tags/$tag:refs/tags/$tag" </dev/null ||
-    die "could not fetch $MAIN_BRANCH and tag $tag from $TAG_REMOTE to verify $(basename "$asset")"
-  git merge-base --is-ancestor "refs/tags/$tag^{commit}" "refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" ||
-    die "tag $tag is not on $MAIN_BRANCH; refusing to recover $name $version from it"
-  chart="$(chart_dir_at "refs/tags/$tag^{commit}" "$name")" ||
-    die "tag $tag has no $CHARTS_DIR/*/Chart.yaml with name $name; refusing to recover $name $version from it"
+    die "could not fetch $MAIN_BRANCH and tag $tag from $TAG_REMOTE to verify $name $version"
+  git merge-base --is-ancestor "refs/tags/$tag^{commit}" "refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" || return 1
+  chart="$(chart_dir_at "refs/tags/$tag^{commit}" "$name")" || return 1
+  [ "$(git show "refs/tags/$tag^{commit}:$chart/Chart.yaml" | yq -r '.version')" = "$version" ] || return 1
+  echo "$chart"
+}
+
+# Requires <tag> to be a real release of chart <name> at <version> (see
+# verify_tag_chart_version), packaged from the tag's tree, with the same
+# contents as <asset>.
+verify_against_tag_tree() {
+  local tag="$1" name="$2" version="$3" asset="$4"
+  local chart src="$work/recover-src/$tag"
+  chart="$(verify_tag_chart_version "$tag" "$name" "$version")" ||
+    die "tag $tag is not on $MAIN_BRANCH, or has no $CHARTS_DIR/*/Chart.yaml named $name at version $version; refusing to recover $name $version from it"
   mkdir -p "$src/pkg"
   git archive "refs/tags/$tag^{commit}" "$chart" | tar -x -C "$src" ||
     die "could not extract $chart from tag $tag"
-  [ "$(yq -r '.name' "$src/$chart/Chart.yaml")" = "$name" ] || die "$chart/Chart.yaml at tag $tag is not chart $name"
-  [ "$(yq -r '.version' "$src/$chart/Chart.yaml")" = "$version" ] || die "$chart/Chart.yaml at tag $tag is not version $version"
   if [ "$(yq -r '.dependencies | length' "$src/$chart/Chart.yaml")" != "0" ]; then
     helm dependency build "$src/$chart" >&2
   fi
@@ -254,16 +270,29 @@ recover_from_release() {
   local asset="$name-$version.tgz" dir="$work/recover/$tag"
   local listing="$work/recover/$tag.json" errors="$work/recover/$tag.err"
   mkdir -p "$dir"
-  if ! gh release view "$tag" -R "$REPOSITORY" --json assets </dev/null >"$listing" 2>"$errors"; then
-    grep -qi 'release not found' "$errors" ||
-      die "listing release $tag of $REPOSITORY failed: $(tr '\n' ' ' <"$errors")"
-    echo "::warning::$name $version is tagged ($tag) but has no GitHub release, so nothing was ever published for it; it stays unpublished until $MAIN_BRANCH carries that version"
+  # A REST-only lookup, so failure means an explicit HTTP status: "no release"
+  # is only ever a genuine 404. `gh release view`'s draft/published merge
+  # reports every other failure (a 5xx, a rate limit, a reset) the same way a
+  # published release's absence is reported, which would silently drop a live
+  # version instead of failing the build.
+  if ! gh api "repos/$REPOSITORY/releases/tags/$tag" </dev/null >"$listing" 2>"$errors"; then
+    grep -qE 'HTTP 404' "$errors" ||
+      die "looking up release $tag of $REPOSITORY failed: $(tr '\n' ' ' <"$errors")"
+    if verify_tag_chart_version "$tag" "$name" "$version" >/dev/null; then
+      echo "::warning::$name $version is tagged ($tag) but has no GitHub release, so nothing was ever published for it; it stays unpublished until $MAIN_BRANCH carries that version"
+    else
+      echo "::warning::$tag is not on $MAIN_BRANCH, or its tree is not $name $version, and it has no GitHub release either; it is not a real chart release and stays unpublished"
+    fi
     return 1
   fi
   local recorded actual chart_yaml legacy
   recorded="$(jq -r --arg a "$asset" '.assets[] | select(.name == $a) | .digest // "none"' "$listing")"
   if [ -z "$recorded" ]; then
-    echo "::warning::release $tag has no asset $asset, so $name $version cannot be restored from it; it stays unpublished until $MAIN_BRANCH carries that version"
+    if verify_tag_chart_version "$tag" "$name" "$version" >/dev/null; then
+      echo "::warning::release $tag has no asset $asset, so $name $version cannot be restored from it; it stays unpublished until $MAIN_BRANCH carries that version"
+    else
+      echo "::warning::$tag is not on $MAIN_BRANCH, or its tree is not $name $version, and its release has no $asset either; it is not a real chart release and stays unpublished"
+    fi
     return 1
   fi
   gh release download "$tag" -R "$REPOSITORY" -p "$asset" -D "$dir" </dev/null ||
