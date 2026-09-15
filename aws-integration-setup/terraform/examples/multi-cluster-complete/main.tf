@@ -141,11 +141,12 @@ module "eks_managed_scan_access_primary" {
     aws = aws.primary
   }
 
-  principal_arn       = module.nullify_aws_integration.role_arn
-  principal_unique_id = module.nullify_aws_integration.role_unique_id
-  cluster_arns        = [var.eks_cluster_arns[0]]
-  nullify_region      = var.nullify_region
-  tags                = var.tags
+  principal_arn          = module.nullify_aws_integration.role_arn
+  principal_unique_id    = module.nullify_aws_integration.role_unique_id
+  cluster_arns           = [var.eks_cluster_arns[0]]
+  nullify_region         = var.nullify_region
+  collector_cluster_arns = local.collector ? [var.eks_cluster_arns[0]] : []
+  tags                   = var.tags
 }
 
 module "eks_managed_scan_access_secondary" {
@@ -155,9 +156,10 @@ module "eks_managed_scan_access_secondary" {
     aws = aws.secondary
   }
 
-  principal_arn       = module.nullify_aws_integration.role_arn
-  principal_unique_id = module.nullify_aws_integration.role_unique_id
-  cluster_arns        = [var.eks_cluster_arns[1]]
-  nullify_region      = var.nullify_region
-  tags                = var.tags
+  principal_arn          = module.nullify_aws_integration.role_arn
+  principal_unique_id    = module.nullify_aws_integration.role_unique_id
+  cluster_arns           = [var.eks_cluster_arns[1]]
+  nullify_region         = var.nullify_region
+  collector_cluster_arns = local.collector ? [var.eks_cluster_arns[1]] : []
+  tags                   = var.tags
 }

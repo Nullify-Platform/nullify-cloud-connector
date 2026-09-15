@@ -32,13 +32,6 @@ locals {
 resource "kubernetes_cluster_role_v1" "nullify_readonly" {
   count = var.enable_managed_scan_rbac ? 1 : 0
 
-  lifecycle {
-    precondition {
-      condition     = !var.enable_collector
-      error_message = "enable_collector and enable_managed_scan_rbac cannot both be true for one cluster. The collector's upload is registered as an on-prem cluster keyed on cluster_name; the managed scan registers the same cluster as its EKS ARN. Nothing joins the two, so the cluster appears twice in inventory with its pods and containers duplicated. Pick one mode: apply it, then ask Nullify to remove the old cluster registration."
-    }
-  }
-
   metadata {
     name = var.managed_scan_cluster_role_name
     labels = {

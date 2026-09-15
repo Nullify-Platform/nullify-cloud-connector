@@ -75,7 +75,14 @@ run "collector_requires_a_kms_key" {
   expect_failures = [kubernetes_cron_job_v1.k8s_collector]
 }
 
-run "collector_and_managed_scan_rbac_cannot_both_run" {
+run "staging_the_rbac_role_alongside_the_running_collector_plans_clean" {
+  # The duplicate-registration hazard is caused by the EKS access entry
+  # (enforced in eks-managed-scan-access, see its test suite), not by this
+  # ClusterRole: with no access entry mapping Nullify's principal into
+  # managed_scan_kubernetes_group, nothing joins the group and no managed
+  # scan runs. Staging the RBAC ahead of a cutover -- apply the ClusterRole
+  # now while the collector still runs, wire the access entry and disable
+  # the collector at the cutover -- must not be a plan error.
   command = plan
 
   variables {
@@ -87,7 +94,10 @@ run "collector_and_managed_scan_rbac_cannot_both_run" {
     enable_managed_scan_rbac = true
   }
 
-  expect_failures = [kubernetes_cluster_role_v1.nullify_readonly]
+  assert {
+    condition     = length(kubernetes_cron_job_v1.k8s_collector) == 1 && length(kubernetes_cluster_role_v1.nullify_readonly) == 1
+    error_message = "Both the collector CronJob and the managed-scan ClusterRole must plan when no access entry exists yet"
+  }
 }
 
 run "the_kms_key_reaches_the_collector" {

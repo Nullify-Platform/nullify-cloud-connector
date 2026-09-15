@@ -1,3 +1,7 @@
+locals {
+  collector_cluster_arns = var.enable_kubernetes_integration ? var.eks_cluster_arns : []
+}
+
 module "nullify_aws_integration" {
   source = "./modules/nullify-aws-integration"
 
@@ -23,11 +27,12 @@ module "eks_managed_scan_access" {
   source = "./modules/eks-managed-scan-access"
   count  = var.enable_managed_scan ? 1 : 0
 
-  principal_arn         = module.nullify_aws_integration.role_arn
-  principal_unique_id   = module.nullify_aws_integration.role_unique_id
-  cluster_arns          = var.managed_scan_cluster_arns
-  nullify_region        = var.nullify_region
-  authorization         = var.managed_scan_authorization
-  kubernetes_group_name = var.managed_scan_kubernetes_group
-  tags                  = var.tags
+  principal_arn          = module.nullify_aws_integration.role_arn
+  principal_unique_id    = module.nullify_aws_integration.role_unique_id
+  cluster_arns           = var.managed_scan_cluster_arns
+  nullify_region         = var.nullify_region
+  authorization          = var.managed_scan_authorization
+  kubernetes_group_name  = var.managed_scan_kubernetes_group
+  collector_cluster_arns = local.collector_cluster_arns
+  tags                   = var.tags
 }
