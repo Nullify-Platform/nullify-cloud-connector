@@ -1,5 +1,7 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_partition" "current" {}
+
 data "aws_region" "current" {}
 
 locals {
@@ -31,7 +33,7 @@ locals {
   all_oidc_ids = [for cluster in local.all_clusters_info : cluster.oidc_id]
   eks_oidc_provider_arns = var.enable_kubernetes_integration ? [
     for cluster in local.all_clusters_info :
-    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${cluster.region}.amazonaws.com/id/${cluster.oidc_id}"
+    "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${cluster.region}.amazonaws.com/id/${cluster.oidc_id}"
   ] : []
 }
 
@@ -73,7 +75,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
       effect = "Allow"
       principals {
         type        = "Federated"
-        identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${statement.value.region}.amazonaws.com/id/${statement.value.oidc_id}"]
+        identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/oidc.eks.${statement.value.region}.amazonaws.com/id/${statement.value.oidc_id}"]
       }
       actions = ["sts:AssumeRoleWithWebIdentity"]
       condition {

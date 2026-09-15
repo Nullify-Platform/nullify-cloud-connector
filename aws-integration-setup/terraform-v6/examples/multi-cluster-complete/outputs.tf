@@ -39,7 +39,7 @@ output "k8s_resources_secondary" {
   }
 }
 
-# Managed EKS scan (null unless scan_mode is managed or both)
+# Managed EKS scan (null unless scan_mode is managed)
 output "managed_scan_clusters_for_nullify" {
   description = "Clusters to register in Nullify for the managed scan"
   value       = one(module.eks_managed_scan_access[*].clusters_for_nullify)

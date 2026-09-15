@@ -81,7 +81,7 @@ output "policy_arns" {
 }
 
 output "kms_policy_resources" {
-  description = "Resources the KMS policy grants: kms_key_arn and key/* in its account and region (empty when kms_key_arn is not set)"
+  description = "Resources the KMS policy grants: kms_key_arn, plus key/* in its account and region when that account is not this one (empty when kms_key_arn is not set)"
   value       = local.kms_policy_resources
 }
 

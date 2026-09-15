@@ -175,7 +175,7 @@ run "admin_view_policy_is_cluster_scoped_and_warns" {
 
   assert {
     condition     = length(aws_eks_access_entry.nullify["arn:aws:eks:eu-west-1:123456789012:cluster/prod"].kubernetes_groups) == 0
-    error_message = "admin_view_policy must clear kubernetes_groups on the entry itself: the attribute is Optional+Computed, so null keeps whatever is in state"
+    error_message = "admin_view_policy must plan kubernetes_groups as an empty set on the entry: the attribute is Optional+Computed, so null would keep whatever is in state. This pins the planned configuration under a mocked provider, not the applied result"
   }
 }
 

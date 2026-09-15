@@ -2,7 +2,7 @@
 # through an EKS access entry. Nothing runs in the cluster.
 
 terraform {
-  required_version = ">= 1.5"
+  required_version = ">= 1.8"
 
   required_providers {
     aws = {

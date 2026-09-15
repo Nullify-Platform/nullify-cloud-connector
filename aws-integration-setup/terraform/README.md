@@ -10,7 +10,7 @@ This directory targets AWS provider v5. If your project uses AWS provider v6, us
 
 ## Requirements
 
-- Terraform >= 1.5
+- Terraform >= 1.8 (the version CI validates and runs the module test suites at)
 - AWS provider `~> 5.33` in the root and examples. `modules/eks-managed-scan-access` needs `>= 5.33` (access entries arrived in 5.33.0); `modules/nullify-aws-integration` still accepts `~> 5.0`
 - Kubernetes provider `~> 2.20` (only `modules/k8s-resources` and the `multi-cluster-complete` and `managed-scan` examples)
 
@@ -75,7 +75,7 @@ terraform/
 
 ### **Multi-Cluster Complete** (`examples/multi-cluster-complete/`)
 - AWS IAM + EKS integration for exactly two clusters
-- `scan_mode`: `collector` (default), `managed` or `both`
+- `scan_mode`: `collector` (default) or `managed`, one per cluster
 - Clusters can be in different regions: each is read through an AWS provider in its own region
 
 ## Kubernetes scan modes
@@ -262,7 +262,7 @@ terraform init && terraform apply
 - `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
 - `s3_bucket_name`: S3 bucket for scan results (optional)
 - `nullify_s3_access_point_arn`: S3 access point for collector uploads (optional). Grants `s3:PutObject` and `s3:PutObjectAcl` on `<access point ARN>/object/k8s-collector/*` next to the bucket grants
-- `kms_key_arn`: KMS ARN from the Nullify configure page (optional), see [KMS](#kms)
+- `kms_key_arn`: KMS ARN from the Nullify configure page, see [KMS](#kms). Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `service_account_name`: Collector service account name (default: nullify-k8s-collector-sa)
 - `tags`: Resource tags
@@ -275,7 +275,9 @@ terraform init && terraform apply
 - a key ARN: `arn:aws:kms:<region>:<account>:key/<key-id>`, including multi-Region `key/mrk-...` keys
 - an alias ARN: `arn:aws:kms:<region>:<account>:alias/<name>`
 
-A key ARN is granted on its own. IAM does not resolve an alias in a policy's `Resource`, so an alias ARN also grants `arn:aws:kms:<region>:<account>:key/*` in the same Nullify account and region. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. The `kms_policy_resources` module output lists what was granted.
+The key Nullify hands out is in Nullify's account, so the policy grants the ARN you pass and `arn:<partition>:kms:<region>:<account>:key/*` in that same account and region: IAM does not resolve an alias ARN in a policy's `Resource`, and Nullify's key policy is the real gate on a key Nullify owns. The wildcard is derived only when the ARN's account differs from yours, so an ARN pasted from your own account grants that key alone. The `kms_policy_resources` module output lists what was granted.
+
+`k8s-resources` takes the same variable and writes no IAM policy: it forwards the value to the collector as `NULLIFY_KMS_KEY_ARN`, which S3 takes as `SSEKMSKeyId`. **The collector refuses to upload without it** — it walks the cluster, then exits 1 with `upload blocked: no KMS encryption and unencrypted uploads not explicitly allowed` — so `kms_key_arn` is required whenever `enable_collector` is true, and the module fails at plan without it. `allow_unencrypted_upload = true` is the only way to run the collector without a key; use it only if Nullify issued you none.
 
 ## Module Usage
 
@@ -310,7 +312,7 @@ module "k8s_resources" {
   }
 
   iam_role_arn   = module.nullify_aws_integration.role_arn
-  cluster_name   = "cluster-a"
+  cluster_name   = "acme-prod-use1"
   s3_bucket_name = "my-scan-results-bucket" # or the S3 access point ARN from Nullify
   kms_key_arn    = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
   aws_region     = "us-west-2"
@@ -318,7 +320,13 @@ module "k8s_resources" {
 }
 ```
 
-`cluster_name` is required whenever `enable_collector` is true, and must differ per cluster. The collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory and Nullify only ever sees the one that ran last.
+`cluster_name` is required whenever `enable_collector` is true, and has three requirements:
+
+- **It must match your actual cluster name exactly**, as AWS reports it (`aws eks describe-cluster --name <cluster> --query cluster.name`). Nullify joins the upload to the cluster it discovered in your AWS inventory on this name; a mismatch drops the whole payload, so no pods, services or ingresses reach the graph and nothing says so.
+- **It must match a cluster registered on the Nullify configure page.** An upload for an unregistered name is skipped on ingest, again with no customer-visible signal.
+- **It must differ per cluster.** The collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory and Nullify only ever sees the one that ran last.
+
+This is the same value as `collector.clusterName` in the `nullify-k8s-collector` Helm chart, which states the same requirement.
 
 `k8s-resources` variables include `enable_collector` (default `true`), `enable_managed_scan_rbac` (default `false`), `collector_image`, `cronjob_schedule` (default `0 0 * * *`), `kubernetes_namespace`, `service_account_name` and `enable_debug`.
 
@@ -360,13 +368,15 @@ module "nullify_k8s" {
 
 ## Upgrade Notes
 
-- Terraform >= 1.5 is now required (the module already used cross-variable validation, which needs 1.9; those checks are now preconditions).
+- Terraform >= 1.8 is now required. It is the floor CI validates at and the floor the module test suites run at, so the declared version is the tested one.
 - The root and examples require AWS provider `>= 5.33`. Run `terraform init -upgrade` if your lock file pins an older 5.x.
-- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`, and the old object is left behind for you to delete.
+- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
+- `k8s-resources` now requires `kms_key_arn` while `enable_collector` is true. The shipped collector images refuse to upload without KMS encryption, so a deployment that left it empty was collecting successfully and then failing every upload. Set the value from the configure page, or set `allow_unencrypted_upload = true` if Nullify issued you no key.
+- `scan_mode = "both"` is no longer accepted in `examples/multi-cluster-complete`. The collector registers a cluster as on-prem, keyed on `cluster_name`; the managed scan registers the same cluster as its EKS ARN. Nothing joins them, so "both" listed one cluster twice with its pods and containers duplicated.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The root configuration no longer declares the Kubernetes provider. It never deployed Kubernetes resources.
 - A cluster outside the AWS provider's region now fails at plan time with an explanation instead of a not-found error.
-- The KMS policy grants `key/*` in the account and region of `kms_key_arn` when that value is an alias ARN. A key ARN grants only itself, as the CloudFormation template does.
+- The KMS policy grants `key/*` in the account and region of `kms_key_arn` whenever that account is not your own, for alias ARNs and key ARNs alike — the same resources the CloudFormation template grants. An ARN in your own account grants only that key.
 
 ## Security Considerations
 

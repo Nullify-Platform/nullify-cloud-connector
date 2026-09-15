@@ -41,7 +41,7 @@ variable "iam_role_arn" {
 
 variable "cluster_name" {
   type        = string
-  description = "Name of the cluster this collector runs in, required when enable_collector is true. It becomes the collector's CLUSTER_NAME, which names its upload: <prefix>/k8s-collector/<cluster_name>-data.json. Two clusters sharing a name overwrite each other's inventory, so give every cluster its own. Same value as collector.clusterName in the nullify-k8s-collector Helm chart"
+  description = "Name of the cluster this collector runs in, required when enable_collector is true. It must match your actual cluster name exactly, as AWS reports it, and it must match a cluster registered on the Nullify configure page: Nullify joins the upload on this name and silently drops or skips it otherwise. It becomes the collector's CLUSTER_NAME and names the upload, <prefix>/k8s-collector/<cluster_name>-data.json, so two clusters sharing a name overwrite each other's inventory. Same value as collector.clusterName in the nullify-k8s-collector Helm chart"
   default     = ""
 }
 
@@ -83,13 +83,19 @@ variable "cronjob_schedule" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
+  description = "The KMS ARN shown on the Nullify configure page, required when enable_collector is true: a key ARN or an alias ARN. The collector sends it to S3 as SSEKMSKeyId and refuses to upload without it. The key is in Nullify's account, so a bare key ID or a bare alias/<name> would resolve against your own account and is rejected here"
   default     = ""
 
   validation {
     condition     = var.kms_key_arn == "" || can(regex("^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+)$", var.kms_key_arn))
     error_message = "Must be empty, a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>) or a KMS alias ARN (arn:aws:kms:<region>:<account-id>:alias/<name>)"
   }
+}
+
+variable "allow_unencrypted_upload" {
+  type        = bool
+  description = "WARNING: send the cluster inventory to Nullify's S3 area with no KMS encryption. Sets ALLOW_UNENCRYPTED_UPLOAD on the collector, which otherwise exits 1 rather than upload unencrypted. This is the only thing that sets that variable. Use it only if Nullify issued you no KMS key; otherwise leave it false and set kms_key_arn"
+  default     = false
 }
 
 variable "enable_debug" {

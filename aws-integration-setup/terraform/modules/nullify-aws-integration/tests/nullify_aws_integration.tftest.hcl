@@ -1,4 +1,16 @@
 mock_provider "aws" {
+  mock_data "aws_caller_identity" {
+    defaults = {
+      account_id = "123456789012"
+    }
+  }
+
+  mock_data "aws_partition" {
+    defaults = {
+      partition = "aws"
+    }
+  }
+
   mock_data "aws_iam_policy_document" {
     defaults = {
       json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
@@ -28,7 +40,7 @@ variables {
   nullify_role_arn = "arn:aws:iam::123456789012:role/NullifyRole"
 }
 
-run "kms_alias_grants_the_alias_and_key_wildcard" {
+run "cross_account_alias_grants_the_alias_and_key_wildcard" {
   command = plan
 
   variables {
@@ -37,11 +49,11 @@ run "kms_alias_grants_the_alias_and_key_wildcard" {
 
   assert {
     condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads", "arn:aws:kms:eu-central-1:111122223333:key/*"])
-    error_message = "An alias ARN must grant the alias and key/* in the same account and region"
+    error_message = "An alias ARN in Nullify's account must grant the alias and key/* in that account and region"
   }
 }
 
-run "kms_key_arn_grants_only_that_key" {
+run "cross_account_key_arn_grants_the_key_wildcard_too" {
   command = plan
 
   variables {
@@ -49,8 +61,21 @@ run "kms_key_arn_grants_only_that_key" {
   }
 
   assert {
-    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:111122223333:key/mrk-1234abcd12ab34cd56ef1234567890ab"])
-    error_message = "A key ARN resolves in IAM on its own: only an alias ARN needs key/*"
+    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:111122223333:key/mrk-1234abcd12ab34cd56ef1234567890ab", "arn:aws:kms:us-east-2:111122223333:key/*"])
+    error_message = "A key ARN in Nullify's account must grant key/* too: this is what the CloudFormation template grants for the same input"
+  }
+}
+
+run "a_key_in_this_account_grants_only_that_key" {
+  command = plan
+
+  variables {
+    kms_key_arn = "arn:aws:kms:us-east-2:123456789012:alias/my-own-key"
+  }
+
+  assert {
+    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:123456789012:alias/my-own-key"])
+    error_message = "An ARN in the caller's own account must never derive key/*: that would reach every key in the account whose policy delegates to the root"
   }
 }
 

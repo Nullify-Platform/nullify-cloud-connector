@@ -32,8 +32,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # AWS rows run the declared floor (Terraform 1.5); examples that use
-        # ephemeral resources (v6 multi-cluster, v6 managed-scan) need 1.10.
+        # AWS rows run the declared floor (Terraform 1.8, the version the
+        # terraform-test job also runs); examples that use ephemeral resources
+        # (v6 multi-cluster, v6 managed-scan) need 1.10.
         include:
           - directory: gcp-integration-setup/terraform
             terraform: 1.9.5
@@ -44,25 +45,25 @@ jobs:
           - directory: gcp-integration-setup/terraform/examples/single-project
             terraform: 1.9.5
           - directory: aws-integration-setup/terraform
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform/examples/basic
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform/examples/multi-cluster-complete
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform/examples/managed-scan
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform/modules/eks-managed-scan-access
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform-v6
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform-v6/examples/basic
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: aws-integration-setup/terraform-v6/examples/multi-cluster-complete
             terraform: 1.10.5
           - directory: aws-integration-setup/terraform-v6/examples/managed-scan
             terraform: 1.10.5
           - directory: aws-integration-setup/terraform-v6/modules/eks-managed-scan-access
-            terraform: 1.5.7
+            terraform: 1.8.5
           - directory: azure-integration-setup/terraform
             terraform: 1.9.5
           - directory: azure-integration-setup/terraform/examples/management-group
@@ -90,10 +91,10 @@ jobs:
         run: terraform validate
 
   # Module logic (preconditions, checks, RBAC rules, KMS grants) against mocked
-  # providers. No cloud credentials are used. The modules declare >= 1.5, but
-  # the validate job only parses them there: 1.8.5 is the lowest version that
-  # runs this suite (mock_provider is 1.7+, strcontains in the tests is 1.8+),
-  # so every module is exercised at that floor as well as at 1.10.5.
+  # providers. No cloud credentials are used. 1.8.5 is the declared floor and
+  # the lowest version that runs this suite (mock_provider is 1.7+, strcontains
+  # in the tests is 1.8+), so every module is exercised at the floor it
+  # advertises as well as at 1.10.5.
   terraform-test:
     name: terraform test (${{ matrix.directory }}, tf ${{ matrix.terraform }})
     runs-on: ubuntu-latest

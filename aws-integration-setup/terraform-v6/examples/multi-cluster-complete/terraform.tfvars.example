@@ -17,10 +17,11 @@ eks_cluster_arns = [
 ]
 
 # collector (default): in-cluster CronJob. managed: EKS access entry plus the list-only
-# nullify-readonly ClusterRole, nothing runs in the cluster. both: deploy both.
+# nullify-readonly ClusterRole, nothing runs in the cluster. Pick one: the two paths
+# register the same cluster twice, under different identities.
 # scan_mode = "managed"
 
-# Your Nullify region from the configure page, required for managed or both
+# Your Nullify region from the configure page, required for managed
 # nullify_region = "eu-central-1"
 
 # Primary AWS region (where IAM resources are created)
@@ -32,8 +33,9 @@ aws_region = "ap-southeast-2"
 # S3 access point ARN for collector uploads (optional, shown on the Nullify configure page if used)
 # nullify_s3_access_point_arn = "arn:aws:s3:ap-southeast-2:123456789012:accesspoint/acme-corp-k8s-collector"
 
-# KMS ARN from the Nullify configure page (optional). A key ARN or an alias ARN both work.
-# kms_key_arn = "arn:aws:kms:ap-southeast-2:123456789012:key/12345678-1234-1234-1234-123456789012"
+# KMS ARN from the Nullify configure page. A key ARN or an alias ARN both work.
+# REQUIRED when scan_mode is collector: the collector refuses to upload without KMS encryption.
+kms_key_arn = "arn:aws:kms:ap-southeast-2:123456789012:key/12345678-1234-1234-1234-123456789012"
 
 # Kubernetes namespace for Nullify resources
 kubernetes_namespace = "nullify"

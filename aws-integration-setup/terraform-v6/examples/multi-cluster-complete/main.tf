@@ -21,8 +21,8 @@ locals {
 
   collector_upload_target = var.nullify_s3_access_point_arn != "" ? var.nullify_s3_access_point_arn : var.s3_bucket_name
 
-  collector = contains(["collector", "both"], var.scan_mode)
-  managed   = contains(["managed", "both"], var.scan_mode)
+  collector = var.scan_mode == "collector"
+  managed   = var.scan_mode == "managed"
 }
 
 provider "aws" {

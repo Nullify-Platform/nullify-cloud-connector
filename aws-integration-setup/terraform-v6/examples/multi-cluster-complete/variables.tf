@@ -32,18 +32,18 @@ variable "eks_cluster_arns" {
 
 variable "scan_mode" {
   type        = string
-  description = "collector: in-cluster CronJob with IRSA (default). managed: Nullify lists resources through an EKS access entry and the list-only nullify-readonly ClusterRole, with nothing running in the cluster. both: deploy both"
+  description = "collector: in-cluster CronJob with IRSA (default). managed: Nullify lists resources through an EKS access entry and the list-only nullify-readonly ClusterRole, with nothing running in the cluster. Pick one: the two paths register the same cluster under different identities, so running both duplicates its inventory"
   default     = "collector"
 
   validation {
-    condition     = contains(["collector", "managed", "both"], var.scan_mode)
-    error_message = "scan_mode must be collector, managed or both"
+    condition     = contains(["collector", "managed"], var.scan_mode)
+    error_message = "scan_mode must be collector or managed. Running both against one cluster is not supported: the collector's upload is registered as an on-prem cluster keyed on cluster_name, the managed scan as the EKS cluster keyed on its ARN, and nothing joins the two -- the cluster appears twice in inventory with its pods and containers duplicated. To change mode, apply the new one and ask Nullify to remove the old cluster registration."
   }
 }
 
 variable "nullify_region" {
   type        = string
-  description = "Your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2). Required when scan_mode is managed or both"
+  description = "Your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2). Required when scan_mode is managed"
   default     = ""
 }
 
@@ -95,6 +95,6 @@ variable "tags" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
+  description = "The KMS ARN shown on the Nullify configure page: a key ARN or an alias ARN. Required when scan_mode is collector -- the collector refuses to upload without KMS encryption"
   default     = ""
 }
