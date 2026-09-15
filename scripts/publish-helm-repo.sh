@@ -239,7 +239,7 @@ verify_tag_chart_version() {
     "+refs/heads/$MAIN_BRANCH:refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" \
     "+refs/tags/$tag:refs/tags/$tag" </dev/null ||
     die "could not fetch $MAIN_BRANCH and tag $tag from $TAG_REMOTE to verify $name $version"
-  git merge-base --is-ancestor "refs/tags/$tag^{commit}" "refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" || return 1
+  git merge-base --is-ancestor "refs/tags/$tag^{commit}" "refs/remotes/$TAG_REMOTE/$MAIN_BRANCH" || return 2
   chart="$(chart_dir_at "refs/tags/$tag^{commit}" "$name")" || return 1
   [ "$(git show "refs/tags/$tag^{commit}:$chart/Chart.yaml" | yq -r '.version')" = "$version" ] || return 1
   echo "$chart"
@@ -250,9 +250,13 @@ verify_tag_chart_version() {
 # contents as <asset>.
 verify_against_tag_tree() {
   local tag="$1" name="$2" version="$3" asset="$4"
-  local chart src="$work/recover-src/$tag"
-  chart="$(verify_tag_chart_version "$tag" "$name" "$version")" ||
-    die "tag $tag is not on $MAIN_BRANCH, or has no $CHARTS_DIR/*/Chart.yaml named $name at version $version; refusing to recover $name $version from it"
+  local chart src="$work/recover-src/$tag" rc
+  chart="$(verify_tag_chart_version "$tag" "$name" "$version")" && rc=0 || rc=$?
+  if [ "$rc" = 2 ]; then
+    die "tag $tag is not on $MAIN_BRANCH; refusing to recover $name $version from it"
+  elif [ "$rc" != 0 ]; then
+    die "tag $tag has no $CHARTS_DIR/*/Chart.yaml named $name at version $version; refusing to recover $name $version from it"
+  fi
   mkdir -p "$src/pkg"
   git archive "refs/tags/$tag^{commit}" "$chart" | tar -x -C "$src" ||
     die "could not extract $chart from tag $tag"
@@ -275,24 +279,27 @@ recover_from_release() {
   # reports every other failure (a 5xx, a rate limit, a reset) the same way a
   # published release's absence is reported, which would silently drop a live
   # version instead of failing the build.
+  local tag_rc
   if ! gh api "repos/$REPOSITORY/releases/tags/$tag" </dev/null >"$listing" 2>"$errors"; then
     grep -qE 'HTTP 404' "$errors" ||
       die "looking up release $tag of $REPOSITORY failed: $(tr '\n' ' ' <"$errors")"
-    if verify_tag_chart_version "$tag" "$name" "$version" >/dev/null; then
-      echo "::warning::$name $version is tagged ($tag) but has no GitHub release, so nothing was ever published for it; it stays unpublished until $MAIN_BRANCH carries that version"
-    else
-      echo "::warning::$tag is not on $MAIN_BRANCH, or its tree is not $name $version, and it has no GitHub release either; it is not a real chart release and stays unpublished"
-    fi
+    verify_tag_chart_version "$tag" "$name" "$version" >/dev/null && tag_rc=0 || tag_rc=$?
+    case "$tag_rc" in
+      0) echo "::warning::$name $version is tagged ($tag) but has no GitHub release, so nothing was ever published for it; it stays unpublished until $MAIN_BRANCH carries that version" ;;
+      2) echo "::warning::$tag is not on $MAIN_BRANCH, and it has no GitHub release either; it is not a real chart release and stays unpublished" ;;
+      *) echo "::warning::$tag's tree is not $name $version, and it has no GitHub release either; it is not a real chart release and stays unpublished" ;;
+    esac
     return 1
   fi
   local recorded actual chart_yaml legacy
   recorded="$(jq -r --arg a "$asset" '.assets[] | select(.name == $a) | .digest // "none"' "$listing")"
   if [ -z "$recorded" ]; then
-    if verify_tag_chart_version "$tag" "$name" "$version" >/dev/null; then
-      echo "::warning::release $tag has no asset $asset, so $name $version cannot be restored from it; it stays unpublished until $MAIN_BRANCH carries that version"
-    else
-      echo "::warning::$tag is not on $MAIN_BRANCH, or its tree is not $name $version, and its release has no $asset either; it is not a real chart release and stays unpublished"
-    fi
+    verify_tag_chart_version "$tag" "$name" "$version" >/dev/null && tag_rc=0 || tag_rc=$?
+    case "$tag_rc" in
+      0) echo "::warning::release $tag has no asset $asset, so $name $version cannot be restored from it; it stays unpublished until $MAIN_BRANCH carries that version" ;;
+      2) echo "::warning::$tag is not on $MAIN_BRANCH, and its release has no $asset either; it is not a real chart release and stays unpublished" ;;
+      *) echo "::warning::$tag's tree is not $name $version, and its release has no $asset either; it is not a real chart release and stays unpublished" ;;
+    esac
     return 1
   fi
   gh release download "$tag" -R "$REPOSITORY" -p "$asset" -D "$dir" </dev/null ||
