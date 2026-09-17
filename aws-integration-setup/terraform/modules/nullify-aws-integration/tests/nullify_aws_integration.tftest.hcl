@@ -247,8 +247,8 @@ run "permission_bar_scopes_secret_shaped_reads" {
   }
 
   assert {
-    condition     = length([for s in data.aws_iam_policy_document.readonly_policy_part2.statement : s if toset(s.actions) == toset(["ssm:GetDocument"]) && toset(s.resources) == toset(["arn:*:ssm:*:*:document/SSM-SessionManagerRunShell"])]) == 1
-    error_message = "ssm:GetDocument must be allowed only on SSM-SessionManagerRunShell"
+    condition     = length([for s in data.aws_iam_policy_document.readonly_policy_part2.statement : s if toset(s.actions) == toset(["ssm:GetDocument"]) && toset(s.resources) == toset(["arn:aws:ssm:*:*:document/SSM-SessionManagerRunShell"])]) == 1
+    error_message = "ssm:GetDocument must be allowed only on SSM-SessionManagerRunShell in this partition"
   }
 
   assert {

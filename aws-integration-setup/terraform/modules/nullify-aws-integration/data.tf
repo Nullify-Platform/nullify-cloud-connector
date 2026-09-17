@@ -259,7 +259,7 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
   statement {
     effect    = "Allow"
     actions   = ["ssm:GetDocument"]
-    resources = ["arn:*:ssm:*:*:document/SSM-SessionManagerRunShell"]
+    resources = ["arn:${data.aws_partition.current.partition}:ssm:*:*:document/SSM-SessionManagerRunShell"]
   }
 }
 

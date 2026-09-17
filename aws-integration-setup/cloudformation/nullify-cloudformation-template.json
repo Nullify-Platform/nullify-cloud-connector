@@ -582,7 +582,9 @@
                 "Action": [
                   "ssm:GetDocument"
                 ],
-                "Resource": "arn:*:ssm:*:*:document/SSM-SessionManagerRunShell",
+                "Resource": {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:*:*:document/SSM-SessionManagerRunShell"
+                },
                 "Condition": {}
               }
             ]
