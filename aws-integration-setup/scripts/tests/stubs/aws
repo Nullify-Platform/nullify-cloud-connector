@@ -213,7 +213,11 @@ case "${1:-} ${2:-}" in
     esac
     ;;
   "eks list-associated-access-policies")
-    echo "${FAKE_ADMIN_VIEW_SCOPE:-None}"
+    if [[ -n "${FAKE_ASSOCIATED_POLICIES:-}" ]]; then
+      echo "$FAKE_ASSOCIATED_POLICIES"
+    elif [[ -n "${FAKE_ADMIN_VIEW_SCOPE:-}" && "${FAKE_ADMIN_VIEW_SCOPE}" != None ]]; then
+      echo "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
+    fi
     ;;
   "eks disassociate-access-policy") ;;
   "eks update-kubeconfig") ;;

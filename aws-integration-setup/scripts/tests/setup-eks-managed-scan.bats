@@ -20,6 +20,7 @@ setup() {
   FAKE_UPDATES=""
   FAKE_ADMIN_VIEW_SCOPE=""
   FAKE_CAN_I_YES=""
+  unset FAKE_ASSOCIATED_POLICIES FAKE_KUBERNETES_GROUPS
   export PATH FAKE_AWS_LOG FAKE_AWS_STATE FAKE_PUBLIC FAKE_PRIVATE FAKE_UPDATE_STATUS \
     FAKE_CIDRS_READ_FAILS FAKE_DESCRIBE_UPDATE_FAILS FAKE_UPDATES FAKE_ADMIN_VIEW_SCOPE \
     FAKE_CAN_I_YES
@@ -367,8 +368,47 @@ output_has() {
   export FAKE_ADMIN_VIEW_SCOPE
   run_setup verify --nullify-region eu-central-1 --kube-context test
   [ "$status" -ne 0 ]
-  output_has "AmazonEKSAdminViewPolicy is associated"
+  output_has "EKS access policies are associated"
+  output_has "AmazonEKSAdminViewPolicy"
   output_has "grants get, list and watch on every resource"
+}
+
+@test "verify fails when AmazonEKSClusterAdminPolicy is associated" {
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_ASSOCIATED_POLICIES="arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+  export FAKE_ASSOCIATED_POLICIES
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "EKS access policies are associated"
+  output_has "AmazonEKSClusterAdminPolicy"
+}
+
+@test "verify fails when the access entry has extra Kubernetes groups" {
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_KUBERNETES_GROUPS="nullify-readonly cluster-admin"
+  export FAKE_KUBERNETES_GROUPS
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "extra Kubernetes groups"
+  output_has "cluster-admin"
+}
+
+@test "verify fails when the group can create pods/attach" {
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_CAN_I_YES="create pods/attach"
+  export FAKE_CAN_I_YES
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "group nullify-readonly can create pods/attach"
+}
+
+@test "apply disassociates leftover access policies" {
+  FAKE_ADMIN_VIEW_SCOPE=cluster
+  export FAKE_ADMIN_VIEW_SCOPE
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -eq 0 ]
+  called 'eks disassociate-access-policy'
+  output_has "disassociating leftover"
 }
 
 @test "verify fails when the group can get secrets" {

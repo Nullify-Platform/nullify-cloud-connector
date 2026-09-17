@@ -263,7 +263,7 @@ Both can run against the same cluster.
   `aws eks describe-cluster --name CLUSTER --query cluster.accessConfig.authenticationMode`.
   Switching from `CONFIG_MAP` is one-way. The script does it only with `--allow-auth-mode-change`.
 - The public endpoint is enabled. Private-only clusters are not supported; use the in-cluster collector.
-- The operator running setup has `eks:DescribeCluster`, `eks:DescribeUpdate`, `eks:ListUpdates`, `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:DeleteAccessEntry`, `eks:ListAccessEntries`, `eks:ListAssociatedAccessPolicies`, `eks:DisassociateAccessPolicy` (cleanup of a leftover `AmazonEKSAdminViewPolicy` only), `eks:TagResource`, `eks:UntagResource`, CloudFormation permissions on the access stacks, and Kubernetes cluster-admin (to create the ClusterRole and to impersonate in `verify`).
+- The operator running setup has `eks:DescribeCluster`, `eks:DescribeUpdate`, `eks:ListUpdates`, `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:DeleteAccessEntry`, `eks:ListAccessEntries`, `eks:ListAssociatedAccessPolicies`, `eks:DisassociateAccessPolicy` (cleanup of leftover access policies), `eks:TagResource`, `eks:UntagResource`, CloudFormation permissions on the access stacks, and Kubernetes cluster-admin (to create the ClusterRole and to impersonate in `verify`).
 - AWS CLI v2, plus `kubectl`.
 
 ### Step 1: access entries (CloudFormation)
@@ -297,7 +297,7 @@ The access entry carries group `nullify-readonly`. Bind that group to a `list`-o
 - the `nullify-k8s-readonly-access` Helm chart;
 - the same manifest committed to your GitOps repository (Flux, Argo CD).
 
-`AmazonEKSAdminViewPolicy` is not offered. It grants Secret values, `pods/log`, and on EKS 1.34 and earlier exec via `get pods/exec`. A leftover association from an earlier apply fails `verify`. Use the list-only ClusterRole in `manifests/nullify-readonly-rbac.yaml` or the `nullify-k8s-readonly-access` Helm chart (see #61). `remove` may disassociate a leftover policy (cleanup only; not a supported mode).
+`AmazonEKSAdminViewPolicy` is not offered. It grants Secret values, `pods/log`, and on EKS 1.34 and earlier exec via `get pods/exec`. Any leftover EKS access policy (AdminView, ClusterAdmin, Edit, View) fails `verify`; `apply` and `remove` disassociate them. Use the list-only ClusterRole in `manifests/nullify-readonly-rbac.yaml` or the `nullify-k8s-readonly-access` Helm chart (see #61).
 
 ### Step 3: allow Nullify's egress IPs
 
@@ -342,8 +342,8 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (
 
 `setup-eks-managed-scan.sh verify` checks that:
 
-- the authentication mode supports access entries, the access entry exists with the group, and `AmazonEKSAdminViewPolicy` is not associated;
-- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 27 resources, and `create pods`, `get secrets`, `get`/`create pods/exec`, `get`/`list pods/log`, `get nodes/proxy`, and `escalate` / `bind` on clusterroles do not. `get pods/attach`, `get pods/portforward`, and `impersonate` users / serviceaccounts are required `no` when `kubectl auth can-i` accepts those checks; otherwise they are skipped;
+- the authentication mode supports access entries, the access entry exists with **only** the expected group, and **no** EKS access policy is associated;
+- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 27 resources, and `create pods`, `get secrets`, `get`/`create pods/exec`, `get`/`list pods/log`, `get`/`create pods/attach`, `get`/`create pods/portforward`, `get nodes/proxy`, and `escalate` / `bind` on clusterroles do not. `impersonate` users / serviceaccounts / groups is required `no` when `kubectl auth can-i` accepts those checks; otherwise it is skipped;
 - `publicAccessCidrs` admits Nullify's egress IPs and does not contain `0.0.0.0/0`.
 
 `can-i` exercises Kubernetes RBAC only. It cannot see access-policy grants or prove that Nullify can reach the endpoint. Finish by confirming the cluster connects on the Nullify configure page.

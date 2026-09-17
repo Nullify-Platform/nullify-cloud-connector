@@ -455,18 +455,19 @@ access_entry_owner() {
     --query "accessEntry.tags.${MANAGED_BY_TAG_KEY}" --output text
 }
 
-# associated_admin_view_scope
-# Prints the access scope type of a leftover AmazonEKSAdminViewPolicy
-# association, or empty when none is attached. verify must fail when this is set.
-# remove may disassociate it (cleanup only; this policy is not a supported mode).
-associated_admin_view_scope() {
-  local scope
-  scope="$(aws eks list-associated-access-policies --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
-    --query "associatedAccessPolicies[?policyArn == '${ADMIN_VIEW_POLICY_ARN}'].accessScope.type" --output text)"
-  if [[ "$scope" == None ]]; then
-    scope=""
+# associated_access_policy_arns
+# Prints every EKS access-policy ARN on the entry, space-separated, or empty.
+# kubectl auth can-i cannot see these grants. verify fails if any are present;
+# apply and remove disassociate them (cleanup only; RBAC is the only mode).
+associated_access_policy_arns() {
+  local arns
+  arns="$(aws eks list-associated-access-policies --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
+    --query "associatedAccessPolicies[].policyArn" --output text)"
+  arns="$(cidr_normalise "$arns")"
+  if [[ "$arns" == None ]]; then
+    arns=""
   fi
-  echo "$scope"
+  echo "$arns"
 }
 
 ensure_access_entry() {
@@ -898,22 +899,25 @@ remove_rbac() {
   done
 }
 
-# remove_leftover_admin_view_policy
-# Cleanup only: AmazonEKSAdminViewPolicy is not a supported authorization mode.
-# Disassociates a leftover association so operators can recover from a previous
-# apply that used admin-view. Does not delete the access entry.
-remove_leftover_admin_view_policy() {
-  local scope
+# remove_leftover_access_policies
+# Cleanup only: EKS access policies are not a supported authorization mode.
+# Disassociates every leftover association (AdminView, ClusterAdmin, Edit, …)
+# so apply does not leave Secret-value grants attached. Does not delete the
+# access entry.
+remove_leftover_access_policies() {
+  local arns arn
   if ! access_entry_exists; then
     return 0
   fi
-  scope="$(associated_admin_view_scope)"
-  if [[ -z "$scope" ]]; then
+  arns="$(associated_access_policy_arns)"
+  if [[ -z "$arns" ]]; then
     return 0
   fi
-  info "access entry: disassociating leftover AmazonEKSAdminViewPolicy (cleanup only; this policy is not a supported authorization mode)"
-  mutate aws eks disassociate-access-policy --cluster-name "$CLUSTER" --region "$REGION" \
-    --principal-arn "$ROLE_ARN" --policy-arn "$ADMIN_VIEW_POLICY_ARN"
+  for arn in $arns; do
+    info "access entry: disassociating leftover $arn (cleanup only; the managed scan is RBAC-only)"
+    mutate aws eks disassociate-access-policy --cluster-name "$CLUSTER" --region "$REGION" \
+      --principal-arn "$ROLE_ARN" --policy-arn "$arn"
+  done
 }
 
 remove_access_entry() {
@@ -1006,7 +1010,7 @@ verify_cannot_if_supported() {
 }
 
 verify_access_entry() {
-  local mode groups scope
+  local mode groups extras group arns
   mode="$(cluster_query accessConfig.authenticationMode)"
   case "$mode" in
     API | API_AND_CONFIG_MAP) check_pass "authentication mode $mode supports access entries" ;;
@@ -1020,16 +1024,29 @@ verify_access_entry() {
   groups="$(aws eks describe-access-entry --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
     --query accessEntry.kubernetesGroups --output text)"
   groups="$(cidr_normalise "$groups")"
-  scope="$(associated_admin_view_scope)"
+  extras=""
+  for group in $groups; do
+    if [[ "$group" != "$GROUP" ]]; then
+      extras="${extras:+$extras }$group"
+    fi
+  done
   if [[ " $groups " == *" $GROUP "* ]]; then
     check_pass "access entry carries Kubernetes group $GROUP"
   else
     check_fail "access entry groups (${groups:-none}) do not include $GROUP"
   fi
-  if [[ -n "$scope" ]]; then
-    check_fail "AmazonEKSAdminViewPolicy is associated; ${ADMIN_VIEW_WARNING}"
+  if [[ -n "$extras" ]]; then
+    check_fail "access entry has extra Kubernetes groups ($extras); only $GROUP is allowed"
+  fi
+  arns="$(associated_access_policy_arns)"
+  if [[ -n "$arns" ]]; then
+    if [[ " $arns " == *" $ADMIN_VIEW_POLICY_ARN "* ]]; then
+      check_fail "EKS access policies are associated ($arns); ${ADMIN_VIEW_WARNING}"
+    else
+      check_fail "EKS access policies are associated ($arns); the managed scan is RBAC-only and kubectl auth can-i cannot see these grants"
+    fi
   else
-    check_pass "AmazonEKSAdminViewPolicy is not associated"
+    check_pass "no EKS access policies are associated"
   fi
 }
 
@@ -1060,9 +1077,10 @@ verify_rbac() {
   verify_cannot get pods/log --all-namespaces
   verify_cannot list pods/log --all-namespaces
   verify_cannot get nodes/proxy
-  # attach and portforward: skip if this kubectl rejects the subresource.
-  verify_cannot_if_supported get pods/attach --all-namespaces
-  verify_cannot_if_supported get pods/portforward --all-namespaces
+  verify_cannot get pods/attach --all-namespaces
+  verify_cannot create pods/attach --all-namespaces
+  verify_cannot get pods/portforward --all-namespaces
+  verify_cannot create pods/portforward --all-namespaces
   # impersonate: skip if this kubectl auth can-i does not support the check.
   verify_cannot_if_supported impersonate users
   verify_cannot_if_supported impersonate serviceaccounts
@@ -1115,6 +1133,7 @@ main() {
     plan | apply)
       ensure_auth_mode
       ensure_access_entry
+      remove_leftover_access_policies
       if rbac_in_scope; then
         setup_kubectl
       fi
@@ -1134,7 +1153,7 @@ main() {
         setup_kubectl
       fi
       remove_rbac
-      remove_leftover_admin_view_policy
+      remove_leftover_access_policies
       remove_access_entry
       remove_network
       ;;
