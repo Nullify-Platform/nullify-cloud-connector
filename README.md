@@ -255,9 +255,12 @@ nullify-cloud-connector/
 ├── 📖 IMPLEMENTATION.md                  # Technical implementation details
 │
 ├── 🤖 .github/workflows/                 # CI/CD Automation
-│   ├── helm-release.yml                  # Auto-publish Helm charts to GitHub Pages
-│   ├── terraform-validate.yml            # Terraform validation on PRs
-│   └── auto-tag.yml                      # Auto-tag releases on version changes
+│   ├── helm-release.yml                  # Lint charts on PRs; publish, tag and release them from main
+│   └── terraform-validate.yml            # Terraform validation on PRs
+│
+├── 🔧 scripts/                           # Repository tooling
+│   ├── publish-helm-repo.sh              # Build the GitHub Pages Helm repository (keeps every published version)
+│   └── test-helm-charts.sh               # Lint and render one chart (used by CI)
 │
 ├── ⚙️ helm-charts/                       # 🎯 KUBERNETES DEPLOYMENT
 │   └── nullify-k8s-collector/            # Main Helm chart for K8s collector
@@ -284,7 +287,6 @@ nullify-cloud-connector/
 │   │   └── README.md                     # Terraform documentation
 │   └── 🔧 scripts/                       # Utility Scripts
 │       ├── validate-deployment.sh        # Deployment validation
-│       ├── update-helm-repo.sh           # Update Helm repository
 │       ├── cleanup.sh                    # Clean removal script
 │       └── setup-aws-integration.sh      # AWS setup automation
 │
@@ -400,6 +402,10 @@ helm show chart nullify/nullify-k8s-collector
 helm show values nullify/nullify-k8s-collector
 ```
 
+Every chart version merged to `main` stays published, so `--version` pins keep working.
+Each release is tagged `<chart>-v<version>` (for example `nullify-k8s-collector-v0.3.0`).
+Collector releases up to 0.2.0 were tagged `vX.Y.Z`; only 0.2.0 of those is still in the repository.
+
 ### **Deployment Management**
 ```bash
 # Upgrade the chart
@@ -413,24 +419,6 @@ helm uninstall nullify-collector --namespace nullify
 # Trigger manual collection
 kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nullify
 ```
-
-## 🚚 **Publishing the Helm charts (maintainers)**
-
-`main`'s `helm-release.yml` rebuilds the GitHub Pages site from scratch out of
-`helm-charts/nullify-k8s-collector` alone. It never fetches or merges the live
-`index.yaml`, so a deploy **unpublishes every other chart version**, and
-`helm install --version 0.2.0` stops resolving.
-
-**Required merge order:** the Helm publish rework (PR #65 → #70 → #75) has to
-reach `main` before any branch that bumps a chart version, including the
-collector chain (PR #68 → #72 → #77) and the readonly-access chart (PR #71 →
-#76). Its workflow re-downloads every published version, verifies it against
-its digest and republishes it, which is what makes a chart version permanent.
-
-Until then the release job refuses to deploy when the live index serves any
-version it would drop, and names this order in the error. Once the rework is on
-`main` that guard is gone with the workflow it lives in; on a merge conflict
-between the two, take the rework's `helm-release.yml`.
 
 ## 📚 **Documentation**
 
