@@ -26,6 +26,15 @@ Required:
 
 Options (CloudFormation):
   --stack-name NAME     CloudFormation stack name (default: nullify-integration)
+  --region REGION       Region of the --stack-name stack (default: the AWS CLI's
+                        configured region)
+  --eks-access-regions R1,R2
+                        Regions holding a managed EKS scan access stack
+                        (nullify-eks-managed-scan-access.json). They are deleted
+                        before the role stack, so no access entry outlives the role.
+  --eks-access-stack-name NAME
+                        Access stack name in each region
+                        (default: nullify-eks-managed-scan-access)
 
 Options (Helm):
   --release NAME        Helm release name (default: nullify-collector)
@@ -43,6 +52,9 @@ EOF
 
 METHOD=""
 STACK_NAME="nullify-integration"
+REGION=""
+EKS_ACCESS_REGIONS=""
+EKS_ACCESS_STACK_NAME="nullify-eks-managed-scan-access"
 RELEASE_NAME="nullify-collector"
 NAMESPACE="nullify"
 TF_DIR="${REPO_ROOT}/aws-integration-setup/terraform"
@@ -52,6 +64,9 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --method) METHOD="$2"; shift 2 ;;
     --stack-name) STACK_NAME="$2"; shift 2 ;;
+    --region) REGION="$2"; shift 2 ;;
+    --eks-access-regions) EKS_ACCESS_REGIONS="$2"; shift 2 ;;
+    --eks-access-stack-name) EKS_ACCESS_STACK_NAME="$2"; shift 2 ;;
     --release) RELEASE_NAME="$2"; shift 2 ;;
     --namespace) NAMESPACE="$2"; shift 2 ;;
     --tf-dir) TF_DIR="$2"; shift 2 ;;
@@ -78,26 +93,108 @@ confirm() {
   fi
 }
 
+require_aws_credentials() {
+  local err
+  if ! err="$({ aws sts get-caller-identity >/dev/null; } 2>&1)"; then
+    echo -e "${RED}aws sts get-caller-identity failed, so no stack was checked or deleted: ${err}${NC}" >&2
+    exit 1
+  fi
+}
+
+# stack_exists NAME [REGION]
+# Succeeds when the stack exists and fails when describe-stacks reports that it
+# does not exist. Any other describe-stacks error (expired credentials, access
+# denied, throttling) exits the script.
+stack_exists() {
+  local name="$1" region="${2:-}" err
+  local -a args
+  args=(--stack-name "$name")
+  if [[ -n "$region" ]]; then
+    args+=(--region "$region")
+  fi
+  if err="$({ aws cloudformation describe-stacks "${args[@]}" >/dev/null; } 2>&1)"; then
+    return 0
+  fi
+  if [[ "$err" == *ValidationError* && "$err" == *"does not exist"* ]]; then
+    return 1
+  fi
+  echo -e "${RED}Could not check stack '${name}'${region:+ in ${region}}; stopping without deleting it or any later stack: ${err}${NC}" >&2
+  exit 1
+}
+
+DELETED_ACCESS_STACKS=0
+
+delete_eks_access_stacks() {
+  local region
+  local -a regions
+  IFS=',' read -r -a regions <<< "$EKS_ACCESS_REGIONS"
+  for region in ${regions[@]+"${regions[@]}"}; do
+    if [[ -z "$region" ]]; then
+      continue
+    fi
+    if ! stack_exists "$EKS_ACCESS_STACK_NAME" "$region"; then
+      echo -e "${YELLOW}No stack '${EKS_ACCESS_STACK_NAME}' in ${region}; skipping.${NC}"
+      continue
+    fi
+    echo -e "${BLUE}Deleting EKS access stack '${EKS_ACCESS_STACK_NAME}' in ${region}...${NC}"
+    aws cloudformation delete-stack --region "$region" --stack-name "$EKS_ACCESS_STACK_NAME"
+    if ! aws cloudformation wait stack-delete-complete --region "$region" --stack-name "$EKS_ACCESS_STACK_NAME"; then
+      echo -e "${RED}Deleting '${EKS_ACCESS_STACK_NAME}' in ${region} failed or timed out; the role stack was not deleted.${NC}"
+      exit 1
+    fi
+    echo -e "${GREEN}Stack '${EKS_ACCESS_STACK_NAME}' in ${region} deleted.${NC}"
+    DELETED_ACCESS_STACKS=$((DELETED_ACCESS_STACKS + 1))
+  done
+}
+
 case $METHOD in
   cloudformation)
     echo -e "${BLUE}${BOLD}Removing CloudFormation stack: ${STACK_NAME}${NC}"
 
-    if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" &>/dev/null 2>&1; then
-      echo -e "${YELLOW}Stack '${STACK_NAME}' not found. Nothing to clean up.${NC}"
+    if [[ -z "$EKS_ACCESS_REGIONS" ]]; then
+      echo -e "${YELLOW}No --eks-access-regions given. If you deployed nullify-eks-managed-scan-access.json, pass its regions so those stacks are deleted first; access entries are not removed with the role.${NC}"
+      echo -e "${YELLOW}Access entries created by setup-eks-managed-scan.sh need its 'remove' action.${NC}"
+    fi
+
+    require_aws_credentials
+
+    MAIN_REGION_ARGS=()
+    if [[ -n "$REGION" ]]; then
+      MAIN_REGION_ARGS=(--region "$REGION")
+      MAIN_STACK_WHERE="in ${REGION}"
+    else
+      MAIN_STACK_WHERE="in the AWS CLI's configured region (pass --region if the stack is elsewhere)"
+    fi
+
+    MAIN_STACK_EXISTS=true
+    if ! stack_exists "$STACK_NAME" "$REGION"; then
+      MAIN_STACK_EXISTS=false
+    fi
+
+    if [[ "$MAIN_STACK_EXISTS" != true && -z "$EKS_ACCESS_REGIONS" ]]; then
+      echo -e "${YELLOW}Stack '${STACK_NAME}' not found ${MAIN_STACK_WHERE}. Nothing to clean up.${NC}"
       exit 0
     fi
 
     confirm
 
-    echo -e "${BLUE}Deleting stack...${NC}"
-    aws cloudformation delete-stack --stack-name "$STACK_NAME"
+    if [[ -n "$EKS_ACCESS_REGIONS" ]]; then
+      delete_eks_access_stacks
+    fi
 
-    echo -e "${BLUE}Waiting for stack deletion to complete...${NC}"
-    if aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" 2>/dev/null; then
-      echo -e "${GREEN}Stack '${STACK_NAME}' deleted successfully.${NC}"
+    if [[ "$MAIN_STACK_EXISTS" != true ]]; then
+      echo -e "${YELLOW}Stack '${STACK_NAME}' not found ${MAIN_STACK_WHERE}; deleted ${DELETED_ACCESS_STACKS} EKS access stack(s).${NC}"
     else
-      echo -e "${RED}Stack deletion failed or timed out. Check the AWS Console for details.${NC}"
-      exit 1
+      echo -e "${BLUE}Deleting stack...${NC}"
+      aws cloudformation delete-stack ${MAIN_REGION_ARGS[@]+"${MAIN_REGION_ARGS[@]}"} --stack-name "$STACK_NAME"
+
+      echo -e "${BLUE}Waiting for stack deletion to complete...${NC}"
+      if aws cloudformation wait stack-delete-complete ${MAIN_REGION_ARGS[@]+"${MAIN_REGION_ARGS[@]}"} --stack-name "$STACK_NAME" 2>/dev/null; then
+        echo -e "${GREEN}Stack '${STACK_NAME}' deleted successfully.${NC}"
+      else
+        echo -e "${RED}Stack deletion failed or timed out. Check the AWS Console for details.${NC}"
+        exit 1
+      fi
     fi
     ;;
 

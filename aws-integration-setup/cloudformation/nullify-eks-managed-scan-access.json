@@ -1,0 +1,123 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Transform": "AWS::LanguageExtensions",
+  "Description": "Nullify managed EKS scan access (regional). Creates one EKS access entry per cluster for the Nullify read-only role created by nullify-cloudformation-template.json. Deploy once in each region that has clusters to scan, with CAPABILITY_AUTO_EXPAND. Do not update with --use-previous-template.",
+  "Parameters": {
+    "CustomerName": {
+      "Type": "String",
+      "Description": "The CustomerName of the main Nullify stack. The access entry principal is arn:<partition>:iam::<this account>:role/AWSIntegration-<CustomerName>-NullifyReadOnlyRole, which must already exist.",
+      "AllowedPattern": "^[a-zA-Z][a-zA-Z0-9_\\-]*$",
+      "MinLength": 1,
+      "MaxLength": 10
+    },
+    "ClusterNames": {
+      "Type": "CommaDelimitedList",
+      "Description": "Comma-separated EKS cluster names in this stack's region. Each cluster needs authentication mode API or API_AND_CONFIG_MAP. Names that differ only in non-alphanumeric characters (prod-eu and prodeu) collide; put them in separate stacks. Removing a name deletes that cluster's access entry.",
+      "AllowedPattern": "^[0-9A-Za-z][A-Za-z0-9_-]{0,99}$",
+      "ConstraintDescription": "Each cluster name must start with a letter or digit and contain only letters, digits, hyphens and underscores (max 100 characters)."
+    },
+    "KubernetesAuthorization": {
+      "Type": "String",
+      "Default": "RBACGroup",
+      "AllowedValues": [
+        "RBACGroup"
+      ],
+      "Description": "RBACGroup: the access entry carries KubernetesGroupName; bind that group to the list-only ClusterRole in manifests/nullify-readonly-rbac.yaml or the nullify-k8s-readonly-access Helm chart (PR #61). AmazonEKSAdminViewPolicy is not offered: leftover associations fail verify."
+    },
+    "KubernetesGroupName": {
+      "Type": "String",
+      "Default": "nullify-readonly",
+      "AllowedPattern": "^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$",
+      "ConstraintDescription": "Lowercase letters, digits, '.' and '-' only (max 63 characters). ':' is not allowed, which excludes system: groups.",
+      "Description": "Kubernetes group on the access entry. manifests/nullify-readonly-rbac.yaml binds nullify-readonly; for any other group, bind the nullify-readonly ClusterRole to it yourself."
+    }
+  },
+  "Resources": {
+    "Fn::ForEach::NullifyEKSAccessEntries": [
+      "Cluster",
+      {
+        "Ref": "ClusterNames"
+      },
+      {
+        "NullifyEKSAccessEntry&{Cluster}": {
+          "Type": "AWS::EKS::AccessEntry",
+          "Properties": {
+            "ClusterName": {
+              "Ref": "Cluster"
+            },
+            "PrincipalArn": {
+              "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
+            },
+            "Type": "STANDARD",
+            "KubernetesGroups": [
+              {
+                "Ref": "KubernetesGroupName"
+              }
+            ],
+            "Tags": [
+              {
+                "Key": "ManagedBy",
+                "Value": "nullify-connector-cloudformation"
+              },
+              {
+                "Key": "NullifyStackName",
+                "Value": {
+                  "Ref": "AWS::StackName"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "Outputs": {
+    "AccessEntryArnCommand": {
+      "Description": "Prints the access entry ARN for one cluster in ClustersConfigured.",
+      "Value": {
+        "Fn::Sub": "aws eks describe-access-entry --region ${AWS::Region} --cluster-name CLUSTER --principal-arn arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole --query accessEntry.accessEntryArn --output text"
+      }
+    },
+    "PrincipalArn": {
+      "Description": "IAM role the access entries grant cluster access to.",
+      "Value": {
+        "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
+      }
+    },
+    "AuthorizationMode": {
+      "Description": "Kubernetes authorization mode of the access entries.",
+      "Value": {
+        "Ref": "KubernetesAuthorization"
+      }
+    },
+    "KubernetesGroup": {
+      "Description": "Kubernetes group the RBAC binding must name.",
+      "Value": {
+        "Ref": "KubernetesGroupName"
+      }
+    },
+    "ClustersConfigured": {
+      "Description": "Clusters with an access entry from this stack.",
+      "Value": {
+        "Fn::Join": [
+          ",",
+          {
+            "Ref": "ClusterNames"
+          }
+        ]
+      }
+    },
+    "NextStepCommand": {
+      "Description": "Run for each cluster from a checkout of nullify-cloud-connector: applies RBAC and adds Nullify's egress IPs to publicAccessCidrs.",
+      "Value": {
+        "Fn::Sub": "aws-integration-setup/scripts/setup-eks-managed-scan.sh apply --skip-access-entry --group ${KubernetesGroupName} --cluster CLUSTER --region ${AWS::Region} --customer-name ${CustomerName} --nullify-region NULLIFY_REGION"
+      }
+    },
+    "VerifyCommand": {
+      "Description": "Run for each cluster after NextStepCommand.",
+      "Value": {
+        "Fn::Sub": "aws-integration-setup/scripts/setup-eks-managed-scan.sh verify --group ${KubernetesGroupName} --cluster CLUSTER --region ${AWS::Region} --customer-name ${CustomerName} --nullify-region NULLIFY_REGION"
+      }
+    }
+  }
+}
