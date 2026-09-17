@@ -1,0 +1,22 @@
+{{- $group := include "nullify-readonly.groupName" . -}}
+Nullify read-only access installed.
+
+  ClusterRole:        {{ .Values.clusterRoleName }} (list on cluster configuration, get on /version)
+  ClusterRoleBinding: {{ .Values.clusterRoleBindingName }} -> Group "{{ $group }}"
+  Secrets list:       {{ .Values.grantSecretsRead }}
+  ConfigMaps list:    {{ .Values.grantConfigMapsRead }}
+{{- if or (not .Values.grantSecretsRead) (not .Values.grantConfigMapsRead) }}
+
+Set collectSecrets / collectConfigMaps on this cluster in Nullify to match.
+A list the chart withholds fails the scan while the matching option is on.
+{{- end }}
+
+Next steps:
+  1. Map the Nullify integration role to group "{{ $group }}" (no access policy).
+  2. Allow Nullify's egress IPs for your Nullify region on the public API endpoint.
+     Live NAT addresses: GET https://api.<tenant>.nullify.ai/dast/sourceips
+  3. Verify the group's RBAC (a group can only be impersonated together with a user):
+       kubectl auth can-i list secrets --all-namespaces --as nullify-verify --as-group {{ $group }}
+       kubectl auth can-i get pods --all-namespaces --as nullify-verify --as-group {{ $group }}   # expect: no
+
+See https://github.com/Nullify-Platform/nullify-cloud-connector/blob/main/README.md#managed-eks-scan-no-in-cluster-agent
