@@ -47,10 +47,17 @@
       },
       "NullifyKMSKeyArn": {
         "Type": "String",
-        "Description": "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed).",
+        "Description": "Optional. The KMS ARN shown on the Nullify configure page. Both forms are accepted: an alias ARN (arn:aws:kms:<region>:<account>:alias/<name>) or a key ARN (arn:aws:kms:<region>:<account>:key/<key-id>, including multi-Region key/mrk-... keys). IAM ignores alias ARNs for key operations, so the policy grants the KMS actions on this ARN and, in a second statement, on key/* in the ARN's account and region. That second statement carries the IAM condition StringNotEquals aws:PrincipalAccount, so it applies only when the ARN names an account other than the one you deploy into: an ARN from your own account is granted on its own. Nullify's key policy is the real gate: this role can only use Nullify keys whose key policy allows it.",
         "Default": "",
-        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+))?$",
-        "ConstraintDescription": "Must be a valid KMS key ARN (key ID or alias) or empty string."
+        "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/(mrk-)?[a-f0-9-]+|alias/[A-Za-z0-9/_-]+))?$",
+        "ConstraintDescription": "Must be empty, a KMS alias ARN (arn:aws:kms:<region>:<account>:alias/<name>) or a KMS key ARN (arn:aws:kms:<region>:<account>:key/<key-id>)."
+      },
+      "NullifyS3AccessPointArn": {
+        "Type": "String",
+        "Description": "Set this when the Nullify configure page shows an S3 access point ARN (arn:aws:s3:<region>:<account>:accesspoint/<name>), and use the same ARN as the Helm collector.s3.bucket; uploads through the access point are denied without it. Leave empty when the page shows a bucket name. Applies only with EnableEKSIntegration=true: the S3 access policy then also allows uploads through this access point, and the NullifyS3Bucket grants stay.",
+        "Default": "",
+        "AllowedPattern": "^(arn:aws:s3:[a-z0-9-]+:[0-9]{12}:accesspoint/[a-z0-9-]{3,50})?$",
+        "ConstraintDescription": "Must be empty or an S3 access point ARN (arn:aws:s3:<region>:<account>:accesspoint/<name>)."
       }
     },
     "Conditions": {
@@ -100,6 +107,18 @@
             "Fn::Equals": [
               {
                 "Ref": "NullifyKMSKeyArn"
+              },
+              ""
+            ]
+          }
+        ]
+      },
+      "S3AccessPointProvided": {
+        "Fn::Not": [
+          {
+            "Fn::Equals": [
+              {
+                "Ref": "NullifyS3AccessPointArn"
               },
               ""
             ]
@@ -611,14 +630,33 @@
                   "s3:ListBucket",
                   "s3:PutObjectAcl"
                 ],
-                "Resource": [
-                  {
-                    "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
-                  },
-                  {
-                    "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
-                  }
-                ],
+                "Resource": {
+                  "Fn::If": [
+                    "S3AccessPointProvided",
+                    [
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
+                      },
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
+                      },
+                      {
+                        "Ref": "NullifyS3AccessPointArn"
+                      },
+                      {
+                        "Fn::Sub": "${NullifyS3AccessPointArn}/object/*"
+                      }
+                    ],
+                    [
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
+                      },
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
+                      }
+                    ]
+                  ]
+                },
                 "Condition": {}
               }
             ]
@@ -645,10 +683,119 @@
                   "kms:ReEncryptFrom",
                   "kms:ReEncryptTo"
                 ],
-                "Resource": {
-                  "Ref": "NullifyKMSKeyArn"
-                },
+                "Resource": [
+                  {
+                    "Ref": "NullifyKMSKeyArn"
+                  }
+                ],
                 "Condition": {}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "kms:DescribeKey",
+                  "kms:GenerateDataKey",
+                  "kms:GenerateDataKeyWithoutPlaintext",
+                  "kms:ReEncryptFrom",
+                  "kms:ReEncryptTo"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": [
+                      "arn:${KmsPartition}:kms:${KmsRegion}:${KmsAccount}:key/*",
+                      {
+                        "KmsPartition": {
+                          "Fn::Select": [
+                            1,
+                            {
+                              "Fn::Split": [
+                                ":",
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Ref": "NullifyKMSKeyArn"
+                                      },
+                                      ":::::x"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "KmsRegion": {
+                          "Fn::Select": [
+                            3,
+                            {
+                              "Fn::Split": [
+                                ":",
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Ref": "NullifyKMSKeyArn"
+                                      },
+                                      ":::::x"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        "KmsAccount": {
+                          "Fn::Select": [
+                            4,
+                            {
+                              "Fn::Split": [
+                                ":",
+                                {
+                                  "Fn::Join": [
+                                    "",
+                                    [
+                                      {
+                                        "Ref": "NullifyKMSKeyArn"
+                                      },
+                                      ":::::x"
+                                    ]
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "Condition": {
+                  "StringNotEquals": {
+                    "aws:PrincipalAccount": {
+                      "Fn::Select": [
+                        4,
+                        {
+                          "Fn::Split": [
+                            ":",
+                            {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  {
+                                    "Ref": "NullifyKMSKeyArn"
+                                  },
+                                  ":::::x"
+                                ]
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
               }
             ]
           }
@@ -662,6 +809,109 @@
           "Fn::GetAtt": [
             "IAMViewOnlyRole",
             "Arn"
+          ]
+        }
+      },
+      "RoleArn": {
+        "Description": "ARN of the Nullify read-only IAM role (same value as IAMRoleArn).",
+        "Value": {
+          "Fn::GetAtt": [
+            "IAMViewOnlyRole",
+            "Arn"
+          ]
+        }
+      },
+      "RoleName": {
+        "Description": "Name of the Nullify read-only IAM role. nullify-eks-managed-scan-access.json derives this name from CustomerName, so pass the same CustomerName there.",
+        "Value": {
+          "Ref": "IAMViewOnlyRole"
+        }
+      },
+      "KubernetesGroupName": {
+        "Description": "Default Kubernetes group for the managed EKS scan: the KubernetesGroupName default of nullify-eks-managed-scan-access.json, bound by manifests/nullify-readonly-rbac.yaml.",
+        "Value": "nullify-readonly"
+      },
+      "KMSPolicyResource": {
+        "Condition": "KMSKeyProvided",
+        "Description": "Resources of the KMS access policy, comma-separated: NullifyKMSKeyArn, granted always, and key/* in the ARN's account and region, granted only on requests whose principal account differs from that account.",
+        "Value": {
+          "Fn::Join": [
+            ",",
+            [
+              {
+                "Ref": "NullifyKMSKeyArn"
+              },
+              {
+                "Fn::Sub": [
+                  "arn:${KmsPartition}:kms:${KmsRegion}:${KmsAccount}:key/*",
+                  {
+                    "KmsPartition": {
+                      "Fn::Select": [
+                        1,
+                        {
+                          "Fn::Split": [
+                            ":",
+                            {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  {
+                                    "Ref": "NullifyKMSKeyArn"
+                                  },
+                                  ":::::x"
+                                ]
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "KmsRegion": {
+                      "Fn::Select": [
+                        3,
+                        {
+                          "Fn::Split": [
+                            ":",
+                            {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  {
+                                    "Ref": "NullifyKMSKeyArn"
+                                  },
+                                  ":::::x"
+                                ]
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "KmsAccount": {
+                      "Fn::Select": [
+                        4,
+                        {
+                          "Fn::Split": [
+                            ":",
+                            {
+                              "Fn::Join": [
+                                "",
+                                [
+                                  {
+                                    "Ref": "NullifyKMSKeyArn"
+                                  },
+                                  ":::::x"
+                                ]
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
           ]
         }
       }
