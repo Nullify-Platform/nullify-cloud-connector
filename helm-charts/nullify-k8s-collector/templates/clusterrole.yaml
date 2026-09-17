@@ -6,16 +6,10 @@ metadata:
   labels:
     {{- include "k8s-collector.labels" . | nindent 4 }}
 rules:
-  # Kinds the collector actually lists (context/internal/cloudintegrations/
-  # k8sintegration/collect/collect.go in the platform monorepo), plus "jobs":
-  # the fix/k8s-deployment-matching-review stack (monorepo #12807, which
-  # #12830 sits on) starts collecting Jobs owned by a CronJob to resolve
-  # scheduled-run pod ownership, so that grant is added ahead of the
-  # collector code landing rather than dropped and re-added. No other kind
-  # here is collected today; each one removed a grant this role held with no
-  # reader.
+  # Kinds the collector actually lists, plus "jobs" (monorepo #12807 / #12830).
+  # Secrets are omitted: list returns values.
   - apiGroups: [""]
-    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "secrets", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
+    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]

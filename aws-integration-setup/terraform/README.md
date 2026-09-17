@@ -101,7 +101,7 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 
 | API group | Resources (verb `list`) |
 |---|---|
-| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
+| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, resourcequotas, limitranges, serviceaccounts |
 | apps | deployments, daemonsets, statefulsets, replicasets |
 | batch | jobs |
 | networking.k8s.io | ingresses, networkpolicies |
@@ -111,9 +111,9 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 
 Plus `get` on the non-resource URL `/version`.
 
-Both modes list Secrets. The in-cluster collector redacts every Secret value inside the cluster before it uploads collected data. The managed scan receives Secret objects from the API server and redacts every value before anything is stored. The `list` verb permits reading values in either mode -- Kubernetes has no metadata-only RBAC verb for Secrets.
+Neither mode lists Secrets. Kubernetes has no metadata-only RBAC verb for Secrets: `list secrets` returns `.data` values, so the ClusterRole omits the kind.
 
-`authorization` accepts only `rbac`. `AmazonEKSAdminViewPolicy` is not supported: it grants `get`, `list` and `watch` on every resource, including Secrets, custom resources and `pods/log`, and on EKS 1.34 and earlier `get pods/exec` is enough to exec into pods. If an existing cluster still has that policy associated with the Nullify role, disassociate it (`aws eks disassociate-access-policy --cluster-name <name> --principal-arn <role-arn> --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy`). `AmazonEKSViewPolicy` is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects.
+`authorization` accepts only `rbac`. `AmazonEKSAdminViewPolicy` is not supported: it grants `get`, `list` and `watch` on every resource, including Secrets, custom resources and `pods/log`, and on EKS 1.34 and earlier `get pods/exec` is enough to exec into pods. If an existing cluster still has that policy associated with the Nullify role, disassociate it (`aws eks disassociate-access-policy --cluster-name <name> --principal-arn <role-arn> --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy`). `AmazonEKSViewPolicy` is not offered: it cannot list nodes, persistent volumes, RBAC or admission objects.
 
 ### Prerequisites
 

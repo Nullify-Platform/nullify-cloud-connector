@@ -49,8 +49,9 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
   }
 
   # Kinds the collector lists, kept identical to the managed-scan ClusterRole
-  # (managed_scan.tf) and to collect.go. "jobs" is granted ahead of the
-  # monorepo's fix/k8s-deployment-matching-review stack (#12807 / #12830).
+  # (managed_scan.tf). Secrets are omitted: list returns values. "jobs" is
+  # granted ahead of the monorepo's fix/k8s-deployment-matching-review stack
+  # (#12807 / #12830).
   rule {
     api_groups = [""]
     resources = [
@@ -60,7 +61,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "nodes",
       "serviceaccounts",
       "configmaps",
-      "secrets",
       "resourcequotas",
       "limitranges",
       "persistentvolumes",

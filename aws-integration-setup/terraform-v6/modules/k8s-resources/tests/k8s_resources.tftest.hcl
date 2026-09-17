@@ -140,15 +140,15 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : length(rule.resources)]) == 27
-    error_message = "The managed-scan ClusterRole must list exactly the 27 kinds the scanner reads"
+    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : length(rule.resources)]) == 26
+    error_message = "The managed-scan ClusterRole must list exactly the 26 config kinds; secrets are omitted because list returns values"
   }
 
   # Pins the set, not just the size: swapping one kind for another keeps every
   # count assertion green. Anything else that binds this group -- a chart, a
   # manifest -- has to grant exactly these kinds.
   assert {
-    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].api_groups) == tolist([""]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].resources) == toset(["nodes", "namespaces", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "configmaps", "secrets", "resourcequotas", "limitranges", "serviceaccounts"])
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].api_groups) == tolist([""]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].resources) == toset(["nodes", "namespaces", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "configmaps", "resourcequotas", "limitranges", "serviceaccounts"])
     error_message = "Rule 0 must grant exactly the core API group kinds the scanner lists"
   }
 
@@ -193,8 +193,8 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = contains(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].resources, "secrets") && !contains(flatten([for rule in kubernetes_cluster_role_v1.nullify_readonly[0].rule : rule.resources == null ? [] : rule.resources]), "pods/exec")
-    error_message = "The role must list secrets and grant no subresource"
+    condition     = !contains(flatten([for rule in kubernetes_cluster_role_v1.nullify_readonly[0].rule : rule.resources == null ? [] : rule.resources]), "secrets") && !contains(flatten([for rule in kubernetes_cluster_role_v1.nullify_readonly[0].rule : rule.resources == null ? [] : rule.resources]), "pods/exec")
+    error_message = "The role must not list secrets (list returns values) and grant no subresource"
   }
 
   assert {

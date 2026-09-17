@@ -1,10 +1,11 @@
 locals {
-  # The kinds Nullify's managed EKS scan lists. Any other manifest or chart that
-  # grants this role must list exactly these kinds; the test suite pins the set.
+  # The kinds Nullify's managed EKS scan lists. Secrets are omitted: list
+  # returns values. Any other manifest or chart that grants this role must
+  # list exactly these kinds; the test suite pins the set.
   managed_scan_rules = [
     {
       api_groups = [""]
-      resources  = ["nodes", "namespaces", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "configmaps", "secrets", "resourcequotas", "limitranges", "serviceaccounts"]
+      resources  = ["nodes", "namespaces", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "configmaps", "resourcequotas", "limitranges", "serviceaccounts"]
     },
     {
       api_groups = ["apps"]
