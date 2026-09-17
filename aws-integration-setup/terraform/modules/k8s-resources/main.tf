@@ -25,6 +25,7 @@ resource "kubernetes_service_account" "nullify_collector_sa" {
   }
 }
 
+# Secrets are omitted: list returns values.
 resource "kubernetes_cluster_role" "nullify_readonly_role" {
   metadata {
     name = "nullify-k8s-collector-role"
@@ -44,7 +45,6 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "nodes",
       "serviceaccounts",
       "configmaps",
-      "secrets",
       "resourcequotas",
       "limitranges",
       "persistentvolumes",

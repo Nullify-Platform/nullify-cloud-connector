@@ -6,12 +6,13 @@ metadata:
   labels:
     {{- include "k8s-collector.labels" . | nindent 4 }}
 rules:
-  # list-only config kinds. The 27 kinds collect.go on monorepo main lists,
-  # plus jobs (#12807) and the 11 kinds the CSPM GA collector (monorepo
-  # #12225) lists under Strict:true. A 403 on any of those 11 aborts the
-  # whole cluster scan. None of these grants are get/watch or subresources.
+  # list-only config kinds. Secrets are omitted: list returns values.
+  # jobs (#12807) and the 11 kinds the CSPM GA collector (monorepo #12225)
+  # lists under Strict:true are included. A 403 on any of those 11 aborts
+  # the whole cluster scan. None of these grants are get/watch or
+  # subresources.
   - apiGroups: [""]
-    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "secrets", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
+    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
