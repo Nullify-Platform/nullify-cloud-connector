@@ -2,7 +2,7 @@
 # This example shows the minimal setup for AWS integration without Kubernetes
 
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.8"
 
   required_providers {
     aws = {
@@ -44,4 +44,4 @@ output "role_arn" {
 output "deployment_summary" {
   description = "Summary of the deployment"
   value       = module.nullify_aws_integration.deployment_summary
-} 
+}

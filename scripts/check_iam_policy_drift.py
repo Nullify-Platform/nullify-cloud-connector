@@ -250,6 +250,7 @@ def terraform_clusterrole_kinds(text: str) -> set:
     return kinds
 
 
+
 def main() -> int:
     cfn_readonly = cfn_entries(READONLY_RESOURCES)
     cfn_deny = cfn_entries(DENY_RESOURCES)
@@ -267,6 +268,7 @@ def main() -> int:
     for path in TF_CLUSTERROLES:
         tf_kinds = terraform_clusterrole_kinds(path.read_text())
         ok = compare(f"ClusterRole kinds: Helm vs {path.relative_to(REPO_ROOT)}", helm_kinds, tf_kinds) and ok
+
 
     return 0 if ok else 1
 
