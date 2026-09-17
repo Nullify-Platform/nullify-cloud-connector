@@ -47,7 +47,7 @@
       },
       "NullifyKMSKeyArn": {
         "Type": "String",
-        "Description": "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed).",
+        "Description": "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed). A key ARN is preferred over an alias ARN because IAM cannot resolve aliases in a policy Resource.",
         "Default": "",
         "AllowedPattern": "^(arn:aws:kms:[a-z0-9-]+:[0-9]{12}:(key/[a-f0-9-]+|alias/.+))?$",
         "ConstraintDescription": "Must be a valid KMS key ARN (key ID or alias) or empty string."
@@ -125,9 +125,6 @@
                   "s3:GetObject*",
                   "s3:DeleteObject*",
                   "s3:RestoreObject",
-                  "ecr:GetDownloadUrlForLayer",
-                  "ecr:BatchGetImage",
-                  "ecr:GetAuthorizationToken",
                   "ecr:PutImage",
                   "ecr:InitiateLayerUpload",
                   "ecr:UploadLayerPart",
@@ -162,6 +159,7 @@
                   "ec2:DeleteSnapshot",
                   "ec2:CreateImage",
                   "ec2:DeregisterImage",
+                  "ec2:DescribeLaunchTemplateVersions",
                   "logs:CreateLogStream",
                   "logs:PutLogEvents",
                   "logs:DeleteLogGroup",
@@ -175,6 +173,7 @@
                   "dynamodb:Query",
                   "dynamodb:Scan",
                   "es:ESHttp*",
+                  "events:ListTargetsByRule",
                   "glue:GetConnection",
                   "glue:GetConnections",
                   "glue:GetPartition*",
@@ -434,7 +433,6 @@
                   "ec2:DescribeImages",
                   "ec2:DescribeInstances",
                   "ec2:DescribeInternetGateways",
-                  "ec2:DescribeLaunchTemplateVersions",
                   "ec2:DescribeLaunchTemplates",
                   "ec2:DescribeManagedPrefixLists",
                   "ec2:DescribeNatGateways",
@@ -458,6 +456,9 @@
                   "ec2:GetSnapshotBlockPublicAccessState",
                   "ec2:SearchTransitGateway*",
                   "ecr:Describe*",
+                  "ecr:GetDownloadUrlForLayer",
+                  "ecr:BatchGetImage",
+                  "ecr:GetAuthorizationToken",
                   "ecr:GetLifecyclePolicy",
                   "ecr:GetRepositoryPolicy",
                   "ecs:Describe*",
@@ -566,7 +567,6 @@
                   "sqs:GetQueueAttributes",
                   "sqs:List*",
                   "ssm:Describe*",
-                  "ssm:GetDocument",
                   "ssm:ListDocuments",
                   "states:DescribeStateMachine",
                   "states:List*",
@@ -575,6 +575,14 @@
                   "wafv2:List*"
                 ],
                 "Resource": "*",
+                "Condition": {}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:GetDocument"
+                ],
+                "Resource": "arn:*:ssm:*:*:document/SSM-SessionManagerRunShell",
                 "Condition": {}
               }
             ]

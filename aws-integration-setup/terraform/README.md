@@ -86,7 +86,7 @@ terraform/
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
-| Kinds read | Same kind list as the managed scan in `k8s-resources` and chart 0.4.0 and later. Chart 0.2.0 grants a different set: it adds endpoints, cronjobs and CRDs, and lacks configmaps, secrets, resourcequotas, limitranges, endpointslices and the admission kinds | See [RBAC granted to Nullify](#rbac-granted-to-nullify-default-authorization--rbac) |
+| Kinds read | Same kind list as the managed scan in `k8s-resources` and chart 0.4.0 and later. Chart 0.2.0 grants a different set: it adds endpoints, cronjobs and CRDs, and lacks configmaps, secrets, resourcequotas, limitranges, endpointslices and the admission kinds | See [RBAC granted to Nullify](#rbac-granted-to-nullify-authorization--rbac) |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
@@ -95,7 +95,7 @@ Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, 
 
 Nullify lists Kubernetes resources from its own compute, using the read-only role this configuration creates. The scan only calls `list`, plus `get /version`.
 
-### RBAC granted to Nullify (default, `authorization = "rbac"`)
+### RBAC granted to Nullify (`authorization = "rbac"`)
 
 The access entry carries the Kubernetes group `nullify-readonly`, bound to the ClusterRole `nullify-readonly`:
 
@@ -113,9 +113,7 @@ Plus `get` on the non-resource URL `/version`.
 
 Both modes list Secrets. The in-cluster collector redacts every Secret value inside the cluster before it uploads collected data. The managed scan receives Secret objects from the API server and redacts every value before anything is stored. The `list` verb permits reading values in either mode -- Kubernetes has no metadata-only RBAC verb for Secrets.
 
-### `authorization = "admin_view_policy"` (opt-in)
-
-Associates `AmazonEKSAdminViewPolicy` at cluster scope, so no Kubernetes objects are needed. **It grants far more than the scan uses:** `get`, `list` and `watch` on every resource, including Secrets, custom resources and `pods/log`. On EKS 1.34 and earlier, `get pods/exec` is enough to exec into pods. Its grants do not show in `kubectl auth can-i --list`. The module prints a warning on every plan in this mode. `AmazonEKSViewPolicy` is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects.
+`authorization` accepts only `rbac`. `AmazonEKSAdminViewPolicy` is not supported: it grants `get`, `list` and `watch` on every resource, including Secrets, custom resources and `pods/log`, and on EKS 1.34 and earlier `get pods/exec` is enough to exec into pods. If an existing cluster still has that policy associated with the Nullify role, disassociate it (`aws eks disassociate-access-policy --cluster-name <name> --principal-arn <role-arn> --policy-arn arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy`). `AmazonEKSViewPolicy` is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects.
 
 ### Prerequisites
 
@@ -123,7 +121,7 @@ Associates `AmazonEKSAdminViewPolicy` at cluster scope, so no Kubernetes objects
 - **Authentication mode.** Access entries need `API` or `API_AND_CONFIG_MAP`. Check with `aws eks describe-cluster --name <cluster> --query cluster.accessConfig.authenticationMode`. Switch (one-way) with `aws eks update-cluster-config --name <cluster> --access-config authenticationMode=API_AND_CONFIG_MAP`. The module fails at plan for `CONFIG_MAP` clusters.
 - **Same account.** Nullify assumes the role in the cluster's own account, so deploy `nullify-aws-integration` in every account that owns a scanned cluster. The module rejects clusters in another account.
 - **One region per module instance (AWS provider v5).** Instantiate `eks-managed-scan-access` once per region with `providers = { aws = aws.<region> }`, as `examples/multi-cluster-complete` does. `../terraform-v6/` handles every region in one instance.
-- **Terraform identity.** `eks:DescribeCluster`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:UpdateAccessEntry`, `eks:DeleteAccessEntry` and `eks:TagResource`, plus `eks:AssociateAccessPolicy`, `eks:DisassociateAccessPolicy` and `eks:ListAssociatedAccessPolicies` for `admin_view_policy`. Creating the ClusterRole with `k8s-resources` needs rights to grant every permission in it, which in practice means cluster-admin. A GitOps controller (Flux, Argo CD) that already holds those rights can apply the same ClusterRole itself.
+- **Terraform identity.** `eks:DescribeCluster`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:UpdateAccessEntry`, `eks:DeleteAccessEntry` and `eks:TagResource`. Creating the ClusterRole with `k8s-resources` needs rights to grant every permission in it, which in practice means cluster-admin. A GitOps controller (Flux, Argo CD) that already holds those rights can apply the same ClusterRole itself.
 - **Pass `principal_unique_id`.** EKS ties an access entry to the role's ID, so a recreated role with the same ARN is silently not authorized. With `principal_unique_id = module.nullify_aws_integration.role_unique_id`, the entries are replaced with the role.
 - **Existing access entry.** If this role is already mapped on a cluster, import it. The address depends on how you call this module:
   - Through the root module (`enable_managed_scan = true`, which wraps `eks_managed_scan_access` in `count`): `terraform import 'module.eks_managed_scan_access[0].aws_eks_access_entry.nullify["<cluster-arn>"]' <cluster-name>:<role-arn>`.
@@ -192,11 +190,11 @@ module "nullify_readonly_rbac" {
 }
 ```
 
-If any cluster in `cluster_arns` also runs the collector (a `k8s-resources` instance with `enable_collector = true`, an equivalent manifest, or the `nullify-k8s-collector` Helm chart), list its ARN in `collector_cluster_arns` too — the module fails at plan rather than double-registering it, in every `authorization` mode.
+If any cluster in `cluster_arns` also runs the collector (a `k8s-resources` instance with `enable_collector = true`, an equivalent manifest, or the `nullify-k8s-collector` Helm chart), list its ARN in `collector_cluster_arns` too — the module fails at plan rather than double-registering it.
 
 Outputs: `access_entry_arns`, `authorization`, `kubernetes_group_name`, `nullify_egress_cidrs`, `clusters_for_nullify`, `endpoint_allowlist`.
 
-The root configuration exposes the same module through `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization` (default `rbac`) and `managed_scan_kubernetes_group`. The root has no Kubernetes provider, so in `rbac` mode apply the RBAC separately. It also derives `collector_cluster_arns` for you from `eks_cluster_arns` whenever `enable_kubernetes_integration` is true — that is only a proxy (granting the collector's IRSA trust is not the same as deploying it), so override it with the root's own `collector_cluster_arns` variable when trust is granted ahead of deployment, or when migrating a cluster from collector to managed scan: disable or remove the collector on that cluster first, then set the override so the guard stops blocking it before you also remove the cluster from `eks_cluster_arns` (which revokes its IRSA trust).
+The root configuration exposes the same module through `enable_managed_scan`, `managed_scan_cluster_arns`, `nullify_region`, `managed_scan_authorization` (`rbac` only) and `managed_scan_kubernetes_group`. The root has no Kubernetes provider, so apply the RBAC separately. It also derives `collector_cluster_arns` for you from `eks_cluster_arns` whenever `enable_kubernetes_integration` is true — that is only a proxy (granting the collector's IRSA trust is not the same as deploying it), so override it with the root's own `collector_cluster_arns` variable when trust is granted ahead of deployment, or when migrating a cluster from collector to managed scan: disable or remove the collector on that cluster first, then set the override so the guard stops blocking it before you also remove the cluster from `eks_cluster_arns` (which revokes its IRSA trust).
 
 ## Multi-Cluster Support
 
@@ -287,7 +285,7 @@ terraform init && terraform apply
 - a key ARN: `arn:aws:kms:<region>:<account>:key/<key-id>`, including multi-Region `key/mrk-...` keys
 - an alias ARN: `arn:aws:kms:<region>:<account>:alias/<name>`
 
-The key Nullify hands out is in Nullify's account, so the policy grants the ARN you pass and `arn:<partition>:kms:<region>:<account>:key/*` in that same account and region: IAM does not resolve an alias ARN in a policy's `Resource`, and Nullify's key policy is the real gate on a key Nullify owns. The wildcard is derived only when the ARN's account differs from yours, so an ARN pasted from your own account grants that key alone. The `kms_policy_resources` module output lists what was granted.
+A key ARN is preferred because it avoids the wildcard. IAM does not resolve an alias ARN in a policy's `Resource`, so an alias ARN also grants `arn:<partition>:kms:<region>:<account>:key/*` in that same account and region. A concrete key ARN grants that ARN only and does not open every key in Nullify's account. Nullify's key policy is the real gate on a key Nullify owns. The `kms_policy_resources` module output lists what was granted.
 
 `k8s-resources` takes the same variable and writes no IAM policy: it forwards the value to the collector as `NULLIFY_KMS_KEY_ARN`, which S3 takes as `SSEKMSKeyId`. S3 resolves a bare key ID or a bare `alias/<name>` against the calling account, and the key is in Nullify's, so only the two ARN forms above work there too; both modules validate for them.
 
@@ -344,7 +342,7 @@ This is the same value as `collector.clusterName` in the `nullify-k8s-collector`
 
 `k8s-resources` variables include `enable_collector` (default `true`), `enable_managed_scan_rbac` (default `false`), `collector_image`, `cronjob_schedule` (default `0 0 * * *`), `kubernetes_namespace`, `service_account_name` and `enable_debug`.
 
-A cluster cannot run the collector and the managed scan at once: the collector's upload registers it as on-prem keyed on `cluster_name`, the managed scan registers the same cluster as its EKS ARN, and nothing joins the two, so running both lists the cluster twice with its pods and containers duplicated. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination: pass it the cluster ARNs where `enable_collector` is `true` and the module fails at plan for any of them, in every `authorization` mode (`admin_view_policy` creates no Kubernetes objects, so a rule inside `k8s-resources` could never see it). To change mode, apply the new one and ask Nullify to remove the old cluster registration.
+A cluster cannot run the collector and the managed scan at once: the collector's upload registers it as on-prem keyed on `cluster_name`, the managed scan registers the same cluster as its EKS ARN, and nothing joins the two, so running both lists the cluster twice with its pods and containers duplicated. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination: pass it the cluster ARNs where `enable_collector` is `true` and the module fails at plan for any of them. To change mode, apply the new one and ask Nullify to remove the old cluster registration.
 
 `collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, a pinned tag of Nullify's ECR Public image. It is the same build as `k8s-collector-latest`, which the `nullify-k8s-collector` Helm chart deploys, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
 
@@ -391,7 +389,7 @@ module "nullify_k8s" {
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The root configuration no longer declares the Kubernetes provider. It never deployed Kubernetes resources.
 - A cluster outside the AWS provider's region now fails at plan time with an explanation instead of a not-found error.
-- The KMS policy grants `key/*` in the account and region of `kms_key_arn` whenever that account is not your own, for alias ARNs and key ARNs alike — the same resources the CloudFormation template grants. An ARN in your own account grants only that key.
+- The KMS policy grants `key/*` in the account and region of `kms_key_arn` only when that ARN is an alias. A concrete key ARN is preferred: it grants that ARN only.
 
 ## Security Considerations
 

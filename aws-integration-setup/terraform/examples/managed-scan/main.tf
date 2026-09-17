@@ -64,7 +64,7 @@ module "eks_managed_scan_access" {
 # Argo CD applies the nullify-readonly ClusterRole instead.
 module "k8s_resources" {
   source = "../../modules/k8s-resources"
-  count  = var.authorization == "rbac" && var.manage_rbac ? 1 : 0
+  count  = var.manage_rbac ? 1 : 0
 
   enable_collector              = false
   enable_managed_scan_rbac      = true

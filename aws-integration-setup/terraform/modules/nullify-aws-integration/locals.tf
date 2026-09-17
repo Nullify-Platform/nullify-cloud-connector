@@ -20,20 +20,18 @@ locals {
   enable_s3_access = var.s3_bucket_name != "" || var.nullify_s3_access_point_arn != ""
   s3_bucket_arn    = var.s3_bucket_name != "" ? "arn:${data.aws_partition.current.partition}:s3:::${var.s3_bucket_name}" : ""
 
-  # KMS configuration. The key Nullify hands out lives in Nullify's account, so
-  # key/* is granted next to the ARN: IAM never resolves an alias ARN in a
-  # Resource, and the key policy on a key Nullify owns is the real gate on what
-  # this role can use. The wildcard is derived only when the ARN's account
-  # differs from this one, so a key pasted from the customer's own account
-  # grants that key alone and reaches nothing else in the account. For a
-  # Nullify-supplied key this grants what the CloudFormation template grants.
-  enable_kms_access        = var.kms_key_arn != ""
-  kms_arn_parts            = split(":", var.kms_key_arn)
-  kms_arn_is_full          = length(local.kms_arn_parts) == 6
-  kms_arn_account          = local.kms_arn_is_full ? element(local.kms_arn_parts, 4) : ""
-  kms_arn_is_cross_account = local.kms_arn_is_full && local.kms_arn_account != data.aws_caller_identity.current.account_id
-  kms_key_wildcard         = local.kms_arn_is_cross_account ? ["arn:${element(local.kms_arn_parts, 1)}:kms:${element(local.kms_arn_parts, 3)}:${local.kms_arn_account}:key/*"] : []
-  kms_policy_resources     = local.enable_kms_access ? concat([var.kms_key_arn], local.kms_key_wildcard) : []
+  # KMS configuration. IAM never resolves an alias ARN in a Resource, so
+  # key/* is granted next to an alias ARN in that account and region. A
+  # concrete key ARN grants that ARN only: it must not open every key in
+  # Nullify's account. Nullify's key policy is the real gate on a key
+  # Nullify owns.
+  enable_kms_access    = var.kms_key_arn != ""
+  kms_arn_parts        = split(":", var.kms_key_arn)
+  kms_arn_is_full      = length(local.kms_arn_parts) == 6
+  kms_arn_account      = local.kms_arn_is_full ? element(local.kms_arn_parts, 4) : ""
+  kms_arn_is_alias     = local.kms_arn_is_full && strcontains(var.kms_key_arn, ":alias/")
+  kms_key_wildcard     = local.kms_arn_is_alias ? ["arn:${element(local.kms_arn_parts, 1)}:kms:${element(local.kms_arn_parts, 3)}:${local.kms_arn_account}:key/*"] : []
+  kms_policy_resources = local.enable_kms_access ? concat([var.kms_key_arn], local.kms_key_wildcard) : []
 
   # Common tags
   common_tags = merge(var.tags, {

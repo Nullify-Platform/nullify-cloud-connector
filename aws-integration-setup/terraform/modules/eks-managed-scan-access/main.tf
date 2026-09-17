@@ -62,7 +62,7 @@ resource "aws_eks_access_entry" "nullify" {
   cluster_name      = data.aws_eks_cluster.this[each.key].name
   principal_arn     = var.principal_arn
   type              = "STANDARD"
-  kubernetes_groups = var.authorization == "rbac" ? [var.kubernetes_group_name] : []
+  kubernetes_groups = [var.kubernetes_group_name]
   tags              = var.tags
 
   lifecycle {
@@ -72,22 +72,6 @@ resource "aws_eks_access_entry" "nullify" {
       condition     = contains(["API", "API_AND_CONFIG_MAP"], try(data.aws_eks_cluster.this[each.key].access_config[0].authentication_mode, "CONFIG_MAP"))
       error_message = "Cluster ${each.value.name} (${each.value.region}) uses authentication mode CONFIG_MAP, which does not support access entries. Switch it (one-way) with: aws eks update-cluster-config --region ${each.value.region} --name ${each.value.name} --access-config authenticationMode=API_AND_CONFIG_MAP. Or remove it from cluster_arns and map the role in aws-auth instead (see README)."
     }
-  }
-}
-
-resource "aws_eks_access_policy_association" "admin_view" {
-  for_each = { for key, cluster in local.clusters : key => cluster if var.authorization == "admin_view_policy" }
-
-  cluster_name  = aws_eks_access_entry.nullify[each.key].cluster_name
-  principal_arn = aws_eks_access_entry.nullify[each.key].principal_arn
-  policy_arn    = "arn:${each.value.partition}:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
-
-  access_scope {
-    type = "cluster"
-  }
-
-  lifecycle {
-    replace_triggered_by = [aws_eks_access_entry.nullify[each.key].access_entry_arn]
   }
 }
 
@@ -107,12 +91,5 @@ check "nullify_can_reach_cluster_endpoints" {
   assert {
     condition     = length(local.unreachable_clusters) == 0
     error_message = "Nullify's ${var.nullify_region} egress IPs cannot reach the public endpoint of: ${join(", ", local.unreachable_clusters)}. This module does not change publicAccessCidrs; see the endpoint_allowlist output for the missing CIDRs and an update command. The check matches exact CIDRs, so a wider range that already covers Nullify's IPs also warns."
-  }
-}
-
-check "admin_view_policy_is_broader_than_required" {
-  assert {
-    condition     = var.authorization != "admin_view_policy"
-    error_message = "authorization = admin_view_policy associates AmazonEKSAdminViewPolicy: get, list and watch on every resource, including Secrets, custom resources and pods/log. On EKS 1.34 and earlier get pods/exec is enough to exec into pods, and these grants do not show in kubectl auth can-i --list. The default rbac mode grants list on only the kinds Nullify reads."
   }
 }

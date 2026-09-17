@@ -35,19 +35,19 @@ variable "nullify_region" {
 
 variable "authorization" {
   type        = string
-  description = "rbac (recommended) or admin_view_policy. admin_view_policy grants get, list and watch on every resource, including Secrets, custom resources and pods/log, and on EKS 1.34 and earlier allows exec into pods"
+  description = "rbac is the only supported mode. AmazonEKSAdminViewPolicy is not supported"
   default     = "rbac"
 }
 
 variable "kubernetes_group_name" {
   type        = string
-  description = "Kubernetes group on the access entry, bound to the nullify-readonly ClusterRole in rbac mode"
+  description = "Kubernetes group on the access entry, bound to the nullify-readonly ClusterRole"
   default     = "nullify-readonly"
 }
 
 variable "manage_rbac" {
   type        = bool
-  description = "In rbac mode, create the nullify-readonly ClusterRole and binding with the Kubernetes provider. Set false when GitOps or Helm applies them"
+  description = "Create the nullify-readonly ClusterRole and binding with the Kubernetes provider. Set false when GitOps or Helm applies them"
   default     = true
 }
 

@@ -53,7 +53,7 @@ run "cross_account_alias_grants_the_alias_and_key_wildcard" {
   }
 }
 
-run "cross_account_key_arn_grants_the_key_wildcard_too" {
+run "a_key_arn_grants_only_that_key" {
   command = plan
 
   variables {
@@ -61,12 +61,12 @@ run "cross_account_key_arn_grants_the_key_wildcard_too" {
   }
 
   assert {
-    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:111122223333:key/mrk-1234abcd12ab34cd56ef1234567890ab", "arn:aws:kms:us-east-2:111122223333:key/*"])
-    error_message = "A key ARN in Nullify's account must grant key/* too: this is what the CloudFormation template grants for the same input"
+    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:111122223333:key/mrk-1234abcd12ab34cd56ef1234567890ab"])
+    error_message = "A concrete key ARN must grant that ARN only: key/* would open every key in Nullify's account"
   }
 }
 
-run "a_key_in_this_account_grants_only_that_key" {
+run "an_alias_in_this_account_still_grants_key_wildcard" {
   command = plan
 
   variables {
@@ -74,8 +74,8 @@ run "a_key_in_this_account_grants_only_that_key" {
   }
 
   assert {
-    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:123456789012:alias/my-own-key"])
-    error_message = "An ARN in the caller's own account must never derive key/*: that would reach every key in the account whose policy delegates to the root"
+    condition     = tolist(output.kms_policy_resources) == tolist(["arn:aws:kms:us-east-2:123456789012:alias/my-own-key", "arn:aws:kms:us-east-2:123456789012:key/*"])
+    error_message = "An alias ARN must grant key/* because IAM does not resolve aliases"
   }
 }
 
@@ -168,8 +168,7 @@ run "issuer_urls_must_match_the_cluster_region" {
 # passing test only proves the module plans, not that a policy grants any
 # action. `statement` blocks are the data source's own configuration -- they
 # are plan-time known even when the resulting document is mocked -- so assert
-# on those instead. Only the KMS, S3 access point and readonly policies are
-# covered here: the trust and deny-list policies aren't in W58/N78's scope.
+# on those instead.
 run "kms_policy_grants_the_expected_actions_and_resources" {
   command = plan
 
@@ -226,5 +225,39 @@ run "readonly_policy_grants_a_read_only_action" {
   assert {
     condition     = data.aws_iam_policy_document.readonly_policy_part1.statement[0].effect == "Allow"
     error_message = "The readonly policy statement must Allow, not Deny"
+  }
+}
+
+run "permission_bar_scopes_secret_shaped_reads" {
+  command = plan
+
+  assert {
+    condition     = !contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "ec2:DescribeLaunchTemplateVersions") && contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "ec2:DescribeLaunchTemplates")
+    error_message = "DescribeLaunchTemplateVersions returns UserData in the clear and must not be allowed; DescribeLaunchTemplates stays"
+  }
+
+  assert {
+    condition     = contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "ecr:GetDownloadUrlForLayer") && contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "ecr:BatchGetImage") && contains(data.aws_iam_policy_document.readonly_policy_part1.statement[0].actions, "ecr:GetAuthorizationToken")
+    error_message = "Image pull and ECR auth must be allowed so scanning can fetch customer images"
+  }
+
+  assert {
+    condition     = contains(data.aws_iam_policy_document.readonly_policy_part2.statement[0].actions, "lambda:GetFunction") && !contains(data.aws_iam_policy_document.readonly_policy_part2.statement[0].actions, "ssm:GetDocument")
+    error_message = "lambda:GetFunction stays on *; ssm:GetDocument must leave the wildcard allow"
+  }
+
+  assert {
+    condition     = length([for s in data.aws_iam_policy_document.readonly_policy_part2.statement : s if toset(s.actions) == toset(["ssm:GetDocument"]) && toset(s.resources) == toset(["arn:*:ssm:*:*:document/SSM-SessionManagerRunShell"])]) == 1
+    error_message = "ssm:GetDocument must be allowed only on SSM-SessionManagerRunShell"
+  }
+
+  assert {
+    condition     = contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ec2:DescribeLaunchTemplateVersions") && contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "events:ListTargetsByRule")
+    error_message = "UserData and EventBridge target Input must be denied"
+  }
+
+  assert {
+    condition     = !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ecr:GetDownloadUrlForLayer") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ecr:BatchGetImage") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ecr:GetAuthorizationToken") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "lambda:GetFunction") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ssm:GetDocument")
+    error_message = "Image pull, lambda:GetFunction and scoped GetDocument must not be denied"
   }
 }

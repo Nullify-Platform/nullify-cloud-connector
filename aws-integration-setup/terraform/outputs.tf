@@ -58,7 +58,7 @@ output "managed_scan_clusters_for_nullify" {
 }
 
 output "managed_scan_kubernetes_group" {
-  description = "Kubernetes group to bind to the nullify-readonly ClusterRole (null when disabled or for admin_view_policy)"
+  description = "Kubernetes group to bind to the nullify-readonly ClusterRole (null when disabled)"
   value       = one(module.eks_managed_scan_access[*].kubernetes_group_name)
 }
 

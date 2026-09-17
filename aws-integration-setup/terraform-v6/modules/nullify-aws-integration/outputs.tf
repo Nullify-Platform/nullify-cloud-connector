@@ -81,7 +81,7 @@ output "policy_arns" {
 }
 
 output "kms_policy_resources" {
-  description = "Resources the KMS policy grants: kms_key_arn, plus key/* in its account and region when that account is not this one (empty when kms_key_arn is not set)"
+  description = "Resources the KMS policy grants: a key ARN is granted as-is; an alias ARN also gets key/* in its account and region because IAM cannot resolve aliases. Empty when kms_key_arn is not set. A key ARN is preferred because it avoids the wildcard"
   value       = local.kms_policy_resources
 }
 

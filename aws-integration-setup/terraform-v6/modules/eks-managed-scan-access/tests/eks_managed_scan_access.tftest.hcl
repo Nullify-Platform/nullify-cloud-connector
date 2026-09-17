@@ -84,11 +84,6 @@ run "rbac_is_the_default" {
   }
 
   assert {
-    condition     = length(aws_eks_access_policy_association.admin_view) == 0
-    error_message = "rbac mode must not associate any access policy"
-  }
-
-  assert {
     condition     = output.endpoint_allowlist["arn:aws:eks:eu-west-1:123456789012:cluster/prod"].update_command == null
     error_message = "An endpoint open to 0.0.0.0/0 needs no update"
   }
@@ -149,34 +144,14 @@ run "private_endpoint_warns_without_a_command" {
   }
 }
 
-run "admin_view_policy_is_cluster_scoped_and_warns" {
+run "admin_view_policy_is_rejected" {
   command = plan
 
   variables {
     authorization = "admin_view_policy"
   }
 
-  expect_failures = [check.admin_view_policy_is_broader_than_required]
-
-  assert {
-    condition     = aws_eks_access_policy_association.admin_view["arn:aws:eks:eu-west-1:123456789012:cluster/prod"].policy_arn == "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
-    error_message = "admin_view_policy must associate AmazonEKSAdminViewPolicy"
-  }
-
-  assert {
-    condition     = aws_eks_access_policy_association.admin_view["arn:aws:eks:eu-west-1:123456789012:cluster/prod"].access_scope[0].type == "cluster"
-    error_message = "The access policy must be cluster scoped"
-  }
-
-  assert {
-    condition     = output.kubernetes_group_name == null
-    error_message = "admin_view_policy binds no Kubernetes group"
-  }
-
-  assert {
-    condition     = length(aws_eks_access_entry.nullify["arn:aws:eks:eu-west-1:123456789012:cluster/prod"].kubernetes_groups) == 0
-    error_message = "admin_view_policy must plan kubernetes_groups as an empty set on the entry: the attribute is Optional+Computed, so null would keep whatever is in state. This pins the planned configuration under a mocked provider, not the applied result"
-  }
+  expect_failures = [var.authorization]
 }
 
 run "view_policy_is_not_offered" {
@@ -209,18 +184,14 @@ run "cross_account_clusters_are_rejected" {
   expect_failures = [data.aws_eks_cluster.this]
 }
 
-run "a_collector_cluster_is_rejected_even_under_admin_view_policy" {
-  # admin_view_policy creates no Kubernetes objects, so the k8s-resources
-  # ClusterRole's own precondition can never see this combination. The guard
-  # has to live here, on the access entry every authorization mode creates.
+run "a_collector_cluster_is_rejected" {
   command = plan
 
   variables {
-    authorization          = "admin_view_policy"
     collector_cluster_arns = ["arn:aws:eks:eu-west-1:123456789012:cluster/prod"]
   }
 
-  expect_failures = [data.aws_eks_cluster.this, check.admin_view_policy_is_broader_than_required]
+  expect_failures = [data.aws_eks_cluster.this]
 }
 
 run "a_cluster_not_in_collector_cluster_arns_is_unaffected" {

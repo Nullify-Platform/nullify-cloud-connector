@@ -4,13 +4,13 @@ output "access_entry_arns" {
 }
 
 output "authorization" {
-  description = "How Kubernetes authorizes Nullify: rbac or admin_view_policy"
+  description = "How Kubernetes authorizes Nullify (rbac is the only supported mode)"
   value       = var.authorization
 }
 
 output "kubernetes_group_name" {
-  description = "Group the RBAC binding must name (null for admin_view_policy)"
-  value       = var.authorization == "rbac" ? var.kubernetes_group_name : null
+  description = "Group the RBAC binding must name"
+  value       = var.kubernetes_group_name
 }
 
 output "nullify_egress_cidrs" {

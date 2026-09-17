@@ -108,7 +108,7 @@ variable "tags" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN, including multi-Region key/mrk-... keys, or an alias ARN. The key Nullify hands out is in Nullify's account, so the policy grants the ARN you pass and key/* in that same account and region, for key ARNs and alias ARNs alike: IAM does not resolve an alias in a policy Resource, and Nullify's key policy is the real gate on a key Nullify owns. The wildcard is derived only when the ARN's account differs from yours, so an ARN pasted from your own account grants that key alone. The kms_policy_resources output lists what was granted"
+  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN, including multi-Region key/mrk-... keys, or an alias ARN. A key ARN is preferred because it avoids the wildcard. IAM does not resolve an alias in a policy Resource, so an alias ARN also grants key/* in that same account and region. A concrete key ARN grants that ARN only and does not open every key in Nullify's account. Nullify's key policy is the real gate on a key Nullify owns. The kms_policy_resources output lists what was granted"
   default     = ""
 
   validation {

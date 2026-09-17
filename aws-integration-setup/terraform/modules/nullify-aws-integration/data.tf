@@ -124,7 +124,6 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "ec2:DescribeImages",
       "ec2:DescribeInstances",
       "ec2:DescribeInternetGateways",
-      "ec2:DescribeLaunchTemplateVersions",
       "ec2:DescribeLaunchTemplates",
       "ec2:DescribeManagedPrefixLists",
       "ec2:DescribeNatGateways",
@@ -148,6 +147,9 @@ data "aws_iam_policy_document" "readonly_policy_part1" {
       "ec2:GetSnapshotBlockPublicAccessState",
       "ec2:SearchTransitGateway*",
       "ecr:Describe*",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+      "ecr:GetAuthorizationToken",
       "ecr:GetLifecyclePolicy",
       "ecr:GetRepositoryPolicy",
       "ecs:Describe*",
@@ -244,7 +246,6 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "sqs:GetQueueAttributes",
       "sqs:List*",
       "ssm:Describe*",
-      "ssm:GetDocument",
       "ssm:ListDocuments",
       "states:DescribeStateMachine",
       "states:List*",
@@ -253,6 +254,12 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "wafv2:List*"
     ]
     resources = ["*"]
+  }
+
+  statement {
+    effect    = "Allow"
+    actions   = ["ssm:GetDocument"]
+    resources = ["arn:*:ssm:*:*:document/SSM-SessionManagerRunShell"]
   }
 }
 
@@ -312,9 +319,6 @@ data "aws_iam_policy_document" "deny_actions_policy" {
       "s3:GetObject*",
       "s3:DeleteObject*",
       "s3:RestoreObject",
-      "ecr:GetDownloadUrlForLayer",
-      "ecr:BatchGetImage",
-      "ecr:GetAuthorizationToken",
       "ecr:PutImage",
       "ecr:InitiateLayerUpload",
       "ecr:UploadLayerPart",
@@ -349,6 +353,7 @@ data "aws_iam_policy_document" "deny_actions_policy" {
       "ec2:DeleteSnapshot",
       "ec2:CreateImage",
       "ec2:DeregisterImage",
+      "ec2:DescribeLaunchTemplateVersions",
       "logs:CreateLogStream",
       "logs:PutLogEvents",
       "logs:DeleteLogGroup",
@@ -362,6 +367,7 @@ data "aws_iam_policy_document" "deny_actions_policy" {
       "dynamodb:Query",
       "dynamodb:Scan",
       "es:ESHttp*",
+      "events:ListTargetsByRule",
       "glue:GetConnection",
       "glue:GetConnections",
       "glue:GetPartition*",

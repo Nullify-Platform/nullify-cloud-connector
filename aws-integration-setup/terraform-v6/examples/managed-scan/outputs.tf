@@ -9,7 +9,7 @@ output "clusters_for_nullify" {
 }
 
 output "kubernetes_group_name" {
-  description = "Kubernetes group the RBAC binding names (null for admin_view_policy)"
+  description = "Kubernetes group the RBAC binding names"
   value       = module.eks_managed_scan_access.kubernetes_group_name
 }
 

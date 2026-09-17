@@ -26,18 +26,18 @@ variable "cluster_arns" {
 
 variable "authorization" {
   type        = string
-  description = "How Kubernetes authorizes the access entry. rbac (recommended): the entry carries kubernetes_group_name; bind it to a list-only nullify-readonly ClusterRole, which k8s-resources applies with enable_managed_scan_rbac = true. admin_view_policy: associates AmazonEKSAdminViewPolicy at cluster scope and needs no Kubernetes objects. WARNING: AmazonEKSAdminViewPolicy grants get, list and watch on every resource, including Secrets, custom resources and pods/log; on EKS 1.34 and earlier get pods/exec is enough to exec into pods; and its grants do not show in kubectl auth can-i --list"
+  description = "How Kubernetes authorizes the access entry. rbac is the only supported mode: the entry carries kubernetes_group_name; bind it to a list-only nullify-readonly ClusterRole, which k8s-resources applies with enable_managed_scan_rbac = true. AmazonEKSAdminViewPolicy is not supported: it grants get, list and watch on every resource, including Secrets, custom resources and pods/log, and on EKS 1.34 and earlier allows exec into pods"
   default     = "rbac"
 
   validation {
-    condition     = contains(["rbac", "admin_view_policy"], var.authorization)
-    error_message = "authorization must be rbac or admin_view_policy. AmazonEKSViewPolicy is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects."
+    condition     = var.authorization == "rbac"
+    error_message = "authorization must be rbac. AmazonEKSAdminViewPolicy is not supported: it grants get, list and watch on every resource, including Secrets and pods/log, and on EKS 1.34 and earlier allows exec into pods. AmazonEKSViewPolicy is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects."
   }
 }
 
 variable "kubernetes_group_name" {
   type        = string
-  description = "Kubernetes group on the access entry when authorization is rbac"
+  description = "Kubernetes group on the access entry"
   default     = "nullify-readonly"
 
   validation {
@@ -64,7 +64,7 @@ variable "tags" {
 
 variable "collector_cluster_arns" {
   type        = list(string)
-  description = "The subset of cluster_arns where a k8s-resources instance with enable_collector = true (or an equivalent manifest, or the nullify-k8s-collector Helm chart) already registers the cluster as an on-prem collector target. The module refuses to also create an access entry for one of these: the collector keys the cluster on cluster_name, this module's access entry keys the same cluster on its EKS ARN, and nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Checked for every authorization mode, including admin_view_policy, which creates no Kubernetes objects and so is invisible to any precondition inside k8s-resources. Compared as full ARNs, so a same-named cluster in a different account or region is never mistaken for a match"
+  description = "The subset of cluster_arns where a k8s-resources instance with enable_collector = true (or an equivalent manifest, or the nullify-k8s-collector Helm chart) already registers the cluster as an on-prem collector target. The module refuses to also create an access entry for one of these: the collector keys the cluster on cluster_name, this module's access entry keys the same cluster on its EKS ARN, and nothing joins the two, so the cluster would be listed twice in inventory with its pods and containers duplicated. Compared as full ARNs, so a same-named cluster in a different account or region is never mistaken for a match"
   default     = []
 
   validation {

@@ -122,13 +122,18 @@ variable "collector_cluster_arns" {
 
 variable "managed_scan_authorization" {
   type        = string
-  description = "rbac (recommended): the access entry carries managed_scan_kubernetes_group, which you bind to a list-only nullify-readonly ClusterRole. The k8s-resources module applies that ClusterRole with enable_managed_scan_rbac = true; the root has no Kubernetes provider, so apply it separately. admin_view_policy: AmazonEKSAdminViewPolicy, which reads every resource including Secrets and pods/log, and allows exec into pods on EKS 1.34 and earlier"
+  description = "rbac is the only supported mode: the access entry carries managed_scan_kubernetes_group, which you bind to a list-only nullify-readonly ClusterRole. The k8s-resources module applies that ClusterRole with enable_managed_scan_rbac = true; the root has no Kubernetes provider, so apply it separately. AmazonEKSAdminViewPolicy is not supported"
   default     = "rbac"
+
+  validation {
+    condition     = var.managed_scan_authorization == "rbac"
+    error_message = "managed_scan_authorization must be rbac. AmazonEKSAdminViewPolicy is not supported."
+  }
 }
 
 variable "managed_scan_kubernetes_group" {
   type        = string
-  description = "Kubernetes group on the access entries in rbac mode"
+  description = "Kubernetes group on the access entries"
   default     = "nullify-readonly"
 }
 

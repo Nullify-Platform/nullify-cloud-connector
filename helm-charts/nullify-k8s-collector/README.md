@@ -66,7 +66,7 @@ The chart refuses to render when a required value is missing or still a placehol
 | `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
 | `collector.aws.region` | Region of the **Nullify S3 bucket**, not your cluster. Defaults to the region in `collector.kms.keyArn`; any other value is rejected, because S3 only accepts a KMS key from the bucket's region. | `""` |
 | `collector.clusterName` | Cluster name (must match your actual cluster name) | `""` (required) |
-| `collector.kms.keyArn` | KMS key ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>` or alias ARN `arn:aws:kms:<region>:<account-id>:alias/<name>`, from the Nullify configure page. With an alias, the IAM role's KMS statement must cover the key the alias resolves to, for example `arn:aws:kms:<region>:<account-id>:key/*`; see [KMS alias ARNs](#kms-alias-arns). | `""` (required) |
+| `collector.kms.keyArn` | KMS key ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>` (preferred) or alias ARN `arn:aws:kms:<region>:<account-id>:alias/<name>`, from the Nullify configure page. A key ARN avoids a `key/*` wildcard. With an alias, the IAM role's KMS statement must also cover `arn:aws:kms:<region>:<account-id>:key/*`; see [KMS alias ARNs](#kms-alias-arns). | `""` (required) |
 | `collector.debug.enabled` | Enable debug logging for troubleshooting | `false` |
 | `collector.gke.awsRoleArn` | **GKE only.** Nullify-owned federated AWS IAM role ARN (provided after cluster registration). | `""` |
 | `collector.gke.audience` | **GKE only.** Token audience for the projected SA token. Do not change unless Nullify asks you to. | `sts.amazonaws.com` |
@@ -102,11 +102,10 @@ The collector only uploads. It needs `s3:PutObject` on the Nullify bucket and `k
 
 ### KMS alias ARNs
 
-IAM evaluates KMS permissions against the key an alias resolves to, not the alias. When `collector.kms.keyArn` is an alias ARN, the IAM role's KMS statement must cover that key, for example `kms:GenerateDataKey` on `arn:aws:kms:<region>:<account-id>:key/*` in Nullify's KMS account and region. Otherwise uploads are denied.
+IAM evaluates KMS permissions against the key an alias resolves to, not the alias. A key ARN is preferred because the IAM role can grant that ARN alone. When `collector.kms.keyArn` is an alias ARN, the IAM role's KMS statement must also cover that key, for example `kms:GenerateDataKey` on `arn:aws:kms:<region>:<account-id>:key/*` in Nullify's KMS account and region. Otherwise uploads are denied.
 
-- **CloudFormation:** connector releases that include PR #64 grant `key/*` in the account and region of the `NullifyKMSKeyArn` parameter. A stack created from an earlier template grants only the ARN it was given; update it to a later release.
-- **Terraform:** the module accepts an alias in `kms_key_arn`. Check that your module version's KMS statement also covers `key/*`; one that grants only `kms_key_arn` denies uploads.
-- Either way, a key ARN (`key/<key-id>`) works with every version.
+- **Terraform:** an alias in `kms_key_arn` also grants `key/*` in that account and region. A concrete key ARN grants that ARN only.
+- **CloudFormation:** the template grants the `NullifyKMSKeyArn` parameter as given. Prefer a key ARN; an alias ARN is not enough for `kms:GenerateDataKey` because IAM does not resolve aliases in a policy Resource.
 
 Then set the role ARN in your values:
 
@@ -183,7 +182,7 @@ so the chart renders without the role-arn annotation:
 - `namespace.create` and `namespace.requireNamespace` are removed, along with the pre-install namespace hook and the `bitnami/kubectl` Job. Existing namespaces are not deleted. New installs need `--create-namespace`, or an existing namespace.
 - `collector.dataCollection.*` is removed. The collector never read `EXCLUDE_NAMESPACES`, `INCLUDE_RESOURCES` or `METADATA_ONLY`.
 - `collector.clusterName`, `collector.s3.bucket` and `collector.kms.keyArn` now default to `""`, and rendering fails when they are empty or still the old placeholders. The EKS role-arn annotation is validated the same way, unless `serviceAccount.requireRoleArn: false`.
-- `collector.kms.keyArn` must be an `arn:aws:kms:` key or alias ARN. With an alias, the IAM role's KMS statement must cover the resolved key (for example `arn:aws:kms:<region>:<account-id>:key/*`), or uploads are denied; see [KMS alias ARNs](#kms-alias-arns).
+- `collector.kms.keyArn` must be an `arn:aws:kms:` key or alias ARN. A key ARN is preferred. With an alias, the IAM role's KMS statement must cover the resolved key (for example `arn:aws:kms:<region>:<account-id>:key/*`), or uploads are denied; see [KMS alias ARNs](#kms-alias-arns).
 - `collector.aws.region` now defaults to the KMS key's region instead of `us-east-1`.
 - `helm upgrade --reuse-values` from 0.2.0 keeps 0.2.0's defaults, including `collector.aws.region: us-east-1`, so the region check fails unless the key is in `us-east-1`. Upgrade with `--reset-then-reuse-values` (Helm 3.14+) or `-f <your values>`, or set `collector.aws.region` to the key's region.
 - `nodeSelector` and `tolerations` now apply to the collector pod; before, only the removed pre-install Job used them.
@@ -217,7 +216,7 @@ If the CronJob is not creating jobs on schedule:
 
 If the job is failing due to S3 access issues:
 
-1. `AccessDenied` on `kms:GenerateDataKey` with an alias in `collector.kms.keyArn`: the IAM role's KMS statement does not cover the key the alias resolves to. Grant `arn:aws:kms:<region>:<account-id>:key/*` in Nullify's KMS account (see [KMS alias ARNs](#kms-alias-arns)), or use the key ARN.
+1. `AccessDenied` on `kms:GenerateDataKey` with an alias in `collector.kms.keyArn`: the IAM role's KMS statement does not cover the key the alias resolves to. Prefer the key ARN, or grant `arn:aws:kms:<region>:<account-id>:key/*` in Nullify's KMS account (see [KMS alias ARNs](#kms-alias-arns)).
 2. `AccessDenied` on `sts:AssumeRoleWithWebIdentity`: the service account must be `nullify/nullify-k8s-collector-sa`, and the integration's EKS OIDC provider URL must match the cluster.
 3. Wrong-region or redirect errors: `collector.aws.region` must be the Nullify bucket's region (leave it empty).
 4. Examine the job logs for detailed error messages.

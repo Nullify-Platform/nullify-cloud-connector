@@ -92,7 +92,7 @@ module "nullify_eks_access" {
 }
 ```
 
-The default `authorization = "rbac"` needs the list-only `nullify-readonly` ClusterRole on each cluster: apply it with `k8s-resources` (`enable_collector = false, enable_managed_scan_rbac = true`), or with any equivalent manifest of your own. `admin_view_policy` is a warned opt-in. The clusters must already exist when you plan; see `../terraform/README.md`.
+`authorization = "rbac"` is the only supported mode. It needs the list-only `nullify-readonly` ClusterRole on each cluster: apply it with `k8s-resources` (`enable_collector = false, enable_managed_scan_rbac = true`), or with any equivalent manifest of your own. `AmazonEKSAdminViewPolicy` is not supported; if an existing cluster still has it associated with the Nullify role, disassociate it. The clusters must already exist when you plan; see `../terraform/README.md`.
 
 ## Required Variables
 
@@ -126,7 +126,7 @@ A cluster cannot run the collector and the managed scan at once: the two paths r
 - `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
 - `k8s-resources` now requires `kms_key_arn` while `enable_collector` is true, with no opt-out. The shipped collector images refuse to upload without KMS encryption, so a deployment that left it empty was collecting successfully and then failing every upload. Set the value from the configure page; ask Nullify for a key if you have none.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
-- The KMS policy grants `key/*` in the account and region of `kms_key_arn` whenever that account is not your own, for alias ARNs and key ARNs alike. An ARN in your own account grants only that key.
+- The KMS policy grants `key/*` in the account and region of `kms_key_arn` only when that ARN is an alias. A concrete key ARN is preferred: it grants that ARN only.
 - The root no longer declares a `kubernetes` provider or `hashicorp/kubernetes` requirement: this tree's root never applied Kubernetes objects, so remove any provider configuration you added to satisfy it.
 
 ## Validation
