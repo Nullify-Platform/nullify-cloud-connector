@@ -217,6 +217,39 @@ def compare(label: str, cfn: set, terraform: set) -> bool:
     return False
 
 
+HELM_CLUSTERROLE = REPO_ROOT / "helm-charts/nullify-k8s-collector/templates/clusterrole.yaml"
+TF_CLUSTERROLES = [
+    REPO_ROOT / "aws-integration-setup/terraform/modules/k8s-resources/main.tf",
+    REPO_ROOT / "aws-integration-setup/terraform-v6/modules/k8s-resources/main.tf",
+]
+
+
+def _quoted(block: str) -> list:
+    return re.findall(r'"([^"]+)"', block)
+
+
+def helm_clusterrole_kinds(text: str) -> set:
+    kinds = set()
+    for m in re.finditer(r"resources:\s*\[(.*?)\]", text, re.DOTALL):
+        kinds.update(_quoted(m.group(1)))
+    for m in re.finditer(r"nonResourceURLs:\s*\[(.*?)\]", text, re.DOTALL):
+        kinds.update("url:" + url for url in _quoted(m.group(1)))
+    return kinds
+
+
+def terraform_clusterrole_kinds(text: str) -> set:
+    match = re.search(r'resource\s+"kubernetes_cluster_role"\s+"nullify_readonly_role"\s*\{', text)
+    if not match:
+        raise SystemExit("could not find kubernetes_cluster_role.nullify_readonly_role")
+    body, _ = _extract_braced_block(text, match.end() - 1)
+    kinds = set()
+    for m in re.finditer(r"(?<![A-Za-z0-9_])resources\s*=\s*\[(.*?)\]", body, re.DOTALL):
+        kinds.update(_quoted(m.group(1)))
+    for m in re.finditer(r"(?<![A-Za-z0-9_])non_resource_urls\s*=\s*\[(.*?)\]", body, re.DOTALL):
+        kinds.update("url:" + url for url in _quoted(m.group(1)))
+    return kinds
+
+
 def main() -> int:
     cfn_readonly = cfn_entries(READONLY_RESOURCES)
     cfn_deny = cfn_entries(DENY_RESOURCES)
@@ -229,6 +262,11 @@ def main() -> int:
 
         ok = compare(f"Allow statements: CloudFormation vs {tree}", cfn_readonly, tf_readonly) and ok
         ok = compare(f"Deny statements: CloudFormation vs {tree}", cfn_deny, tf_deny) and ok
+
+    helm_kinds = helm_clusterrole_kinds(HELM_CLUSTERROLE.read_text())
+    for path in TF_CLUSTERROLES:
+        tf_kinds = terraform_clusterrole_kinds(path.read_text())
+        ok = compare(f"ClusterRole kinds: Helm vs {path.relative_to(REPO_ROOT)}", helm_kinds, tf_kinds) and ok
 
     return 0 if ok else 1
 

@@ -47,12 +47,12 @@ collector:
     # Must match your actual cluster name exactly
     clusterName: ""
 
-    # Container image. Pin a versioned tag instead of k8s-collector-latest once
-    # Nullify publishes one.
+    # Same versioned tag as later Terraform k8s-resources defaults. Do not
+    # float on k8s-collector-latest: a moved tag is what every Helm install runs.
     image:
         repository: public.ecr.aws/w4o2j2x4/integrations
-        tag: k8s-collector-latest
-        pullPolicy: Always
+        tag: k8s-collector-3.46.0
+        pullPolicy: IfNotPresent
 
     # Resource limits
     resources:

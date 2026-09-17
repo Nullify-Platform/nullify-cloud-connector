@@ -402,6 +402,8 @@ data "aws_iam_policy_document" "deny_actions_policy" {
       "iam:ListPoliciesGrantingServiceAccess",
       "kms:ListGrants",
       "ssm:DescribeSessions",
+      "ssm:DescribeDocument",
+      "ssm:DescribeAutomationExecutions",
       "states:ListExecutions",
       "workmailmessageflow:GetRawMessageContent"
     ]

@@ -258,6 +258,8 @@
                   "iam:ListPoliciesGrantingServiceAccess",
                   "kms:ListGrants",
                   "ssm:DescribeSessions",
+                  "ssm:DescribeDocument",
+                  "ssm:DescribeAutomationExecutions",
                   "states:ListExecutions",
                   "workmailmessageflow:GetRawMessageContent"
                 ],
@@ -289,7 +291,7 @@
               "ValidEKSConfig",
               {
                 "Fn::Sub": [
-                  "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Condition\":{\"StringEquals\":{\"sts:ExternalId\":\"${ExternalID}\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"${CrossAccountRoleArn}\"}},{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringLike\":{\"${EKSOidcProviderURL}:sub\":\"system:serviceaccount:nullify:nullify-k8s-collector-sa\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSOidcProviderURL}\"}}]}",
+                  "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Condition\":{\"StringEquals\":{\"sts:ExternalId\":\"${ExternalID}\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"${CrossAccountRoleArn}\"}},{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"${EKSOidcProviderURL}:sub\":\"system:serviceaccount:nullify:nullify-k8s-collector-sa\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::${AWS::AccountId}:oidc-provider/${EKSOidcProviderURL}\"}}]}",
                   {}
                 ]
               },
