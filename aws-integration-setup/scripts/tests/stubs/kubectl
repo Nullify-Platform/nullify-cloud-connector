@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fake kubectl for setup-eks-managed-scan.bats verify. Answers auth can-i from
-# the verb/resource pair: list on API resources is yes; list on subresources
-# and every other check is no unless FAKE_CAN_I_YES lists "verb resource".
+# the verb/resource pair: list on API resources is yes except secrets (list
+# returns values); list on subresources and every other check is no unless
+# FAKE_CAN_I_YES lists "verb resource".
 
 verb=""
 resource=""
@@ -15,7 +16,7 @@ for arg in "$@"; do
   previous="$arg"
 done
 
-if [[ "$verb" == list && "$resource" != */* ]]; then
+if [[ "$verb" == list && "$resource" != */* && "$resource" != secrets ]]; then
   echo yes
   exit 0
 fi

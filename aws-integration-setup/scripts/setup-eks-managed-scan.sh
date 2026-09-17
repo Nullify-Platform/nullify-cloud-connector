@@ -38,7 +38,7 @@ readonly UPDATE_POLL_ATTEMPTS=80
 
 RBAC_RESOURCES=(
   nodes namespaces pods services persistentvolumeclaims persistentvolumes
-  configmaps secrets resourcequotas limitranges serviceaccounts
+  configmaps resourcequotas limitranges serviceaccounts
   deployments.apps daemonsets.apps statefulsets.apps replicasets.apps
   jobs.batch
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io
@@ -1072,6 +1072,7 @@ verify_rbac() {
     check_pass "group $GROUP cannot create pods"
   fi
   verify_cannot get secrets --all-namespaces
+  verify_cannot list secrets --all-namespaces
   verify_cannot get pods/exec --all-namespaces
   verify_cannot create pods/exec --all-namespaces
   verify_cannot get pods/log --all-namespaces

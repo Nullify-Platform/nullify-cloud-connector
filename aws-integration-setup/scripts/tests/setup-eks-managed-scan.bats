@@ -420,6 +420,15 @@ output_has() {
   output_has "group nullify-readonly can get secrets"
 }
 
+@test "verify fails when the group can list secrets" {
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_CAN_I_YES="list secrets"
+  export FAKE_CAN_I_YES
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "group nullify-readonly can list secrets"
+}
+
 @test "remove disassociates leftover AmazonEKSAdminViewPolicy (cleanup only)" {
   FAKE_ADMIN_VIEW_SCOPE=cluster
   export FAKE_ADMIN_VIEW_SCOPE
