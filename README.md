@@ -420,6 +420,16 @@ helm uninstall nullify-collector --namespace nullify
 kubectl create job --from=cronjob/nullify-k8s-collector manual-collection -n nullify
 ```
 
+## 🚚 **Publishing the Helm charts (maintainers)**
+
+`main`'s `helm-release.yml` (the #60 rework) builds the GitHub Pages index from
+every chart under `helm-charts/`. It restores tagged versions that are missing
+from the live index (after checking the tag is on `main` and the asset matches)
+and will not drop a version the live index already serves.
+
+This branch's workflow is that rework (`84304b9` took it from `main`). There is
+no remaining merge-order hold for #60 / #65 / #70 / #75.
+
 ## 📚 **Documentation**
 
 | Document | Description |

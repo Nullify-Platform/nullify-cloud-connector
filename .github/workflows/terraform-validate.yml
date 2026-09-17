@@ -133,14 +133,17 @@ jobs:
         run: terraform test
 
   # The CloudFormation template and both Terraform trees grant the same
-  # customer role from three independently maintained templates. Nothing
-  # else checks that their Allow/Deny action sets stay identical (ncc #58,
-  # W58-3).
+  # customer role from three independently maintained templates (ncc #58,
+  # whiskeylotus W58-3). This job parses the CFN JSON and fails if any
+  # Allow/Deny statement set drifts.
   iam-policy-drift:
     name: IAM policy drift (CloudFormation vs Terraform)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: parse CloudFormation template
+        run: python3 -m json.tool aws-integration-setup/cloudformation/nullify-cloudformation-template.json > /dev/null
 
       - name: compare Allow/Deny action sets
         run: python3 scripts/check_iam_policy_drift.py

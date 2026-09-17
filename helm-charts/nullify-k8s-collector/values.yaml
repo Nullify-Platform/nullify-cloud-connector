@@ -148,8 +148,11 @@ serviceAccount:
     # Keep the default name and namespace on EKS: the connector's CloudFormation
     # IRSA trust only allows system:serviceaccount:nullify:nullify-k8s-collector-sa.
     name: nullify-k8s-collector-sa
-    # Namespace for every namespaced object. It must already exist (use
-    # --create-namespace). Empty means the release namespace.
+    # Every namespaced object is created here, not in --namespace, unless this
+    # is empty. Default nullify is required by the IRSA trust above: `helm
+    # install --namespace security --create-namespace` still places the CronJob
+    # in nullify (and NOTES warns). Set "" to use the release namespace, and
+    # update the IRSA trust to match.
     namespace: nullify
 
 # Pod tolerations

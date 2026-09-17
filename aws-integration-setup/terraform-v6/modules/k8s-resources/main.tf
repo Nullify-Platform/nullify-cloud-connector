@@ -36,6 +36,7 @@ resource "kubernetes_service_account" "nullify_collector_sa" {
   }
 }
 
+# Secrets are omitted: list returns values.
 resource "kubernetes_cluster_role" "nullify_readonly_role" {
   count = var.enable_collector ? 1 : 0
 
@@ -82,7 +83,7 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
 
   rule {
     api_groups = ["batch"]
-    resources  = ["jobs"]
+    resources  = ["jobs", "cronjobs"]
     verbs      = ["list"]
   }
 
@@ -91,6 +92,7 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
     resources = [
       "ingresses",
       "networkpolicies",
+      "ingressclasses",
     ]
     verbs = ["list"]
   }
@@ -121,6 +123,54 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
       "validatingadmissionpolicybindings",
     ]
     verbs = ["list"]
+  }
+
+  rule {
+    api_groups = ["autoscaling"]
+    resources  = ["horizontalpodautoscalers"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["policy"]
+    resources  = ["poddisruptionbudgets"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["storage.k8s.io"]
+    resources  = ["storageclasses", "csidrivers"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["node.k8s.io"]
+    resources  = ["runtimeclasses"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["scheduling.k8s.io"]
+    resources  = ["priorityclasses"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["flowcontrol.apiserver.k8s.io"]
+    resources  = ["flowschemas"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["certificates.k8s.io"]
+    resources  = ["certificatesigningrequests"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["apiextensions.k8s.io"]
+    resources  = ["customresourcedefinitions"]
+    verbs      = ["list"]
   }
 
   rule {
