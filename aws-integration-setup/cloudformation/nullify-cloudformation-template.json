@@ -162,6 +162,7 @@
                   "ec2:DeleteSnapshot",
                   "ec2:CreateImage",
                   "ec2:DeregisterImage",
+                  "ec2:DescribeLaunchTemplateVersions",
                   "logs:CreateLogStream",
                   "logs:PutLogEvents",
                   "logs:DeleteLogGroup",
@@ -175,6 +176,7 @@
                   "dynamodb:Query",
                   "dynamodb:Scan",
                   "es:ESHttp*",
+                  "events:ListTargetsByRule",
                   "glue:GetConnection",
                   "glue:GetConnections",
                   "glue:GetPartition*",
@@ -434,7 +436,6 @@
                   "ec2:DescribeImages",
                   "ec2:DescribeInstances",
                   "ec2:DescribeInternetGateways",
-                  "ec2:DescribeLaunchTemplateVersions",
                   "ec2:DescribeLaunchTemplates",
                   "ec2:DescribeManagedPrefixLists",
                   "ec2:DescribeNatGateways",
@@ -566,7 +567,6 @@
                   "sqs:GetQueueAttributes",
                   "sqs:List*",
                   "ssm:Describe*",
-                  "ssm:GetDocument",
                   "ssm:ListDocuments",
                   "states:DescribeStateMachine",
                   "states:List*",
@@ -575,6 +575,16 @@
                   "wafv2:List*"
                 ],
                 "Resource": "*",
+                "Condition": {}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:GetDocument"
+                ],
+                "Resource": {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:*:*:document/SSM-SessionManagerRunShell"
+                },
                 "Condition": {}
               }
             ]
