@@ -18,8 +18,11 @@ setup() {
   FAKE_CIDRS_READ_FAILS=false
   FAKE_DESCRIBE_UPDATE_FAILS=false
   FAKE_UPDATES=""
+  FAKE_ADMIN_VIEW_SCOPE=""
+  FAKE_CAN_I_YES=""
   export PATH FAKE_AWS_LOG FAKE_AWS_STATE FAKE_PUBLIC FAKE_PRIVATE FAKE_UPDATE_STATUS \
-    FAKE_CIDRS_READ_FAILS FAKE_DESCRIBE_UPDATE_FAILS FAKE_UPDATES
+    FAKE_CIDRS_READ_FAILS FAKE_DESCRIBE_UPDATE_FAILS FAKE_UPDATES FAKE_ADMIN_VIEW_SCOPE \
+    FAKE_CAN_I_YES
   mkdir -p "$FAKE_AWS_STATE/tags"
   set_cidrs "$BASE_CIDR"
 }
@@ -322,6 +325,68 @@ output_has() {
   [ "$(live_cidrs)" = "$BASE_CIDR" ]
   no_tag nullify-added-cidrs
   [ "$(call_line 'eks describe-update')" -lt "$(call_line 'eks untag-resource')" ]
+}
+
+@test "rejects --authorization admin-view" {
+  run_setup apply --nullify-region eu-central-1 --authorization admin-view
+  [ "$status" -ne 0 ]
+  output_has "admin-view is not supported"
+  output_has "Secret values"
+  output_has "pods/log"
+  output_has "exec"
+  not_called 'eks update-cluster-config'
+}
+
+@test "apply leaves an existing 0.0.0.0/0 list unchanged, warns, and does not write it" {
+  set_cidrs "0.0.0.0/0"
+  run_setup apply --nullify-region eu-central-1
+  [ "$status" -eq 0 ]
+  not_called 'eks update-cluster-config'
+  [ "$(live_cidrs)" = "0.0.0.0/0" ]
+  output_has "publicAccessCidrs includes 0.0.0.0/0"
+  output_has "verify fails while 0.0.0.0/0 is present"
+}
+
+@test "verify fails when publicAccessCidrs contains 0.0.0.0/0" {
+  set_cidrs "0.0.0.0/0"
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "publicAccessCidrs contains 0.0.0.0/0"
+}
+
+@test "verify fails on 0.0.0.0/0 even when Nullify /32s are also present" {
+  set_cidrs "0.0.0.0/0 $NULLIFY_EU"
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "publicAccessCidrs contains 0.0.0.0/0"
+}
+
+@test "verify fails when AmazonEKSAdminViewPolicy is associated" {
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_ADMIN_VIEW_SCOPE=cluster
+  export FAKE_ADMIN_VIEW_SCOPE
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "AmazonEKSAdminViewPolicy is associated"
+  output_has "grants get, list and watch on every resource"
+}
+
+@test "verify fails when the group can get secrets" {
+  set_cidrs "$BASE_CIDR $NULLIFY_EU"
+  FAKE_CAN_I_YES="get secrets"
+  export FAKE_CAN_I_YES
+  run_setup verify --nullify-region eu-central-1 --kube-context test
+  [ "$status" -ne 0 ]
+  output_has "group nullify-readonly can get secrets"
+}
+
+@test "remove disassociates leftover AmazonEKSAdminViewPolicy (cleanup only)" {
+  FAKE_ADMIN_VIEW_SCOPE=cluster
+  export FAKE_ADMIN_VIEW_SCOPE
+  run_setup remove
+  [ "$status" -eq 0 ]
+  called 'eks disassociate-access-policy'
+  output_has "cleanup only"
 }
 
 @test "remove on a disabled public endpoint keeps publicAccessCidrs and both tags, and says so" {

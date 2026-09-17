@@ -242,7 +242,7 @@ Nullify lists Kubernetes resources in your EKS cluster from Nullify's cloud-scan
 | rbac.authorization.k8s.io | roles, rolebindings, clusterroles, clusterrolebindings |
 | admissionregistration.k8s.io | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
-Kubernetes has no metadata-only permission for Secrets: `list secrets` permits reading values, whichever authorization mode you pick.
+Kubernetes has no metadata-only permission for Secrets: `list secrets` permits reading values. `get secrets` is not granted.
 
 ### In-cluster collector or managed scan
 
@@ -251,7 +251,7 @@ Kubernetes has no metadata-only permission for Secrets: `list secrets` permits r
 | Runs in the cluster | CronJob with an IRSA service account | Nothing |
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `EnableEKSIntegration=true`, OIDC provider URL, `NullifyS3Bucket` (upload target) | One access entry per cluster |
-| Kubernetes setup | Helm release | ClusterRole and binding for group `nullify-readonly`, or `AmazonEKSAdminViewPolicy` |
+| Kubernetes setup | Helm release | ClusterRole and binding for group `nullify-readonly` |
 | Upgrades | You upgrade the chart | None |
 
 Both can run against the same cluster.
@@ -263,8 +263,8 @@ Both can run against the same cluster.
   `aws eks describe-cluster --name CLUSTER --query cluster.accessConfig.authenticationMode`.
   Switching from `CONFIG_MAP` is one-way. The script does it only with `--allow-auth-mode-change`.
 - The public endpoint is enabled. Private-only clusters are not supported; use the in-cluster collector.
-- The operator running setup has `eks:DescribeCluster`, `eks:DescribeUpdate`, `eks:ListUpdates`, `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:DeleteAccessEntry`, `eks:ListAccessEntries`, `eks:AssociateAccessPolicy`, `eks:ListAssociatedAccessPolicies`, `eks:TagResource`, `eks:UntagResource`, CloudFormation permissions on the access stacks, and Kubernetes cluster-admin (to create the ClusterRole and to impersonate in `verify`).
-- AWS CLI v2, plus `kubectl` for RBAC mode.
+- The operator running setup has `eks:DescribeCluster`, `eks:DescribeUpdate`, `eks:ListUpdates`, `eks:UpdateClusterConfig`, `eks:CreateAccessEntry`, `eks:DescribeAccessEntry`, `eks:DeleteAccessEntry`, `eks:ListAccessEntries`, `eks:ListAssociatedAccessPolicies`, `eks:DisassociateAccessPolicy` (cleanup of a leftover `AmazonEKSAdminViewPolicy` only), `eks:TagResource`, `eks:UntagResource`, CloudFormation permissions on the access stacks, and Kubernetes cluster-admin (to create the ClusterRole and to impersonate in `verify`).
+- AWS CLI v2, plus `kubectl`.
 
 ### Step 1: access entries (CloudFormation)
 
@@ -291,16 +291,13 @@ aws cloudformation deploy \
 
 ### Step 2: Kubernetes authorization
 
-**`RBACGroup` (default).** The access entry carries group `nullify-readonly`. Bind that group to a `list`-only ClusterRole in each cluster, using one of:
+The access entry carries group `nullify-readonly`. Bind that group to a `list`-only ClusterRole in each cluster, using one of:
 
 - `kubectl apply -f manifests/nullify-readonly-rbac.yaml` from a checkout of this repository at a commit you reviewed;
 - the `nullify-k8s-readonly-access` Helm chart;
 - the same manifest committed to your GitOps repository (Flux, Argo CD).
 
-**`AmazonEKSAdminViewPolicy` (opt-in).** Needs no Kubernetes objects, but grants far more than the scan uses.
-
-> [!WARNING]
-> `AmazonEKSAdminViewPolicy` grants `get`, `list` and `watch` on every resource: Secrets, every custom resource, and subresources such as `pods/log`. On EKS 1.34 and earlier, `get pods/exec` is enough to exec into pods over WebSocket. Access-policy grants do not show in `kubectl auth can-i --list`. `AmazonEKSViewPolicy` is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects.
+`AmazonEKSAdminViewPolicy` is not offered. It grants Secret values, `pods/log`, and on EKS 1.34 and earlier exec via `get pods/exec`. A leftover association from an earlier apply fails `verify`. Use the list-only ClusterRole in `manifests/nullify-readonly-rbac.yaml` or the `nullify-k8s-readonly-access` Helm chart (see #61). `remove` may disassociate a leftover policy (cleanup only; not a supported mode).
 
 ### Step 3: allow Nullify's egress IPs
 
@@ -314,7 +311,7 @@ Nullify connects from these IPs. Use the Nullify region that serves your tenant:
 
 `aws eks update-cluster-config` replaces `publicAccessCidrs` rather than appending to it, so the script merges:
 
-- a list that contains `0.0.0.0/0` is left unchanged;
+- a list that contains `0.0.0.0/0` is left unchanged and `apply` warns (the script never adds `0.0.0.0/0` and never silently removes a customer's existing open entry; `verify` fails if the list is open to the world);
 - otherwise the missing `/32`s are appended, the result is refused above the EKS limit of 40 CIDRs, the list is re-read just before the update, and the CIDRs to add are recorded in the cluster tag `nullify-pending-cidrs` before the update and moved to `nullify-added-cidrs` once it succeeds, so `remove` takes out only those;
 - the id of that update is recorded in `nullify-pending-update` as soon as `update-cluster-config` returns it, so a stopped run does not have to trust `aws eks list-updates` to already show an update accepted seconds earlier;
 - if a run stops between the two (timeout, Ctrl-C, expired credentials), the next `apply` or `remove` treats the pending CIDRs that `publicAccessCidrs` holds as added and drops the rest. Both first describe the recorded update - or, for a record written without one, every update `aws eks list-updates` returns - and stop, leaving the pending record, while an `EndpointAccessUpdate` is still `InProgress`, because the cluster can report `ACTIVE` before the update lands. An update EKS no longer knows about is skipped, since it cannot be in progress;
@@ -339,15 +336,15 @@ cd aws-integration-setup/scripts
   --customer-name yourcompany --nullify-region eu-central-1
 ```
 
-Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|admin-view`, `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.1.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
+Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (the only supported mode), `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.1.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
 
 ### Step 4: verify
 
 `setup-eks-managed-scan.sh verify` checks that:
 
-- the authentication mode supports access entries, and the access entry exists with the group (RBAC) or a cluster-scoped `AmazonEKSAdminViewPolicy` association;
-- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 27 resources, and `create pods` does not;
-- `publicAccessCidrs` admits Nullify's egress IPs.
+- the authentication mode supports access entries, the access entry exists with the group, and `AmazonEKSAdminViewPolicy` is not associated;
+- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 27 resources, and `create pods`, `get secrets`, `get`/`create pods/exec`, `get`/`list pods/log`, `get nodes/proxy`, and `escalate` / `bind` on clusterroles do not. `get pods/attach`, `get pods/portforward`, and `impersonate` users / serviceaccounts are required `no` when `kubectl auth can-i` accepts those checks; otherwise they are skipped;
+- `publicAccessCidrs` admits Nullify's egress IPs and does not contain `0.0.0.0/0`.
 
 `can-i` exercises Kubernetes RBAC only. It cannot see access-policy grants or prove that Nullify can reach the endpoint. Finish by confirming the cluster connects on the Nullify configure page.
 
@@ -364,7 +361,7 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac|ad
 
 Remove in this order so no access entry outlives the role:
 
-1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, and only the CIDRs recorded in `nullify-added-cidrs` plus any in `nullify-pending-cidrs` that `publicAccessCidrs` still holds. It refuses to leave `publicAccessCidrs` empty, and refuses to settle `nullify-pending-cidrs` while the `EndpointAccessUpdate` it names is still `InProgress` (re-run once it finishes). If the public endpoint has since been disabled, it leaves the endpoint settings, `publicAccessCidrs` and both tags alone and says so; `publicAccessCidrs` can still hold Nullify's CIDRs when the endpoint is re-enabled, so re-run `remove` then. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
+1. For each cluster: `./setup-eks-managed-scan.sh remove --cluster CLUSTER --region REGION --customer-name yourcompany`. It deletes the RBAC manifest's objects, access entries tagged `ManagedBy=nullify-connector`, a leftover `AmazonEKSAdminViewPolicy` association if one is present (cleanup only), and only the CIDRs recorded in `nullify-added-cidrs` plus any in `nullify-pending-cidrs` that `publicAccessCidrs` still holds. It refuses to leave `publicAccessCidrs` empty, and refuses to settle `nullify-pending-cidrs` while the `EndpointAccessUpdate` it names is still `InProgress` (re-run once it finishes). If the public endpoint has since been disabled, it leaves the endpoint settings, `publicAccessCidrs` and both tags alone and says so; `publicAccessCidrs` can still hold Nullify's CIDRs when the endpoint is re-enabled, so re-run `remove` then. It skips RBAC objects labelled `app.kubernetes.io/managed-by: Helm`; pass `--skip-rbac` when Helm or GitOps (Flux, Argo CD) owns the RBAC.
 2. In each region: `aws cloudformation delete-stack --region REGION --stack-name nullify-eks-managed-scan-access`.
 3. Delete the main stack.
 

@@ -20,35 +20,16 @@
       "Type": "String",
       "Default": "RBACGroup",
       "AllowedValues": [
-        "RBACGroup",
-        "AmazonEKSAdminViewPolicy"
+        "RBACGroup"
       ],
-      "Description": "RBACGroup (recommended): the access entry carries KubernetesGroupName; bind that group to the list-only ClusterRole in manifests/nullify-readonly-rbac.yaml or the nullify-k8s-readonly-access Helm chart. AmazonEKSAdminViewPolicy: no Kubernetes objects needed. WARNING: AmazonEKSAdminViewPolicy grants get, list and watch on every resource, including Secrets, custom resources and pods/log, and on EKS 1.34 and earlier get pods/exec is enough to exec into pods. Its grants do not show in kubectl auth can-i --list. AmazonEKSViewPolicy is not offered: it cannot list nodes, persistent volumes, Secrets, RBAC or admission objects."
+      "Description": "RBACGroup: the access entry carries KubernetesGroupName; bind that group to the list-only ClusterRole in manifests/nullify-readonly-rbac.yaml or the nullify-k8s-readonly-access Helm chart (PR #61). AmazonEKSAdminViewPolicy is not offered: leftover associations fail verify."
     },
     "KubernetesGroupName": {
       "Type": "String",
       "Default": "nullify-readonly",
       "AllowedPattern": "^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$",
       "ConstraintDescription": "Lowercase letters, digits, '.' and '-' only (max 63 characters). ':' is not allowed, which excludes system: groups.",
-      "Description": "Kubernetes group on the access entry when KubernetesAuthorization is RBACGroup. manifests/nullify-readonly-rbac.yaml binds nullify-readonly; for any other group, bind the nullify-readonly ClusterRole to it yourself. Ignored for AmazonEKSAdminViewPolicy."
-    }
-  },
-  "Conditions": {
-    "UseRBACGroup": {
-      "Fn::Equals": [
-        {
-          "Ref": "KubernetesAuthorization"
-        },
-        "RBACGroup"
-      ]
-    },
-    "UseAdminViewPolicy": {
-      "Fn::Equals": [
-        {
-          "Ref": "KubernetesAuthorization"
-        },
-        "AmazonEKSAdminViewPolicy"
-      ]
+      "Description": "Kubernetes group on the access entry. manifests/nullify-readonly-rbac.yaml binds nullify-readonly; for any other group, bind the nullify-readonly ClusterRole to it yourself."
     }
   },
   "Resources": {
@@ -68,37 +49,11 @@
               "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
             },
             "Type": "STANDARD",
-            "KubernetesGroups": {
-              "Fn::If": [
-                "UseRBACGroup",
-                [
-                  {
-                    "Ref": "KubernetesGroupName"
-                  }
-                ],
-                {
-                  "Ref": "AWS::NoValue"
-                }
-              ]
-            },
-            "AccessPolicies": {
-              "Fn::If": [
-                "UseAdminViewPolicy",
-                [
-                  {
-                    "PolicyArn": {
-                      "Fn::Sub": "arn:${AWS::Partition}:eks::aws:cluster-access-policy/AmazonEKSAdminViewPolicy"
-                    },
-                    "AccessScope": {
-                      "Type": "cluster"
-                    }
-                  }
-                ],
-                {
-                  "Ref": "AWS::NoValue"
-                }
-              ]
-            },
+            "KubernetesGroups": [
+              {
+                "Ref": "KubernetesGroupName"
+              }
+            ],
             "Tags": [
               {
                 "Key": "ManagedBy",
@@ -138,13 +93,7 @@
     "KubernetesGroup": {
       "Description": "Kubernetes group the RBAC binding must name.",
       "Value": {
-        "Fn::If": [
-          "UseRBACGroup",
-          {
-            "Ref": "KubernetesGroupName"
-          },
-          "none (AmazonEKSAdminViewPolicy)"
-        ]
+        "Ref": "KubernetesGroupName"
       }
     },
     "ClustersConfigured": {
@@ -159,37 +108,15 @@
       }
     },
     "NextStepCommand": {
-      "Description": "Run for each cluster from a checkout of nullify-cloud-connector: applies RBAC (RBACGroup) and adds Nullify's egress IPs to publicAccessCidrs.",
+      "Description": "Run for each cluster from a checkout of nullify-cloud-connector: applies RBAC and adds Nullify's egress IPs to publicAccessCidrs.",
       "Value": {
-        "Fn::Sub": [
-          "aws-integration-setup/scripts/setup-eks-managed-scan.sh apply --skip-access-entry --authorization ${AuthFlag} --group ${KubernetesGroupName} --cluster CLUSTER --region ${AWS::Region} --customer-name ${CustomerName} --nullify-region NULLIFY_REGION",
-          {
-            "AuthFlag": {
-              "Fn::If": [
-                "UseRBACGroup",
-                "rbac",
-                "admin-view"
-              ]
-            }
-          }
-        ]
+        "Fn::Sub": "aws-integration-setup/scripts/setup-eks-managed-scan.sh apply --skip-access-entry --group ${KubernetesGroupName} --cluster CLUSTER --region ${AWS::Region} --customer-name ${CustomerName} --nullify-region NULLIFY_REGION"
       }
     },
     "VerifyCommand": {
       "Description": "Run for each cluster after NextStepCommand.",
       "Value": {
-        "Fn::Sub": [
-          "aws-integration-setup/scripts/setup-eks-managed-scan.sh verify --authorization ${AuthFlag} --group ${KubernetesGroupName} --cluster CLUSTER --region ${AWS::Region} --customer-name ${CustomerName} --nullify-region NULLIFY_REGION",
-          {
-            "AuthFlag": {
-              "Fn::If": [
-                "UseRBACGroup",
-                "rbac",
-                "admin-view"
-              ]
-            }
-          }
-        ]
+        "Fn::Sub": "aws-integration-setup/scripts/setup-eks-managed-scan.sh verify --group ${KubernetesGroupName} --cluster CLUSTER --region ${AWS::Region} --customer-name ${CustomerName} --nullify-region NULLIFY_REGION"
       }
     }
   }

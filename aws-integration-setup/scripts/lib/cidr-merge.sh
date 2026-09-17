@@ -62,13 +62,23 @@ cidr_list_contains() {
   return 1
 }
 
+# cidr_is_open LIST
+# Succeeds when LIST literally contains 0.0.0.0/0.
+cidr_is_open() {
+  local -a items
+  read -r -a items <<< "$(cidr_normalise "${1:-}")"
+  cidr_list_contains "$OPEN_CIDR" ${items[@]+"${items[@]}"}
+}
+
 # cidr_merge CURRENT ADDITIONS
 # Prints the publicAccessCidrs list after adding ADDITIONS to CURRENT: CURRENT
 # order kept, new entries appended, duplicates dropped. A CURRENT list holding
 # 0.0.0.0/0 already admits every IPv4 address, so it is printed unchanged and
-# never narrowed.
-# Returns 2 when an addition is not an IPv4 CIDR, and 3 when the result would
-# exceed the EKS limit of 40 public access CIDRs.
+# never narrowed. ADDITIONS must not include 0.0.0.0/0: Nullify egress IPs are
+# specific /32s and this helper never writes an open list.
+# Returns 2 when an addition is not an IPv4 CIDR, 3 when the result would
+# exceed the EKS limit of 40 public access CIDRs, and 6 when an addition is
+# 0.0.0.0/0.
 cidr_merge() {
   local cidr
   local -a current additions merged
@@ -79,6 +89,10 @@ cidr_merge() {
     if ! cidr_is_ipv4 "$cidr"; then
       echo "not an IPv4 CIDR: $cidr" >&2
       return 2
+    fi
+    if [[ "$cidr" == "$OPEN_CIDR" ]]; then
+      echo "refusing to add $OPEN_CIDR; Nullify egress IPs are specific /32s" >&2
+      return 6
     fi
   done
   if cidr_list_contains "$OPEN_CIDR" ${current[@]+"${current[@]}"}; then
@@ -98,18 +112,15 @@ cidr_merge() {
 }
 
 # cidr_missing CURRENT REQUIRED
-# Prints the REQUIRED entries that CURRENT does not admit. A CURRENT list
-# holding 0.0.0.0/0 admits everything.
+# Prints the REQUIRED entries that are not literally present in CURRENT.
+# 0.0.0.0/0 in CURRENT is not treated as admitting every REQUIRED CIDR;
+# callers that need to detect an open allowlist should use cidr_is_open.
 cidr_missing() {
   local cidr
   local -a current required missing
   read -r -a current <<< "$(cidr_normalise "${1:-}")"
   read -r -a required <<< "$(cidr_normalise "${2:-}")"
   missing=()
-  if cidr_list_contains "$OPEN_CIDR" ${current[@]+"${current[@]}"}; then
-    echo ""
-    return 0
-  fi
   for cidr in ${required[@]+"${required[@]}"}; do
     if ! cidr_list_contains "$cidr" ${current[@]+"${current[@]}"}; then
       missing+=("$cidr")

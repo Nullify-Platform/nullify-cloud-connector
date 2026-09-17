@@ -200,6 +200,23 @@ case "${1:-} ${2:-}" in
       fail ValidationError DescribeStacks "Stack with id ${stack_name} does not exist"
     fi
     ;;
+  "eks list-access-entries")
+    if [[ "${FAKE_ACCESS_ENTRY:-true}" == true ]]; then
+      echo "arn:aws:iam::111122223333:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    fi
+    ;;
+  "eks describe-access-entry")
+    case "$query" in
+      accessEntry.kubernetesGroups) echo "${FAKE_KUBERNETES_GROUPS:-nullify-readonly}" ;;
+      accessEntry.tags.ManagedBy) echo "${FAKE_ACCESS_ENTRY_OWNER:-nullify-connector}" ;;
+      *) echo None ;;
+    esac
+    ;;
+  "eks list-associated-access-policies")
+    echo "${FAKE_ADMIN_VIEW_SCOPE:-None}"
+    ;;
+  "eks disassociate-access-policy") ;;
+  "eks update-kubeconfig") ;;
   "cloudformation delete-stack" | "cloudformation wait") ;;
   *)
     echo "fake aws: unexpected call: $*" >&2

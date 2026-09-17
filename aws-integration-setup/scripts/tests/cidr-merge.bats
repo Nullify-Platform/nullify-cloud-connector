@@ -46,6 +46,13 @@ word_count() {
   [ "$output" = "0.0.0.0/0" ]
 }
 
+@test "merge refuses to add 0.0.0.0/0" {
+  run cidr_merge "203.0.113.0/24" "0.0.0.0/0"
+  [ "$status" -eq 6 ]
+  run cidr_merge "203.0.113.0/24" "18.198.60.231/32 0.0.0.0/0"
+  [ "$status" -eq 6 ]
+}
+
 @test "merge accepts tab-separated aws text output" {
   run cidr_merge $'203.0.113.0/24\t198.51.100.0/24' "18.198.60.231/32"
   [ "$status" -eq 0 ]
@@ -90,10 +97,17 @@ word_count() {
   [ "$output" = "18.157.227.250/32 18.185.152.197/32" ]
 }
 
-@test "missing is empty when 0.0.0.0/0 is present" {
+@test "missing is literal: 0.0.0.0/0 does not admit a /32" {
   run cidr_missing "0.0.0.0/0" "$NULLIFY_EU"
   [ "$status" -eq 0 ]
-  [ -z "$output" ]
+  [ "$output" = "$NULLIFY_EU" ]
+}
+
+@test "cidr_is_open detects only a literal 0.0.0.0/0" {
+  cidr_is_open "0.0.0.0/0"
+  cidr_is_open "203.0.113.0/24 0.0.0.0/0"
+  run cidr_is_open "$NULLIFY_EU"
+  [ "$status" -ne 0 ]
 }
 
 @test "remove drops only the recorded CIDRs" {

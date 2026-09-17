@@ -7,7 +7,7 @@
 # EKS cluster through the cluster's public API endpoint:
 #   1. an authentication mode that supports access entries
 #   2. an EKS access entry for the role
-#   3. Kubernetes RBAC for group nullify-readonly, or AmazonEKSAdminViewPolicy
+#   3. Kubernetes RBAC for group nullify-readonly
 #   4. Nullify's egress IPs merged into publicAccessCidrs
 #
 # The script never assumes the Nullify role. Run with --help for usage.
@@ -141,10 +141,12 @@ Required:
                              Not needed for remove or with --skip-network.
 
 Options:
-  --authorization MODE       rbac (default): the access entry carries --group, bound
-                             by manifests/nullify-readonly-rbac.yaml.
-                             admin-view: associate AmazonEKSAdminViewPolicy instead.
-                             WARNING: ${ADMIN_VIEW_WARNING}
+  --authorization MODE       rbac (default and only supported mode): the access
+                             entry carries --group, bound by
+                             manifests/nullify-readonly-rbac.yaml.
+                             admin-view is not supported: AmazonEKSAdminViewPolicy
+                             reads Secret values, pods/log and exec. remove may
+                             disassociate a leftover association (cleanup only).
   --group NAME               Kubernetes group for rbac mode (default: ${DEFAULT_GROUP})
   --allow-auth-mode-change   Switch a CONFIG_MAP cluster to API_AND_CONFIG_MAP.
                              This is one-way: EKS cannot switch back.
@@ -247,8 +249,13 @@ parse_args() {
     die "invalid --role-arn '$ROLE_ARN'"
   fi
   case "$AUTHORIZATION" in
-    rbac | admin-view) ;;
-    *) die "--authorization must be rbac or admin-view" ;;
+    rbac) ;;
+    admin-view)
+      die "--authorization admin-view is not supported: AmazonEKSAdminViewPolicy reads Secret values, pods/log and exec"
+      ;;
+    *)
+      die "--authorization must be rbac (admin-view is not supported: it reads Secret values, pods/log and exec)"
+      ;;
   esac
   if [[ ! "$GROUP" =~ ^[a-z0-9]([a-z0-9.-]{0,61}[a-z0-9])?$ ]]; then
     die "invalid --group '$GROUP' (lowercase letters, digits, '.' and '-'; system: groups are not allowed)"
@@ -258,6 +265,9 @@ parse_args() {
       die "--nullify-region is required (or pass --skip-network)"
     fi
     NULLIFY_CIDRS="$(nullify_egress_cidrs "$NULLIFY_REGION")" || die "cannot select Nullify egress IPs"
+    if cidr_is_open "$NULLIFY_CIDRS"; then
+      die "refusing to add 0.0.0.0/0 to publicAccessCidrs; Nullify egress IPs are specific /32s"
+    fi
   fi
 }
 
@@ -355,7 +365,7 @@ setup_kubectl() {
 }
 
 rbac_in_scope() {
-  [[ "$AUTHORIZATION" == rbac && "$SKIP_RBAC" != true ]]
+  [[ "$SKIP_RBAC" != true ]]
 }
 
 # use_release_rbac_manifest CHECKOUT_MANIFEST
@@ -445,6 +455,20 @@ access_entry_owner() {
     --query "accessEntry.tags.${MANAGED_BY_TAG_KEY}" --output text
 }
 
+# associated_admin_view_scope
+# Prints the access scope type of a leftover AmazonEKSAdminViewPolicy
+# association, or empty when none is attached. verify must fail when this is set.
+# remove may disassociate it (cleanup only; this policy is not a supported mode).
+associated_admin_view_scope() {
+  local scope
+  scope="$(aws eks list-associated-access-policies --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
+    --query "associatedAccessPolicies[?policyArn == '${ADMIN_VIEW_POLICY_ARN}'].accessScope.type" --output text)"
+  if [[ "$scope" == None ]]; then
+    scope=""
+  fi
+  echo "$scope"
+}
+
 ensure_access_entry() {
   local owner
   local -a create
@@ -462,24 +486,13 @@ ensure_access_entry() {
   else
     create=(aws eks create-access-entry --cluster-name "$CLUSTER" --region "$REGION"
       --principal-arn "$ROLE_ARN" --type STANDARD
-      --tags "${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}")
-    if [[ "$AUTHORIZATION" == rbac ]]; then
-      create+=(--kubernetes-groups "$GROUP")
-    fi
+      --tags "${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}"
+      --kubernetes-groups "$GROUP")
     mutate "${create[@]}" >/dev/null
-  fi
-  if [[ "$AUTHORIZATION" == admin-view ]]; then
-    warn "$ADMIN_VIEW_WARNING"
-    mutate aws eks associate-access-policy --cluster-name "$CLUSTER" --region "$REGION" \
-      --principal-arn "$ROLE_ARN" --policy-arn "$ADMIN_VIEW_POLICY_ARN" --access-scope type=cluster >/dev/null
   fi
 }
 
 apply_rbac() {
-  if [[ "$AUTHORIZATION" != rbac ]]; then
-    info "rbac: not needed (authorization admin-view)"
-    return 0
-  fi
   if [[ "$SKIP_RBAC" == true ]]; then
     info "rbac: skipped (--skip-rbac)"
     return 0
@@ -784,6 +797,11 @@ update_public_cidrs() {
     die "the public endpoint of $CLUSTER is disabled; publicAccessCidrs left unchanged"
   fi
   private="$(endpoint_access_json endpointPrivateAccess)"
+  # Never introduce 0.0.0.0/0. A list that already has it may be rewritten
+  # (remove taking other CIDRs out) without narrowing that open entry.
+  if cidr_is_open "$desired" && ! cidr_is_open "$expected"; then
+    die "refusing to add ${OPEN_CIDR} to publicAccessCidrs; Nullify egress IPs are specific /32s"
+  fi
   vpc_config="$(printf '{"endpointPublicAccess":%s,"endpointPrivateAccess":%s,"publicAccessCidrs":%s}' \
     "$public" "$private" "$(cidr_json_array "$desired")")"
   if [[ -n "$pending" ]]; then
@@ -816,10 +834,17 @@ ensure_network() {
   fi
   current="$(current_public_cidrs)"
   reconcile_pending_cidrs "$current"
+  if cidr_is_open "$current"; then
+    warn "network: publicAccessCidrs includes ${OPEN_CIDR}, so the endpoint is open to the world. Nullify CIDRs were not added (that would not narrow the list). Narrow publicAccessCidrs and re-run verify; verify fails while ${OPEN_CIDR} is present."
+    return 0
+  fi
   if ! merged="$(cidr_merge "$current" "$NULLIFY_CIDRS")"; then
     die "cannot add Nullify egress IPs ($NULLIFY_CIDRS) to publicAccessCidrs (${current:-empty})"
   fi
   added="$(cidr_missing "$current" "$merged")"
+  if cidr_is_open "$added"; then
+    die "refusing to add ${OPEN_CIDR} to publicAccessCidrs; Nullify egress IPs are specific /32s"
+  fi
   if [[ -z "$added" ]]; then
     info "network: publicAccessCidrs already admits Nullify (${current})"
     unrecorded="$(cidr_difference "$(cidr_intersect "$NULLIFY_CIDRS" "$current")" "$ADDED_CIDRS")"
@@ -844,7 +869,7 @@ ensure_network() {
 remove_rbac() {
   local objects object owner managed_by release
   if ! rbac_in_scope; then
-    info "rbac: nothing to remove (authorization admin-view or --skip-rbac)"
+    info "rbac: nothing to remove (--skip-rbac)"
     return 0
   fi
   check_rbac_manifest
@@ -871,6 +896,24 @@ remove_rbac() {
     fi
     mutate "${KUBECTL[@]}" delete --ignore-not-found "$object"
   done
+}
+
+# remove_leftover_admin_view_policy
+# Cleanup only: AmazonEKSAdminViewPolicy is not a supported authorization mode.
+# Disassociates a leftover association so operators can recover from a previous
+# apply that used admin-view. Does not delete the access entry.
+remove_leftover_admin_view_policy() {
+  local scope
+  if ! access_entry_exists; then
+    return 0
+  fi
+  scope="$(associated_admin_view_scope)"
+  if [[ -z "$scope" ]]; then
+    return 0
+  fi
+  info "access entry: disassociating leftover AmazonEKSAdminViewPolicy (cleanup only; this policy is not a supported authorization mode)"
+  mutate aws eks disassociate-access-policy --cluster-name "$CLUSTER" --region "$REGION" \
+    --principal-arn "$ROLE_ARN" --policy-arn "$ADMIN_VIEW_POLICY_ARN"
 }
 
 remove_access_entry() {
@@ -933,6 +976,35 @@ check_fail() {
   VERIFY_FAILURES=$((VERIFY_FAILURES + 1))
 }
 
+# verify_cannot VERB RESOURCE [kubectl-flags...]
+# Fails verify when can-i answers yes.
+verify_cannot() {
+  local verb="$1" resource="$2" answer
+  shift 2
+  answer="$("${KUBECTL[@]}" auth can-i "$verb" "$resource" "$@" --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+  if [[ "$answer" == yes* ]]; then
+    check_fail "group $GROUP can $verb $resource; the grant must not allow this"
+  else
+    check_pass "group $GROUP cannot $verb $resource"
+  fi
+}
+
+# verify_cannot_if_supported VERB RESOURCE [kubectl-flags...]
+# Same as verify_cannot, but skips when kubectl does not answer yes or no
+# (older clients reject some subresources or impersonate checks).
+verify_cannot_if_supported() {
+  local verb="$1" resource="$2" answer
+  shift 2
+  answer="$("${KUBECTL[@]}" auth can-i "$verb" "$resource" "$@" --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+  if [[ "$answer" == yes* ]]; then
+    check_fail "group $GROUP can $verb $resource; the grant must not allow this"
+  elif [[ "$answer" == no* ]]; then
+    check_pass "group $GROUP cannot $verb $resource"
+  else
+    info "rbac: skipping $verb $resource: kubectl auth can-i did not answer yes or no"
+  fi
+}
+
 verify_access_entry() {
   local mode groups scope
   mode="$(cluster_query accessConfig.authenticationMode)"
@@ -948,33 +1020,21 @@ verify_access_entry() {
   groups="$(aws eks describe-access-entry --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
     --query accessEntry.kubernetesGroups --output text)"
   groups="$(cidr_normalise "$groups")"
-  scope="$(aws eks list-associated-access-policies --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN" \
-    --query "associatedAccessPolicies[?policyArn == '${ADMIN_VIEW_POLICY_ARN}'].accessScope.type" --output text)"
-  if [[ "$scope" == None ]]; then
-    scope=""
-  fi
-  if [[ "$AUTHORIZATION" == rbac ]]; then
-    if [[ " $groups " == *" $GROUP "* ]]; then
-      check_pass "access entry carries Kubernetes group $GROUP"
-    else
-      check_fail "access entry groups (${groups:-none}) do not include $GROUP"
-    fi
-    if [[ -n "$scope" ]]; then
-      warn "AmazonEKSAdminViewPolicy is also associated, which is broader than rbac mode needs"
-    fi
-  elif [[ "$scope" == cluster ]]; then
-    check_pass "AmazonEKSAdminViewPolicy is associated with cluster scope"
+  scope="$(associated_admin_view_scope)"
+  if [[ " $groups " == *" $GROUP "* ]]; then
+    check_pass "access entry carries Kubernetes group $GROUP"
   else
-    check_fail "AmazonEKSAdminViewPolicy is not associated with cluster scope (found: ${scope:-none})"
+    check_fail "access entry groups (${groups:-none}) do not include $GROUP"
+  fi
+  if [[ -n "$scope" ]]; then
+    check_fail "AmazonEKSAdminViewPolicy is associated; ${ADMIN_VIEW_WARNING}"
+  else
+    check_pass "AmazonEKSAdminViewPolicy is not associated"
   fi
 }
 
 verify_rbac() {
   local resource answer
-  if [[ "$AUTHORIZATION" != rbac ]]; then
-    info "rbac: kubectl auth can-i cannot see access-policy grants; admin-view is checked through list-associated-access-policies only"
-    return 0
-  fi
   if ! command -v kubectl >/dev/null 2>&1; then
     check_fail "kubectl is not installed; cannot check RBAC"
     return 0
@@ -994,6 +1054,21 @@ verify_rbac() {
   else
     check_pass "group $GROUP cannot create pods"
   fi
+  verify_cannot get secrets --all-namespaces
+  verify_cannot get pods/exec --all-namespaces
+  verify_cannot create pods/exec --all-namespaces
+  verify_cannot get pods/log --all-namespaces
+  verify_cannot list pods/log --all-namespaces
+  verify_cannot get nodes/proxy
+  # attach and portforward: skip if this kubectl rejects the subresource.
+  verify_cannot_if_supported get pods/attach --all-namespaces
+  verify_cannot_if_supported get pods/portforward --all-namespaces
+  # impersonate: skip if this kubectl auth can-i does not support the check.
+  verify_cannot_if_supported impersonate users
+  verify_cannot_if_supported impersonate serviceaccounts
+  verify_cannot_if_supported impersonate groups
+  verify_cannot escalate clusterroles.rbac.authorization.k8s.io
+  verify_cannot bind clusterroles.rbac.authorization.k8s.io
   info "kubectl auth can-i impersonates the group through Kubernetes RBAC only: it does not exercise EKS access policies or prove Nullify can reach the endpoint"
 }
 
@@ -1009,9 +1084,14 @@ verify_network() {
     return 0
   fi
   current="$(current_public_cidrs)"
+  if cidr_is_open "$current"; then
+    check_fail "publicAccessCidrs contains ${OPEN_CIDR}; the cluster is open to the world"
+  fi
   missing="$(cidr_missing "$current" "$NULLIFY_CIDRS")"
   if [[ -z "$missing" ]]; then
-    check_pass "publicAccessCidrs admits Nullify's $NULLIFY_REGION egress IPs"
+    if ! cidr_is_open "$current"; then
+      check_pass "publicAccessCidrs admits Nullify's $NULLIFY_REGION egress IPs"
+    fi
   else
     check_fail "publicAccessCidrs is missing Nullify egress IPs: $missing"
   fi
@@ -1054,6 +1134,7 @@ main() {
         setup_kubectl
       fi
       remove_rbac
+      remove_leftover_admin_view_policy
       remove_access_entry
       remove_network
       ;;
