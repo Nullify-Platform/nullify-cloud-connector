@@ -119,7 +119,7 @@ module "nullify_eks_access" {
 
 A cluster cannot run the collector and the managed scan at once: the two paths register it under different identities, duplicating its inventory. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination -- `enable_collector` and `enable_managed_scan_rbac` may be set together on one `k8s-resources` instance to stage a cutover, since the ClusterRole it applies is inert until an access entry uses it. See "Kubernetes Resources" in `../terraform/README.md`.
 
-`k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, the same build as the `k8s-collector-latest` tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
+`k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, the same tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
 
 ## Upgrade Notes
 

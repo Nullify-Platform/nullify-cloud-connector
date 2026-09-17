@@ -344,7 +344,7 @@ This is the same value as `collector.clusterName` in the `nullify-k8s-collector`
 
 A cluster cannot run the collector and the managed scan at once: the collector's upload registers it as on-prem keyed on `cluster_name`, the managed scan registers the same cluster as its EKS ARN, and nothing joins the two, so running both lists the cluster twice with its pods and containers duplicated. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination: pass it the cluster ARNs where `enable_collector` is `true` and the module fails at plan for any of them. To change mode, apply the new one and ask Nullify to remove the old cluster registration.
 
-`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, a pinned tag of Nullify's ECR Public image. It is the same build as `k8s-collector-latest`, which the `nullify-k8s-collector` Helm chart deploys, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
+`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0`, a pinned tag of Nullify's ECR Public image. The `nullify-k8s-collector` Helm chart defaults to the same tag, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
 
 ## Outputs
 
