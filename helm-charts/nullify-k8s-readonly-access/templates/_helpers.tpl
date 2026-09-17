@@ -25,9 +25,10 @@ for the intended subjects:
 - ServiceAccounts in Kubernetes control-plane namespaces;
 - labels that aggregate this role into view, edit or admin;
 - extraRules verbs other than list (get reads a named object; watch streams
-  live values); wildcard apiGroups or resources; any subresource other than
-  status and scale (for example exec, log, proxy, or a CRD's console or vnc);
-  and nonResourceURLs other than /version.
+  live values); secrets (list returns values); wildcard apiGroups or
+  resources; any subresource other than status and scale (for example exec,
+  log, proxy, or a CRD's console or vnc); and nonResourceURLs other than
+  /version.
 */}}
 {{- define "nullify-readonly.validate" -}}
 {{- $group := include "nullify-readonly.groupName" . -}}
@@ -36,6 +37,9 @@ for the intended subjects:
 {{- end -}}
 {{- if hasPrefix "system:" (lower $group) -}}
 {{- fail (printf "groupName %q must not start with \"system:\": binding a system group grants this access to every principal in it" $group) -}}
+{{- end -}}
+{{- if .Values.grantSecretsRead -}}
+{{- fail "grantSecretsRead is not allowed: list secrets returns Secret values" -}}
 {{- end -}}
 {{- range $key, $_ := .Values.labels -}}
 {{- $labelKey := trim (toString $key) -}}
@@ -77,6 +81,9 @@ for the intended subjects:
 {{- range .resources -}}
 {{- $resource := lower (trim (toString .)) -}}
 {{- $parts := splitList "/" $resource -}}
+{{- if eq $resource "secrets" -}}
+{{- fail (printf "extraRules resource %q is not allowed: list secrets returns Secret values" (toString .)) -}}
+{{- end -}}
 {{- $allowedSubresource := and (eq (len $parts) 2) (has (last $parts) $allowedSubresources) -}}
 {{- if or (contains "*" $resource) (and (gt (len $parts) 1) (not $allowedSubresource)) -}}
 {{- fail (printf "extraRules resource %q is not allowed: wildcards and subresources other than status and scale reach beyond read-only configuration" (toString .)) -}}

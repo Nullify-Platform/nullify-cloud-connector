@@ -3,12 +3,13 @@ Nullify read-only access installed.
 
   ClusterRole:        {{ .Values.clusterRoleName }} (list on cluster configuration, get on /version)
   ClusterRoleBinding: {{ .Values.clusterRoleBindingName }} -> Group "{{ $group }}"
-  Secrets list:       {{ .Values.grantSecretsRead }}
+  Secrets list:       never granted (list returns Secret values)
   ConfigMaps list:    {{ .Values.grantConfigMapsRead }}
-{{- if or (not .Values.grantSecretsRead) (not .Values.grantConfigMapsRead) }}
+{{- if not .Values.grantConfigMapsRead }}
 
-WARNING: Nullify's managed EKS scan currently fails the whole cluster when Secrets or
-ConfigMaps cannot be listed. Leave both enabled unless Nullify has confirmed support.
+WARNING: Nullify's managed EKS scan currently fails the whole cluster when
+ConfigMaps cannot be listed. Leave grantConfigMapsRead enabled unless Nullify
+has confirmed support.
 {{- end }}
 
 Next steps:
@@ -21,7 +22,7 @@ Next steps:
        eu-central-1:   18.198.60.231/32, 18.157.227.250/32, 18.185.152.197/32
        us-east-2:      52.15.146.50/32, 16.58.40.80/32, 3.133.15.210/32
   3. Verify the group's RBAC (a group can only be impersonated together with a user):
-       kubectl auth can-i list secrets --all-namespaces --as nullify-verify --as-group {{ $group }}
+       kubectl auth can-i list secrets --all-namespaces --as nullify-verify --as-group {{ $group }}   # expect: no
        kubectl auth can-i get pods --all-namespaces --as nullify-verify --as-group {{ $group }}   # expect: no
 
 See https://github.com/Nullify-Platform/nullify-cloud-connector/blob/main/helm-charts/nullify-k8s-readonly-access/README.md

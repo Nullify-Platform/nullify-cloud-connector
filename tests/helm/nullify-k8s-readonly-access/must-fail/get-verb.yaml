@@ -1,5 +1,5 @@
 # expect: extraRules verb "get" is not allowed
 extraRules:
   - apiGroups: [""]
-    resources: ["secrets"]
+    resources: ["configmaps"]
     verbs: ["get"]

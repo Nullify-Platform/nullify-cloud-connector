@@ -1,4 +1,4 @@
-# Nullify managed EKS scan: read-only Kubernetes access (list on 27 kinds, get on /version).
+# Nullify managed EKS scan: read-only Kubernetes access (list on 26 kinds, get on /version).
 #
 # This is the default render of helm-charts/nullify-k8s-readonly-access without
 # Helm's bookkeeping labels; CI (scripts/check-rbac-manifest.sh) fails if the two
@@ -6,7 +6,7 @@
 #   kubectl apply -f https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/nullify-k8s-readonly-access-v0.1.0/manifests/nullify-readonly-rbac.yaml
 #
 # The group name below MUST match --kubernetes-groups on your EKS access entry.
-# Removing "secrets" or "configmaps" currently makes Nullify's scan of this cluster fail.
+# Secrets are omitted: list returns values.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -27,7 +27,6 @@ rules:
       - limitranges
       - serviceaccounts
       - configmaps
-      - secrets
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]

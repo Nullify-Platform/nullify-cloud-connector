@@ -24,9 +24,6 @@ rules:
       {{- if .Values.grantConfigMapsRead }}
       - configmaps
       {{- end }}
-      {{- if .Values.grantSecretsRead }}
-      - secrets
-      {{- end }}
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]

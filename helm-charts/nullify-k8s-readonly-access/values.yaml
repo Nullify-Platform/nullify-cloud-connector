@@ -8,13 +8,10 @@ groupName: nullify-readonly
 clusterRoleName: nullify-readonly
 clusterRoleBindingName: nullify-readonly
 
-# `list` on Secrets returns their values to the caller. Nullify redacts values
-# before storing anything, but the scanner process receives them.
-#
-# Keep both true for now: the managed EKS scan currently fails the whole cluster
-# when either list is denied. Setting either to false only works once the
-# Nullify-side change that makes these kinds optional has shipped.
-grantSecretsRead: true
+# list secrets returns Secret values. This chart must not grant it.
+grantSecretsRead: false
+# ConfigMaps are cluster configuration (not Secret objects). The managed scan
+# lists them; values are redacted before storage.
 grantConfigMapsRead: true
 
 # Extra subjects appended to the ClusterRoleBinding, for example the username
@@ -28,10 +25,11 @@ extraSubjects: []
 #    name: nullify-scanner
 
 # Extra rules appended verbatim to the ClusterRole. Only the list verb is
-# accepted (get reads a named object; watch streams live values). Wildcard
-# apiGroups or resources, every subresource other than status and scale (exec,
-# log and proxy, and CRD subresources such as a VM console or vnc), and
-# nonResourceURLs other than /version are rejected.
+# accepted (get reads a named object; watch streams live values). secrets is
+# rejected (list returns values). Wildcard apiGroups or resources, every
+# subresource other than status and scale (exec, log and proxy, and CRD
+# subresources such as a VM console or vnc), and nonResourceURLs other than
+# /version are rejected.
 extraRules: []
 #  - apiGroups: ["batch"]
 #    resources: ["cronjobs"]

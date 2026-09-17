@@ -9,12 +9,12 @@ The chart installs exactly two cluster-scoped objects:
 
 | Object | Name (default) | Grants |
 |---|---|---|
-| ClusterRole | `nullify-readonly` | `list` on the 27 kinds below, and `get` on the `/version` URL. No `get` or `watch` on resources, exec, logs, proxy, custom resources or writes. |
+| ClusterRole | `nullify-readonly` | `list` on the 26 kinds below, and `get` on the `/version` URL. No `get` or `watch` on resources, no secrets, exec, logs, proxy, custom resources or writes. |
 | ClusterRoleBinding | `nullify-readonly` | Binds the ClusterRole to Group `nullify-readonly` |
 
 | API group | Kinds (verb `list`) |
 |---|---|
-| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
+| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, resourcequotas, limitranges, serviceaccounts |
 | `apps` | deployments, daemonsets, statefulsets, replicasets |
 | `batch` | jobs |
 | `networking.k8s.io` | ingresses, networkpolicies |
@@ -221,12 +221,13 @@ for r in nodes namespaces persistentvolumes \
   validatingadmissionpolicybindings.admissionregistration.k8s.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" "${AS[@]}")"
 done
-for r in pods services persistentvolumeclaims configmaps secrets resourcequotas limitranges serviceaccounts \
+for r in pods services persistentvolumeclaims configmaps resourcequotas limitranges serviceaccounts \
   deployments.apps daemonsets.apps statefulsets.apps replicasets.apps jobs.batch \
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io endpointslices.discovery.k8s.io \
   roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" --all-namespaces "${AS[@]}")"
 done
+kubectl auth can-i list secrets --all-namespaces "${AS[@]}"     # no
 kubectl auth can-i get secrets --all-namespaces "${AS[@]}"      # no
 kubectl auth can-i get pods/exec --all-namespaces "${AS[@]}"    # no
 kubectl auth can-i create pods --all-namespaces "${AS[@]}"      # no
@@ -238,9 +239,9 @@ whole path with **Verify** in the Nullify console.
 
 ## Secrets and ConfigMaps
 
-- Kubernetes has no metadata-only permission: `list secrets` returns Secret values to the caller.
-- Nullify's checks read only a Secret's type, namespace and key names. Values are redacted before anything is stored, but the scanner process does receive them.
-- `grantSecretsRead` and `grantConfigMapsRead` exist so you can withhold either kind. **Today, setting either to `false` makes the managed scan fail for the whole cluster.** Leave both `true` until Nullify confirms that the scanner treats these kinds as optional.
+- Kubernetes has no metadata-only permission: `list secrets` returns Secret values. This chart never grants `secrets`.
+- `grantSecretsRead: true` and `extraRules` that name `secrets` are rejected at render time.
+- ConfigMaps are cluster configuration. `grantConfigMapsRead` defaults to `true`.
 
 ## Do not use EKS access policies instead
 
@@ -258,7 +259,7 @@ whole path with **Verify** in the Nullify console.
 > RBAC, and only with `--access-scope type=cluster`; a namespace-scoped association
 > fails the scan.
 
-`AmazonEKSViewPolicy` does not work. It lacks nodes, persistentvolumes, secrets,
+`AmazonEKSViewPolicy` does not work. It lacks nodes, persistentvolumes,
 the four RBAC kinds and the four admission kinds, so the scan fails.
 
 ## Values
@@ -268,10 +269,10 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 | `groupName` | `nullify-readonly` | Group bound to the ClusterRole. Must match the access entry's `--kubernetes-groups`. Names starting `system:` are rejected. |
 | `clusterRoleName` | `nullify-readonly` | ClusterRole name |
 | `clusterRoleBindingName` | `nullify-readonly` | ClusterRoleBinding name |
-| `grantSecretsRead` | `true` | Include `secrets`. Required by the scan today. |
-| `grantConfigMapsRead` | `true` | Include `configmaps`. Required by the scan today. |
+| `grantSecretsRead` | `false` | Must stay `false`. `list secrets` returns Secret values. |
+| `grantConfigMapsRead` | `true` | Include `configmaps`. |
 | `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are the `default` ServiceAccount in any namespace and ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
-| `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); `nonResourceURLs` only `/version`. |
+| `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no `secrets`; no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); `nonResourceURLs` only `/version`. |
 | `labels` | `{}` | Labels added to both objects. `rbac.authorization.k8s.io/aggregate-to-view`, `aggregate-to-edit` and `aggregate-to-admin` are rejected. |
 | `annotations` | `{}` | Annotations added to both objects |
 
