@@ -1,0 +1,3 @@
+# expect: labels "app.kubernetes.io/managed-by" is not allowed
+labels:
+  app.kubernetes.io/managed-by: helm

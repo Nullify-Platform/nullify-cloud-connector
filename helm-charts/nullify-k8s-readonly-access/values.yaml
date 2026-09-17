@@ -8,10 +8,11 @@ groupName: nullify-readonly
 clusterRoleName: nullify-readonly
 clusterRoleBindingName: nullify-readonly
 
-# list secrets returns Secret values. This chart must not grant it.
-grantSecretsRead: false
-# ConfigMaps are cluster configuration (not Secret objects). The managed scan
-# lists them; values are redacted before storage.
+# Match these to collectSecrets / collectConfigMaps on the cluster in Nullify.
+# Withholding a kind while the matching option is on fails the scan.
+# The managed scan lists Secrets as a Table (name, type, key count, age). It
+# does not receive Secret values or key names.
+grantSecretsRead: true
 grantConfigMapsRead: true
 
 # Extra subjects appended to the ClusterRoleBinding, for example the username
@@ -25,11 +26,10 @@ extraSubjects: []
 #    name: nullify-scanner
 
 # Extra rules appended verbatim to the ClusterRole. Only the list verb is
-# accepted (get reads a named object; watch streams live values). secrets is
-# rejected (list returns values). Wildcard apiGroups or resources, every
-# subresource other than status and scale (exec, log and proxy, and CRD
-# subresources such as a VM console or vnc), and nonResourceURLs other than
-# /version are rejected.
+# accepted (get reads a named object; watch streams live values). Wildcard
+# apiGroups or resources, every subresource other than status and scale (exec,
+# log and proxy, and CRD subresources such as a VM console or vnc), and any
+# nonResourceURLs are rejected (/version is already granted with get).
 extraRules: []
 #  - apiGroups: ["batch"]
 #    resources: ["cronjobs"]

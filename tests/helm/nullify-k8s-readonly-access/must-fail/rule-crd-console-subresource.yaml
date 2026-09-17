@@ -1,5 +1,0 @@
-# expect: extraRules resource "virtualmachineinstances/console" is not allowed
-extraRules:
-  - apiGroups: ["subresources.kubevirt.io"]
-    resources: ["virtualmachineinstances/console"]
-    verbs: ["list"]

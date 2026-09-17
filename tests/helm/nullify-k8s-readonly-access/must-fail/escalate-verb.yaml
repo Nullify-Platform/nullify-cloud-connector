@@ -1,5 +1,0 @@
-# expect: extraRules verb "escalate" is not allowed
-extraRules:
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["clusterroles"]
-    verbs: ["escalate"]

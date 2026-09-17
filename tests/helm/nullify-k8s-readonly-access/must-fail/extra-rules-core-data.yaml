@@ -1,5 +1,0 @@
-# expect: extraRules resource "secrets" is not allowed: list secrets returns Secret values
-extraRules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["list"]

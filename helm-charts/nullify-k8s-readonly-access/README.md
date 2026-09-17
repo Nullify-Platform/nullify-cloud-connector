@@ -5,16 +5,19 @@ cluster's configuration from Nullify's AWS account, through the cluster's public
 API endpoint, using the read-only integration role you already deployed. Nothing
 runs inside the cluster.
 
-The chart installs exactly two cluster-scoped objects:
+Map the integration role to the group and allow Nullify's egress IPs on the
+cluster endpoint as described in the
+[root README](../../README.md#managed-eks-scan-no-in-cluster-agent). This chart
+installs the two cluster-scoped objects:
 
 | Object | Name (default) | Grants |
 |---|---|---|
-| ClusterRole | `nullify-readonly` | `list` on the 26 kinds below, and `get` on the `/version` URL. No `get` or `watch` on resources, no secrets, exec, logs, proxy, custom resources or writes. |
+| ClusterRole | `nullify-readonly` | `list` on the 27 kinds below, and `get` on `/version`. No `get` or `watch` on resources, no exec, logs, proxy, custom resources or writes. |
 | ClusterRoleBinding | `nullify-readonly` | Binds the ClusterRole to Group `nullify-readonly` |
 
 | API group | Kinds (verb `list`) |
 |---|---|
-| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, resourcequotas, limitranges, serviceaccounts |
+| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
 | `apps` | deployments, daemonsets, statefulsets, replicasets |
 | `batch` | jobs |
 | `networking.k8s.io` | ingresses, networkpolicies |
@@ -22,17 +25,28 @@ The chart installs exactly two cluster-scoped objects:
 | `rbac.authorization.k8s.io` | roles, rolebindings, clusterroles, clusterrolebindings |
 | `admissionregistration.k8s.io` | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
-These are exactly the lists the scanner makes. It also reads `/version`. The
+These are exactly the lists the scanner makes when `collectSecrets` and
+`collectConfigMaps` are on (the defaults). It also reads `/version`. The
 default `system:public-info-viewer` binding usually allows that, but hardened
 clusters sometimes remove it, and a denied `/version` fails the whole scan, so
 the ClusterRole grants `get` on `/version` itself. Clusters older than 1.30 do
 not serve ValidatingAdmissionPolicies; the rule is harmless there, and the
 scanner skips that kind.
 
-The scan runs every namespace and fails the whole cluster if any of these lists
+The scan runs every namespace and fails the whole cluster if any required list
 is denied, so the binding has to be cluster-wide. Jobs are the exception: a
 denied Jobs list is skipped, and pods started by a CronJob are then attributed
 to their Job instead of the CronJob.
+
+## Secrets and ConfigMaps
+
+The managed scan lists Secrets with the Kubernetes Table API (`includeObject=None`).
+Nullify stores name, type, key count and age. It does not receive Secret values
+or key names.
+
+`grantSecretsRead` and `grantConfigMapsRead` must match `collectSecrets` and
+`collectConfigMaps` on the cluster in Nullify. Setting a flag to `false` without
+turning the matching option off fails the scan for the whole cluster.
 
 ## Prerequisites
 
@@ -41,32 +55,17 @@ to their Job instead of the CronJob.
 - Kubernetes 1.21 or later, and the cluster's **public** endpoint is enabled.
   Private-only clusters cannot be scanned this way; use the
   [in-cluster collector](../nullify-k8s-collector/README.md) instead.
-- The cluster authentication mode includes the EKS API (`API` or
-  `API_AND_CONFIG_MAP`), or you map the role in `aws-auth`.
+- The role is mapped to this chart's group, and Nullify's egress IPs are allowed
+  on the public endpoint. See the
+  [root README](../../README.md#managed-eks-scan-no-in-cluster-agent).
 - An identity that can create ClusterRoles, such as cluster-admin or your GitOps
   controller. Kubernetes only lets you grant permissions you already hold.
 
 ```bash
-export CLUSTER=my-cluster REGION=eu-west-1 ACCOUNT_ID=123456789012 CUSTOMER_NAME=acme
-export ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/AWSIntegration-${CUSTOMER_NAME}-NullifyReadOnlyRole"
 export NULLIFY_GROUP=nullify-readonly
 ```
 
-## 1. Map the Nullify role to the group
-
-```bash
-aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
-  --query 'cluster.accessConfig.authenticationMode' --output text
-
-aws eks create-access-entry --cluster-name "$CLUSTER" --region "$REGION" \
-  --principal-arn "$ROLE_ARN" --type STANDARD --kubernetes-groups "$NULLIFY_GROUP"
-```
-
-- Do **not** associate an EKS access policy. This chart's RBAC is the only grant.
-- `update-access-entry --kubernetes-groups` **replaces** the group list. If the role already has an entry, include its existing groups.
-- If the authentication mode is `CONFIG_MAP`, either switch to `API_AND_CONFIG_MAP` (one-way) or add the role to `aws-auth` `mapRoles` with `groups: [nullify-readonly]`.
-
-## 2. Install the RBAC
+## Install
 
 Choose one of the three methods below.
 
@@ -181,31 +180,7 @@ Then install with that release name and namespace. If a Flux Kustomization
 applied the manifest, remove it with `prune: false` first, or it deletes the
 objects Helm just adopted.
 
-## 3. Allow Nullify on the API endpoint
-
-Add Nullify's egress IP addresses for your Nullify region to the cluster's
-public access CIDRs. The region is where your Nullify tenant runs, not where the
-cluster runs.
-
-| Nullify region | Egress IPs |
-|---|---|
-| `ap-southeast-2` | `13.55.32.104/32`, `3.105.146.106/32`, `13.211.99.100/32` |
-| `eu-central-1` | `18.198.60.231/32`, `18.157.227.250/32`, `18.185.152.197/32` |
-| `us-east-2` | `52.15.146.50/32`, `16.58.40.80/32`, `3.133.15.210/32` |
-
-Nullify will also serve this list from an API endpoint; until then this table is
-the source of truth.
-
-`publicAccessCidrs` **replaces** the list, so merge with the current value, and
-the list holds at most 40 CIDRs. If the current value is `0.0.0.0/0`, the
-endpoint is already open to Nullify.
-
-```bash
-aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
-  --query 'cluster.resourcesVpcConfig.{public:endpointPublicAccess,cidrs:publicAccessCidrs}'
-```
-
-## 4. Verify
+## Verify
 
 Kubernetes only accepts `--as-group` together with `--as`, so impersonate a
 throwaway username that has no bindings of its own. Your identity needs
@@ -221,13 +196,12 @@ for r in nodes namespaces persistentvolumes \
   validatingadmissionpolicybindings.admissionregistration.k8s.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" "${AS[@]}")"
 done
-for r in pods services persistentvolumeclaims configmaps resourcequotas limitranges serviceaccounts \
+for r in pods services persistentvolumeclaims configmaps secrets resourcequotas limitranges serviceaccounts \
   deployments.apps daemonsets.apps statefulsets.apps replicasets.apps jobs.batch \
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io endpointslices.discovery.k8s.io \
   roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" --all-namespaces "${AS[@]}")"
 done
-kubectl auth can-i list secrets --all-namespaces "${AS[@]}"     # no
 kubectl auth can-i get secrets --all-namespaces "${AS[@]}"      # no
 kubectl auth can-i get pods/exec --all-namespaces "${AS[@]}"    # no
 kubectl auth can-i create pods --all-namespaces "${AS[@]}"      # no
@@ -236,12 +210,6 @@ kubectl auth can-i create pods --all-namespaces "${AS[@]}"      # no
 Every `list` line must print `yes`. This proves the group's RBAC only. Check
 the role-to-group mapping with `aws eks describe-access-entry`, and confirm the
 whole path with **Verify** in the Nullify console.
-
-## Secrets and ConfigMaps
-
-- Kubernetes has no metadata-only permission: `list secrets` returns Secret values. This chart never grants `secrets`.
-- `grantSecretsRead: true` and `extraRules` that name `secrets` are rejected at render time.
-- ConfigMaps are cluster configuration. `grantConfigMapsRead` defaults to `true`.
 
 ## Do not use EKS access policies instead
 
@@ -259,7 +227,7 @@ whole path with **Verify** in the Nullify console.
 > RBAC, and only with `--access-scope type=cluster`; a namespace-scoped association
 > fails the scan.
 
-`AmazonEKSViewPolicy` does not work. It lacks nodes, persistentvolumes,
+`AmazonEKSViewPolicy` does not work. It lacks nodes, persistentvolumes, secrets,
 the four RBAC kinds and the four admission kinds, so the scan fails.
 
 ## Values
@@ -269,11 +237,11 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 | `groupName` | `nullify-readonly` | Group bound to the ClusterRole. Must match the access entry's `--kubernetes-groups`. Names starting `system:` are rejected. |
 | `clusterRoleName` | `nullify-readonly` | ClusterRole name |
 | `clusterRoleBindingName` | `nullify-readonly` | ClusterRoleBinding name |
-| `grantSecretsRead` | `false` | Must stay `false`. `list secrets` returns Secret values. |
-| `grantConfigMapsRead` | `true` | Include `configmaps`. |
+| `grantSecretsRead` | `true` | Include `secrets`. Must match `collectSecrets` on the cluster in Nullify. |
+| `grantConfigMapsRead` | `true` | Include `configmaps`. Must match `collectConfigMaps` on the cluster in Nullify. |
 | `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are the `default` ServiceAccount in any namespace and ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
-| `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no `secrets`; no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); `nonResourceURLs` only `/version`. |
-| `labels` | `{}` | Labels added to both objects. `rbac.authorization.k8s.io/aggregate-to-view`, `aggregate-to-edit` and `aggregate-to-admin` are rejected. |
+| `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); no `nonResourceURLs` (`/version` is already granted with `get`). |
+| `labels` | `{}` | Labels added to both objects. `rbac.authorization.k8s.io/aggregate-to-view`, `aggregate-to-edit` and `aggregate-to-admin` are rejected, as are keys this chart already sets (`app.kubernetes.io/managed-by` and the other standard labels). |
 | `annotations` | `{}` | Annotations added to both objects |
 
 ## Uninstall
@@ -281,5 +249,4 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 ```bash
 helm uninstall nullify-k8s-readonly-access --namespace default
 # or: kubectl delete clusterrolebinding,clusterrole nullify-readonly
-aws eks delete-access-entry --cluster-name "$CLUSTER" --region "$REGION" --principal-arn "$ROLE_ARN"
 ```

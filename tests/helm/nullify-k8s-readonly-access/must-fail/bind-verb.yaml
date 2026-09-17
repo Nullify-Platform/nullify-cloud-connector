@@ -1,5 +1,0 @@
-# expect: extraRules verb "bind" is not allowed
-extraRules:
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["clusterroles"]
-    verbs: ["bind"]

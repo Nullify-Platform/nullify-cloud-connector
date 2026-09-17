@@ -111,12 +111,16 @@ jobs:
           echo "Charts a merge to main would skip:"
           cat skipped.txt
 
+  # PR signal only. Packaging the readonly-access chart already runs
+  # helm-charts/nullify-k8s-readonly-access/ci/pre-publish.sh (the same script).
+  # Do not put this on release.needs: a drift here must skip that chart, not
+  # block publishing every other chart.
   rbac-manifest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: ${{ env.HELM_VERSION }}
 
@@ -124,16 +128,15 @@ jobs:
         run: scripts/check-rbac-manifest.sh
 
   release:
-    needs: [charts, validate, rbac-manifest]
+    needs: [charts, validate]
     # Runs even when a chart's validate leg fails: the publish script re-runs
-    # each chart's tests and skips only the failing chart. rbac-manifest is not
-    # per-chart, so it still has to pass outright.
+    # each chart's tests and that chart's ci/pre-publish.sh hook, and skips
+    # only the failing chart.
     if: >-
       !cancelled()
       && github.event_name != 'pull_request'
       && github.ref == 'refs/heads/main'
       && needs.charts.result == 'success'
-      && needs.rbac-manifest.result == 'success'
     runs-on: ubuntu-latest
     environment: github-pages
     # A newer pending run replaces an older pending one (GitHub keeps one per

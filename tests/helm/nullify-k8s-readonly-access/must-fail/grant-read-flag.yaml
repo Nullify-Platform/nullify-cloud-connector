@@ -1,2 +1,0 @@
-# expect: grantSecretsRead is not allowed: list secrets returns Secret values
-grantSecretsRead: true

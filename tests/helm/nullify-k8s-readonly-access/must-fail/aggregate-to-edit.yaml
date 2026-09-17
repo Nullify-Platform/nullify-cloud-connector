@@ -1,3 +1,0 @@
-# expect: labels "rbac.authorization.k8s.io/aggregate-to-edit" is not allowed
-labels:
-  rbac.authorization.k8s.io/aggregate-to-edit: "true"

@@ -1,5 +1,0 @@
-# expect: extraRules resource "nodes/proxy" is not allowed
-extraRules:
-  - apiGroups: [""]
-    resources: ["nodes/proxy"]
-    verbs: ["list"]

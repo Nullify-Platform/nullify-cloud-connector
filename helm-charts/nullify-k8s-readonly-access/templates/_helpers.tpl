@@ -17,18 +17,9 @@ groupName as rendered and validated: trimmed of surrounding whitespace.
 {{- end }}
 
 {{/*
-Rejects values that would widen the grant beyond read-only configuration access
-for the intended subjects:
-- any subject named "system:..." (for example system:authenticated or
-  system:anonymous), whatever its kind, compared trimmed and case-insensitively;
-- the default ServiceAccount in any namespace;
-- ServiceAccounts in Kubernetes control-plane namespaces;
-- labels that aggregate this role into view, edit or admin;
-- extraRules verbs other than list (get reads a named object; watch streams
-  live values); secrets (list returns values); wildcard apiGroups or
-  resources; any subresource other than status and scale (for example exec,
-  log, proxy, or a CRD's console or vnc); and nonResourceURLs other than
-  /version.
+Rejects a widened grant: system: subjects, default/control-plane ServiceAccounts,
+aggregate-to-* and reserved label keys, extraRules verbs other than list,
+wildcards, subresources other than status/scale, and any nonResourceURLs.
 */}}
 {{- define "nullify-readonly.validate" -}}
 {{- $group := include "nullify-readonly.groupName" . -}}
@@ -38,13 +29,15 @@ for the intended subjects:
 {{- if hasPrefix "system:" (lower $group) -}}
 {{- fail (printf "groupName %q must not start with \"system:\": binding a system group grants this access to every principal in it" $group) -}}
 {{- end -}}
-{{- if .Values.grantSecretsRead -}}
-{{- fail "grantSecretsRead is not allowed: list secrets returns Secret values" -}}
-{{- end -}}
+{{- $reservedLabels := list "helm.sh/chart" "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/managed-by" "app.kubernetes.io/part-of" -}}
+{{- $aggregateLabels := list "rbac.authorization.k8s.io/aggregate-to-view" "rbac.authorization.k8s.io/aggregate-to-edit" "rbac.authorization.k8s.io/aggregate-to-admin" -}}
 {{- range $key, $_ := .Values.labels -}}
 {{- $labelKey := trim (toString $key) -}}
-{{- if has $labelKey (list "rbac.authorization.k8s.io/aggregate-to-view" "rbac.authorization.k8s.io/aggregate-to-edit" "rbac.authorization.k8s.io/aggregate-to-admin") -}}
+{{- if has $labelKey $aggregateLabels -}}
 {{- fail (printf "labels %q is not allowed: aggregating this ClusterRole into view, edit or admin widens those built-in roles" $labelKey) -}}
+{{- end -}}
+{{- if has $labelKey $reservedLabels -}}
+{{- fail (printf "labels %q is not allowed: this chart already sets that key" $labelKey) -}}
 {{- end -}}
 {{- end -}}
 {{- range .Values.extraSubjects -}}
@@ -81,18 +74,13 @@ for the intended subjects:
 {{- range .resources -}}
 {{- $resource := lower (trim (toString .)) -}}
 {{- $parts := splitList "/" $resource -}}
-{{- if eq $resource "secrets" -}}
-{{- fail (printf "extraRules resource %q is not allowed: list secrets returns Secret values" (toString .)) -}}
-{{- end -}}
 {{- $allowedSubresource := and (eq (len $parts) 2) (has (last $parts) $allowedSubresources) -}}
 {{- if or (contains "*" $resource) (and (gt (len $parts) 1) (not $allowedSubresource)) -}}
 {{- fail (printf "extraRules resource %q is not allowed: wildcards and subresources other than status and scale reach beyond read-only configuration" (toString .)) -}}
 {{- end -}}
 {{- end -}}
 {{- range .nonResourceURLs -}}
-{{- if ne (trim (toString .)) "/version" -}}
-{{- fail (printf "extraRules nonResourceURL %q is not allowed: only /version, which the chart already grants" (toString .)) -}}
-{{- end -}}
+{{- fail (printf "extraRules nonResourceURL %q is not allowed: this chart only grants resource list rules; /version is already granted with get" (toString .)) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

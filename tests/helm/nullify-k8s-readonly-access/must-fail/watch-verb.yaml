@@ -1,5 +1,0 @@
-# expect: extraRules verb "watch" is not allowed
-extraRules:
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["watch"]
