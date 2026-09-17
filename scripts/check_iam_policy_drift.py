@@ -40,6 +40,30 @@ DENY_RESOURCES = ["DenyActionsPolicy"]
 # `resources` and `condition` are hashable, order-independent normal forms.
 Entry = tuple
 
+# Partition-scoped ARNs are written with CFN `${AWS::Partition}` and Terraform
+# `${data.aws_partition.current.partition}`. Collapse both to `${partition}`
+# so a scoped grant like ssm:GetDocument on SSM-SessionManagerRunShell
+# compares equal instead of leaving an unhashable Fn::Sub dict in the set.
+_PARTITION_TOKEN = "${partition}"
+_CFN_PARTITION = re.compile(r"\$\{AWS::Partition\}")
+_TF_PARTITION = re.compile(r"\$\{data\.aws_partition\.current\.partition\}")
+
+
+def _norm_cfn_value(value) -> str:
+    if isinstance(value, str):
+        return _CFN_PARTITION.sub(_PARTITION_TOKEN, value)
+    if isinstance(value, dict) and "Fn::Sub" in value:
+        template = value["Fn::Sub"]
+        if isinstance(template, list):
+            template = template[0]
+        if isinstance(template, str):
+            return _CFN_PARTITION.sub(_PARTITION_TOKEN, template)
+    raise SystemExit(f"unsupported CloudFormation IAM value: {value!r}")
+
+
+def _norm_tf_value(value: str) -> str:
+    return _TF_PARTITION.sub(_PARTITION_TOKEN, value)
+
 
 def _norm_resources(resources, negated: bool) -> tuple:
     key = "not_resources" if negated else "resources"
@@ -73,6 +97,7 @@ def cfn_entries(resource_names: list) -> set:
                 actions_negated = False
             if not isinstance(actions, list):
                 actions = [actions]
+            actions = [_norm_cfn_value(action) for action in actions]
 
             if "NotResource" in statement:
                 resources, resources_negated = statement["NotResource"], True
@@ -81,6 +106,7 @@ def cfn_entries(resource_names: list) -> set:
                 resources_negated = False
             if not isinstance(resources, list):
                 resources = [resources]
+            resources = [_norm_cfn_value(resource) for resource in resources]
 
             conditions = []
             for test, variable_values in (statement.get("Condition") or {}).items():
@@ -164,12 +190,14 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
                 actions, actions_negated = not_actions, True
             else:
                 actions, actions_negated = _string_list(block, "actions"), False
+            actions = [_norm_tf_value(action) for action in actions]
 
             not_resources = _string_list(block, "not_resources")
             if not_resources:
                 resources, resources_negated = not_resources, True
             else:
                 resources, resources_negated = _string_list(block, "resources"), False
+            resources = [_norm_tf_value(resource) for resource in resources]
 
             entries |= _flatten(effect, actions, actions_negated, resources, resources_negated, _conditions(block))
     return entries
