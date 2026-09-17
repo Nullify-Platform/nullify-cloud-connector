@@ -12,6 +12,7 @@ on:
       - "gcp-integration-setup/**"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
+      - "scripts/check_iam_policy_drift.py"
       - ".github/workflows/terraform-validate.yml"
   push:
     branches:
@@ -20,6 +21,7 @@ on:
       - "gcp-integration-setup/**"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
+      - "scripts/check_iam_policy_drift.py"
       - ".github/workflows/terraform-validate.yml"
 
 permissions:
@@ -27,27 +29,44 @@ permissions:
 
 jobs:
   terraform:
+    name: terraform (${{ matrix.directory }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        directory:
-          - gcp-integration-setup/terraform
-          - gcp-integration-setup/terraform/examples/organization
-          - gcp-integration-setup/terraform/examples/folder
-          - gcp-integration-setup/terraform/examples/single-project
-          - aws-integration-setup/terraform
-          - aws-integration-setup/terraform/examples/basic
-          - aws-integration-setup/terraform/examples/multi-cluster-complete
-          - azure-integration-setup/terraform
-          - azure-integration-setup/terraform/examples/management-group
-          - azure-integration-setup/terraform/examples/subscriptions
+        include:
+          - directory: gcp-integration-setup/terraform
+            terraform: 1.9.5
+          - directory: gcp-integration-setup/terraform/examples/organization
+            terraform: 1.9.5
+          - directory: gcp-integration-setup/terraform/examples/folder
+            terraform: 1.9.5
+          - directory: gcp-integration-setup/terraform/examples/single-project
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform/examples/basic
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform/examples/multi-cluster-complete
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform-v6
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform-v6/examples/basic
+            terraform: 1.9.5
+          - directory: aws-integration-setup/terraform-v6/examples/multi-cluster-complete
+            terraform: 1.10.5
+          - directory: azure-integration-setup/terraform
+            terraform: 1.9.5
+          - directory: azure-integration-setup/terraform/examples/management-group
+            terraform: 1.9.5
+          - directory: azure-integration-setup/terraform/examples/subscriptions
+            terraform: 1.9.5
     steps:
       - uses: actions/checkout@v4
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.5
+          terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
       - name: terraform fmt -check
@@ -61,6 +80,22 @@ jobs:
       - name: terraform validate
         working-directory: ${{ matrix.directory }}
         run: terraform validate
+
+  # The CloudFormation template and both Terraform trees grant the same
+  # customer role from three independently maintained templates (ncc #58,
+  # whiskeylotus W58-3). This job parses the CFN JSON and fails if any
+  # Allow/Deny statement set drifts.
+  iam-policy-drift:
+    name: IAM policy drift (CloudFormation vs Terraform)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: parse CloudFormation template
+        run: python3 -m json.tool aws-integration-setup/cloudformation/nullify-cloudformation-template.json > /dev/null
+
+      - name: compare Allow/Deny action sets
+        run: python3 scripts/check_iam_policy_drift.py
 
   shellcheck:
     runs-on: ubuntu-latest
