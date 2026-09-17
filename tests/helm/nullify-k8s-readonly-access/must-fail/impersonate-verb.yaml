@@ -1,0 +1,5 @@
+# expect: extraRules verb "impersonate" is not allowed
+extraRules:
+  - apiGroups: [""]
+    resources: ["users"]
+    verbs: ["impersonate"]

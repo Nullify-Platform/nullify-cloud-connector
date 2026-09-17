@@ -1,0 +1,5 @@
+# expect: extraRules resource "pods/portforward" is not allowed
+extraRules:
+  - apiGroups: [""]
+    resources: ["pods/portforward"]
+    verbs: ["list"]

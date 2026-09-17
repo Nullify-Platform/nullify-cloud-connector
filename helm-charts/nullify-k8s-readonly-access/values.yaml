@@ -20,21 +20,26 @@ grantConfigMapsRead: true
 # Extra subjects appended to the ClusterRoleBinding, for example the username
 # given to an access entry with --username. Kinds are User, Group or
 # ServiceAccount. Any name starting with "system:" (trimmed, any case) is
-# rejected, as are ServiceAccounts in kube-system, kube-public and kube-node-lease.
+# rejected, as are the default ServiceAccount in any namespace and
+# ServiceAccounts in kube-system, kube-public and kube-node-lease.
 extraSubjects: []
 #  - apiGroup: rbac.authorization.k8s.io
 #    kind: User
 #    name: nullify-scanner
 
-# Extra rules appended verbatim to the ClusterRole. Only the get, list and watch
-# verbs are accepted. Wildcard apiGroups or resources, every subresource other
-# than status and scale (exec, log and proxy, and CRD subresources such as a
-# VM console or vnc), and nonResourceURLs other than /version are rejected.
+# Extra rules appended verbatim to the ClusterRole. Only the list verb is
+# accepted (get reads a named object; watch streams live values). Wildcard
+# apiGroups or resources, every subresource other than status and scale (exec,
+# log and proxy, and CRD subresources such as a VM console or vnc), and
+# nonResourceURLs other than /version are rejected.
 extraRules: []
 #  - apiGroups: ["batch"]
 #    resources: ["cronjobs"]
 #    verbs: ["list"]
 
-# Labels and annotations added to both objects.
+# Labels and annotations added to both objects. Do not set
+# rbac.authorization.k8s.io/aggregate-to-view, aggregate-to-edit or
+# aggregate-to-admin: those would merge this ClusterRole into the built-in
+# aggregated roles.
 labels: {}
 annotations: {}

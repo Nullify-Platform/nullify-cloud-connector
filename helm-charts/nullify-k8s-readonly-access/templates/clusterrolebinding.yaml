@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Values.clusterRoleBindingName }}
+  name: {{ .Values.clusterRoleBindingName | quote }}
   labels:
     {{- include "nullify-readonly.labels" . | nindent 4 }}
   {{- with .Values.annotations }}
@@ -12,7 +12,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Values.clusterRoleName }}
+  name: {{ .Values.clusterRoleName | quote }}
 subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group

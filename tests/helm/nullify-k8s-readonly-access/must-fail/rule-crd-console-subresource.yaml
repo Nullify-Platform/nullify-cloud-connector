@@ -2,4 +2,4 @@
 extraRules:
   - apiGroups: ["subresources.kubevirt.io"]
     resources: ["virtualmachineinstances/console"]
-    verbs: ["get"]
+    verbs: ["list"]

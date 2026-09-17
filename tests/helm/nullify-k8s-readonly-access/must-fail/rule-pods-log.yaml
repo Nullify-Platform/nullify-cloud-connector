@@ -1,0 +1,5 @@
+# expect: extraRules resource "pods/log" is not allowed
+extraRules:
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["list"]

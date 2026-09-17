@@ -2,4 +2,4 @@
 extraRules:
   - apiGroups: ["subresources.kubevirt.io"]
     resources: ["virtualmachineinstances/vnc/screenshot"]
-    verbs: ["get"]
+    verbs: ["list"]

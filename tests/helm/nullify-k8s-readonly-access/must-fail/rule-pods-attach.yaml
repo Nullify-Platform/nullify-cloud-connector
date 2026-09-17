@@ -1,0 +1,5 @@
+# expect: extraRules resource "pods/attach" is not allowed
+extraRules:
+  - apiGroups: [""]
+    resources: ["pods/attach"]
+    verbs: ["list"]

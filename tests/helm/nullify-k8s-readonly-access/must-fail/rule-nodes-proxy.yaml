@@ -2,4 +2,4 @@
 extraRules:
   - apiGroups: [""]
     resources: ["nodes/proxy"]
-    verbs: ["get"]
+    verbs: ["list"]

@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ .Values.clusterRoleName }}
+  name: {{ .Values.clusterRoleName | quote }}
   labels:
     {{- include "nullify-readonly.labels" . | nindent 4 }}
   {{- with .Values.annotations }}

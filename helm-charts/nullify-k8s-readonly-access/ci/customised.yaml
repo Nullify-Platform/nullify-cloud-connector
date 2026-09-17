@@ -17,7 +17,7 @@ extraRules:
     verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]
-    verbs: ["get"]
+    verbs: ["list"]
 labels:
   team: platform
 annotations:

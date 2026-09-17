@@ -270,9 +270,9 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 | `clusterRoleBindingName` | `nullify-readonly` | ClusterRoleBinding name |
 | `grantSecretsRead` | `true` | Include `secrets`. Required by the scan today. |
 | `grantConfigMapsRead` | `true` | Include `configmaps`. Required by the scan today. |
-| `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
-| `extraRules` | `[]` | Extra ClusterRole rules. Only `get`, `list` and `watch`; no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); `nonResourceURLs` only `/version`. |
-| `labels` | `{}` | Labels added to both objects |
+| `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are the `default` ServiceAccount in any namespace and ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
+| `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); `nonResourceURLs` only `/version`. |
+| `labels` | `{}` | Labels added to both objects. `rbac.authorization.k8s.io/aggregate-to-view`, `aggregate-to-edit` and `aggregate-to-admin` are rejected. |
 | `annotations` | `{}` | Annotations added to both objects |
 
 ## Uninstall

@@ -21,11 +21,13 @@ Rejects values that would widen the grant beyond read-only configuration access
 for the intended subjects:
 - any subject named "system:..." (for example system:authenticated or
   system:anonymous), whatever its kind, compared trimmed and case-insensitively;
+- the default ServiceAccount in any namespace;
 - ServiceAccounts in Kubernetes control-plane namespaces;
-- extraRules verbs other than get, list and watch; wildcard apiGroups or
-  resources; any subresource other than status and scale (for example exec,
-  log, proxy, or a CRD's console or vnc); and nonResourceURLs other than
-  /version.
+- labels that aggregate this role into view, edit or admin;
+- extraRules verbs other than list (get reads a named object; watch streams
+  live values); wildcard apiGroups or resources; any subresource other than
+  status and scale (for example exec, log, proxy, or a CRD's console or vnc);
+  and nonResourceURLs other than /version.
 */}}
 {{- define "nullify-readonly.validate" -}}
 {{- $group := include "nullify-readonly.groupName" . -}}
@@ -34,6 +36,12 @@ for the intended subjects:
 {{- end -}}
 {{- if hasPrefix "system:" (lower $group) -}}
 {{- fail (printf "groupName %q must not start with \"system:\": binding a system group grants this access to every principal in it" $group) -}}
+{{- end -}}
+{{- range $key, $_ := .Values.labels -}}
+{{- $labelKey := trim (toString $key) -}}
+{{- if has $labelKey (list "rbac.authorization.k8s.io/aggregate-to-view" "rbac.authorization.k8s.io/aggregate-to-edit" "rbac.authorization.k8s.io/aggregate-to-admin") -}}
+{{- fail (printf "labels %q is not allowed: aggregating this ClusterRole into view, edit or admin widens those built-in roles" $labelKey) -}}
+{{- end -}}
 {{- end -}}
 {{- range .Values.extraSubjects -}}
 {{- $kind := trim (toString .kind) -}}
@@ -49,13 +57,16 @@ for the intended subjects:
 {{- if or (hasPrefix "system:" $namespace) (has $namespace (list "kube-system" "kube-public" "kube-node-lease")) -}}
 {{- fail (printf "extraSubjects ServiceAccount namespace %q is not allowed: control-plane namespaces run system components" $namespace) -}}
 {{- end -}}
+{{- if eq (lower $name) "default" -}}
+{{- fail (printf "extraSubjects ServiceAccount %q is not allowed: do not bind the default ServiceAccount in any namespace" $name) -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- $allowedSubresources := list "status" "scale" -}}
 {{- range .Values.extraRules -}}
 {{- range .verbs -}}
-{{- if not (has (toString .) (list "get" "list" "watch")) -}}
-{{- fail (printf "extraRules verb %q is not allowed: this chart only grants get, list and watch" (toString .)) -}}
+{{- if not (eq (toString .) "list") -}}
+{{- fail (printf "extraRules verb %q is not allowed: this chart only grants list" (toString .)) -}}
 {{- end -}}
 {{- end -}}
 {{- range .apiGroups -}}

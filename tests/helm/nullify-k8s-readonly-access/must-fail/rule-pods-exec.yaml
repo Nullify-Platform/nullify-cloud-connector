@@ -2,4 +2,4 @@
 extraRules:
   - apiGroups: [""]
     resources: ["pods/exec"]
-    verbs: ["get"]
+    verbs: ["list"]
