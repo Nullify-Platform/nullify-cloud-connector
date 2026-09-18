@@ -1,0 +1,4 @@
+# expect: extraRules nonResourceURL "/version" is not allowed
+extraRules:
+  - nonResourceURLs: ["/version"]
+    verbs: ["list"]

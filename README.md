@@ -38,6 +38,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 | Method | Best For | Prerequisites |
 |--------|----------|---------------|
 | **🎯 Helm Charts** | Kubernetes-native teams, GitOps workflows | EKS or GKE cluster, Helm 3.x, kubectl |
+| **Managed EKS scan (no agent)** | EKS clusters with a public API endpoint; nothing runs in the cluster | AWS integration deployed, EKS access entry, kubectl (Helm optional) |
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
 | **🔧 Terraform (AWS)** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
 | **☁️ Terraform (GCP)** | GCP environments, Workload Identity Federation | Terraform, `gcloud` auth on the host project, org or folder admin access |
@@ -147,6 +148,67 @@ kubectl get jobs -n nullify
 
 # Check logs from the latest job
 kubectl logs -l job-name=<job-name> -n nullify
+```
+
+## **Managed EKS scan (no in-cluster agent)**
+
+Nullify can read an EKS cluster's configuration from Nullify's AWS account through the cluster's public API endpoint, using the read-only integration role. Nothing runs in the cluster; you grant list-only RBAC to a group and map the integration role to that group with an EKS access entry.
+
+- RBAC: the [`nullify-k8s-readonly-access`](helm-charts/nullify-k8s-readonly-access/README.md) chart, or the equivalent raw manifest [`manifests/nullify-readonly-rbac.yaml`](manifests/nullify-readonly-rbac.yaml) for kubectl and Flux.
+- Default: ClusterRole `nullify-readonly` with `list` on 27 kinds and `get` on `/version`, bound to group `nullify-readonly`.
+- Secrets are listed as a Table (name, type, key count, age). The scanner does not receive Secret values or key names. `grantSecretsRead` / `grantConfigMapsRead` must match `collectSecrets` / `collectConfigMaps` on the cluster in Nullify.
+- Do not use `AmazonEKSViewPolicy` (the scan fails); `AmazonEKSAdminViewPolicy` works but is far broader. See the chart README before choosing it.
+
+| | In-cluster collector | Managed EKS scan |
+|---|---|---|
+| Where it runs | CronJob in your cluster | Nullify's AWS account |
+| Network | Outbound from the cluster to AWS S3/STS | Inbound to the EKS public endpoint from Nullify egress IPs |
+| Private-only endpoint | Supported | Not supported |
+| In-cluster objects | ServiceAccount, ClusterRole, ClusterRoleBinding, CronJob | ClusterRole, ClusterRoleBinding |
+| A denied kind | Skipped | Whole cluster scan fails |
+| Platforms | EKS, GKE | EKS |
+
+### Map the Nullify role to the group
+
+```bash
+export CLUSTER=my-cluster REGION=eu-west-1 ACCOUNT_ID=123456789012 CUSTOMER_NAME=acme
+export ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/AWSIntegration-${CUSTOMER_NAME}-NullifyReadOnlyRole"
+export NULLIFY_GROUP=nullify-readonly
+
+aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
+  --query 'cluster.accessConfig.authenticationMode' --output text
+
+aws eks create-access-entry --cluster-name "$CLUSTER" --region "$REGION" \
+  --principal-arn "$ROLE_ARN" --type STANDARD --kubernetes-groups "$NULLIFY_GROUP"
+```
+
+- Do **not** associate an EKS access policy. The chart's RBAC is the only grant.
+- `update-access-entry --kubernetes-groups` **replaces** the group list. If the role already has an entry, include its existing groups.
+- If the authentication mode is `CONFIG_MAP`, either switch to `API_AND_CONFIG_MAP` (one-way) or add the role to `aws-auth` `mapRoles` with `groups: [nullify-readonly]`.
+
+Then install the chart (Helm, Flux, or kubectl) as described in the
+[readonly-access chart README](helm-charts/nullify-k8s-readonly-access/README.md).
+
+### Allow Nullify on the API endpoint
+
+Add Nullify's egress IP addresses for your Nullify region to the cluster's
+public access CIDRs. The region is where your Nullify tenant runs, not where the
+cluster runs.
+
+Fetch the current NAT addresses from `GET https://api.<tenant>.nullify.ai/dast/sourceips`.
+That endpoint resolves live IPs per region and is the list to allow.
+
+`ap-southeast-2` currently publishes `13.55.32.104/32`, `3.105.146.106/32`,
+`13.211.99.100/32`. Confirm those against the API before you apply them, and do
+the same for every other region — this repository does not pin those addresses.
+
+`publicAccessCidrs` **replaces** the list, so merge with the current value, and
+the list holds at most 40 CIDRs. If the current value is `0.0.0.0/0`, the
+endpoint is already open to Nullify.
+
+```bash
+aws eks describe-cluster --name "$CLUSTER" --region "$REGION" \
+  --query 'cluster.resourcesVpcConfig.{public:endpointPublicAccess,cidrs:publicAccessCidrs}'
 ```
 
 ## 🏗️ **CloudFormation Deployment**
@@ -263,16 +325,20 @@ nullify-cloud-connector/
 │   └── test-helm-charts.sh               # Lint and render one chart (used by CI)
 │
 ├── ⚙️ helm-charts/                       # 🎯 KUBERNETES DEPLOYMENT
-│   └── nullify-k8s-collector/            # Main Helm chart for K8s collector
-│       ├── Chart.yaml                    # Chart metadata and version
-│       ├── values.yaml                   # Default values (generic/safe)
-│       ├── values-example.yaml           # Example production configuration
-│       ├── README.md                     # Chart-specific documentation
-│       └── templates/                    # Kubernetes resource templates
-│           ├── serviceaccount.yaml       # IRSA service account
-│           ├── clusterrole.yaml          # Read-only cluster permissions
-│           ├── clusterrolebinding.yaml   # RBAC binding
-│           └── cronjob.yaml              # Main collector CronJob
+│   ├── nullify-k8s-collector/            # Main Helm chart for K8s collector
+│   │   ├── Chart.yaml                    # Chart metadata and version
+│   │   ├── values.yaml                   # Default values (generic/safe)
+│   │   ├── values-example.yaml           # Example production configuration
+│   │   ├── README.md                     # Chart-specific documentation
+│   │   └── templates/                    # Kubernetes resource templates
+│   │       ├── serviceaccount.yaml       # IRSA service account
+│   │       ├── clusterrole.yaml          # Read-only cluster permissions
+│   │       ├── clusterrolebinding.yaml   # RBAC binding
+│   │       └── cronjob.yaml              # Main collector CronJob
+│   └── nullify-k8s-readonly-access/      # List-only RBAC for the managed EKS scan
+│
+├── manifests/
+│   └── nullify-readonly-rbac.yaml        # Raw manifest equal to the readonly chart's default render
 │
 ├── aws-integration-setup/               # 🏗️ AWS INFRASTRUCTURE
 │   ├── 🏗️ cloudformation/               # CloudFormation Templates
@@ -436,6 +502,7 @@ no remaining merge-order hold for #60 / #65 / #70 / #75.
 |----------|-------------|
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | Implementation details and technical overview |
 | [Chart README](helm-charts/nullify-k8s-collector/README.md) | Helm chart documentation (EKS + GKE) |
+| [Read-only access chart README](helm-charts/nullify-k8s-readonly-access/README.md) | Managed EKS scan: RBAC install (Helm, Flux, kubectl) and verification |
 | [CloudFormation README](aws-integration-setup/cloudformation/README.md) | CloudFormation template documentation |
 | [AWS Terraform README](aws-integration-setup/terraform/README.md) | AWS Terraform modules documentation |
 | [GCP Terraform README](gcp-integration-setup/terraform/README.md) | GCP Terraform modules documentation |
