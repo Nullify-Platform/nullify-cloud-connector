@@ -13,7 +13,7 @@ locals {
     },
     {
       api_groups = ["batch"]
-      resources  = ["jobs"]
+      resources  = ["jobs", "cronjobs"]
     },
     {
       api_groups = ["networking.k8s.io"]
