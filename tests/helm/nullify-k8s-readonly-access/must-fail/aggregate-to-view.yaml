@@ -1,0 +1,3 @@
+# expect: labels "rbac.authorization.k8s.io/aggregate-to-view" is not allowed
+labels:
+  rbac.authorization.k8s.io/aggregate-to-view: "true"

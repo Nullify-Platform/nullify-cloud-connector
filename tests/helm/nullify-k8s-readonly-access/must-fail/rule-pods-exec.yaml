@@ -1,0 +1,5 @@
+# expect: extraRules resource "pods/exec" is not allowed
+extraRules:
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["list"]

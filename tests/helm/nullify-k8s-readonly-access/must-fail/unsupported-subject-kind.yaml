@@ -1,0 +1,4 @@
+# expect: extraSubjects kind "Anonymous" is not allowed
+extraSubjects:
+  - kind: Anonymous
+    name: nullify-scanner

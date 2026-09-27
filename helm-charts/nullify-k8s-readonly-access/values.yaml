@@ -1,0 +1,43 @@
+# Kubernetes group that your EKS access entry (--kubernetes-groups) or aws-auth
+# mapRoles entry maps the Nullify integration role to. The two MUST match.
+# Must not start with "system:".
+groupName: nullify-readonly
+
+# Names of the two cluster-scoped objects. Change them only if they collide with
+# objects that already exist in the cluster.
+clusterRoleName: nullify-readonly
+clusterRoleBindingName: nullify-readonly
+
+# Match these to collectSecrets / collectConfigMaps on the cluster in Nullify.
+# Withholding a kind while the matching option is on fails the scan.
+# The managed scan lists Secrets as a Table (name, type, key count, age). It
+# does not receive Secret values or key names.
+grantSecretsRead: true
+grantConfigMapsRead: true
+
+# Extra subjects appended to the ClusterRoleBinding, for example the username
+# given to an access entry with --username. Kinds are User, Group or
+# ServiceAccount. Any name starting with "system:" (trimmed, any case) is
+# rejected, as are the default ServiceAccount in any namespace and
+# ServiceAccounts in kube-system, kube-public and kube-node-lease.
+extraSubjects: []
+#  - apiGroup: rbac.authorization.k8s.io
+#    kind: User
+#    name: nullify-scanner
+
+# Extra rules appended verbatim to the ClusterRole. Only the list verb is
+# accepted (get reads a named object; watch streams live values). Wildcard
+# apiGroups or resources, every subresource other than status and scale (exec,
+# log and proxy, and CRD subresources such as a VM console or vnc), and any
+# nonResourceURLs are rejected (/version is already granted with get).
+extraRules: []
+#  - apiGroups: ["batch"]
+#    resources: ["cronjobs"]
+#    verbs: ["list"]
+
+# Labels and annotations added to both objects. Do not set
+# rbac.authorization.k8s.io/aggregate-to-view, aggregate-to-edit or
+# aggregate-to-admin: those would merge this ClusterRole into the built-in
+# aggregated roles.
+labels: {}
+annotations: {}
