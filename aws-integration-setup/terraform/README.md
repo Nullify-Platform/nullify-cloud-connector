@@ -86,7 +86,7 @@ terraform/
 | Cluster endpoint | Any, including private-only | Public endpoint that admits Nullify's egress IPs |
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
-| Kinds read | The managed scan's kinds, plus cronjobs, ingressclasses, horizontalpodautoscalers, poddisruptionbudgets, storageclasses, csidrivers, runtimeclasses, priorityclasses, flowschemas, certificatesigningrequests and customresourcedefinitions. `k8s-resources` and chart 0.4.0 and later grant the same set, `list` only. Chart 0.2.0 grants a different set: it adds endpoints, cronjobs and CRDs, and lacks configmaps, secrets, resourcequotas, limitranges, endpointslices and the admission kinds | See [RBAC granted to Nullify](#rbac-granted-to-nullify-authorization--rbac) |
+| Kinds read | The managed scan's kinds, plus cronjobs, ingressclasses, horizontalpodautoscalers, poddisruptionbudgets, storageclasses, csidrivers, runtimeclasses, priorityclasses, flowschemas, certificatesigningrequests and customresourcedefinitions. `k8s-resources` and chart 0.4.0 and later grant the same set, `list` only. Charts before 0.4.0 grant an older set; see that version's `templates/clusterrole.yaml` | See [RBAC granted to Nullify](#rbac-granted-to-nullify-authorization--rbac) |
 | Upgrades | You update the image | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
