@@ -203,7 +203,7 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     return entries
 
 
-def compare(label: str, cfn: set, terraform: set) -> bool:
+def compare(label: str, cfn: set, terraform: set, reference: str = "CloudFormation") -> bool:
     if cfn == terraform:
         print(f"OK: {label} matches ({len(cfn)} entries)")
         return True
@@ -211,7 +211,7 @@ def compare(label: str, cfn: set, terraform: set) -> bool:
     only_tf = terraform - cfn
     print(f"MISMATCH: {label}")
     if only_cfn:
-        print(f"  only in CloudFormation ({len(only_cfn)}): {sorted(only_cfn)}")
+        print(f"  only in {reference} ({len(only_cfn)}): {sorted(only_cfn)}")
     if only_tf:
         print(f"  only in Terraform ({len(only_tf)}): {sorted(only_tf)}")
     return False
@@ -225,16 +225,29 @@ TF_CLUSTERROLES = [
 
 
 def _quoted(block: str) -> list:
-    return re.findall(r'"([^"]+)"', block)
+    return re.findall(r'"([^"]*)"', block)
+
+
+def _clusterrole_kinds(rules: list, urls: list) -> set:
+    kinds = set()
+    for groups, resources, verbs in rules:
+        kinds |= {
+            f"{group}/{resource}:{verb}"
+            for group in _quoted(groups)
+            for resource in _quoted(resources)
+            for verb in _quoted(verbs)
+        }
+    for paths, verbs in urls:
+        kinds |= {f"url:{path}:{verb}" for path in _quoted(paths) for verb in _quoted(verbs)}
+    return kinds
 
 
 def helm_clusterrole_kinds(text: str) -> set:
-    kinds = set()
-    for m in re.finditer(r"resources:\s*\[(.*?)\]", text, re.DOTALL):
-        kinds.update(_quoted(m.group(1)))
-    for m in re.finditer(r"nonResourceURLs:\s*\[(.*?)\]", text, re.DOTALL):
-        kinds.update("url:" + url for url in _quoted(m.group(1)))
-    return kinds
+    rules = re.findall(r"apiGroups:\s*\[(.*?)\]\s*resources:\s*\[(.*?)\]\s*verbs:\s*\[(.*?)\]", text, re.DOTALL)
+    urls = re.findall(r"nonResourceURLs:\s*\[(.*?)\]\s*verbs:\s*\[(.*?)\]", text, re.DOTALL)
+    if len(rules) + len(urls) != len(re.findall(r"^\s*-\s*(?:apiGroups|nonResourceURLs):", text, re.M)):
+        raise SystemExit("a Helm ClusterRole rule is not in apiGroups/resources/verbs order")
+    return _clusterrole_kinds(rules, urls)
 
 
 def terraform_clusterrole_kinds(text: str) -> set:
@@ -242,13 +255,15 @@ def terraform_clusterrole_kinds(text: str) -> set:
     if not match:
         raise SystemExit("could not find kubernetes_cluster_role.nullify_readonly_role")
     body, _ = _extract_braced_block(text, match.end() - 1)
-    kinds = set()
-    for m in re.finditer(r"(?<![A-Za-z0-9_])resources\s*=\s*\[(.*?)\]", body, re.DOTALL):
-        kinds.update(_quoted(m.group(1)))
-    for m in re.finditer(r"(?<![A-Za-z0-9_])non_resource_urls\s*=\s*\[(.*?)\]", body, re.DOTALL):
-        kinds.update("url:" + url for url in _quoted(m.group(1)))
-    return kinds
-
+    rules = re.findall(
+        r"(?<![A-Za-z0-9_])api_groups\s*=\s*\[(.*?)\]\s*resources\s*=\s*\[(.*?)\]\s*verbs\s*=\s*\[(.*?)\]",
+        body,
+        re.DOTALL,
+    )
+    urls = re.findall(r"(?<![A-Za-z0-9_])non_resource_urls\s*=\s*\[(.*?)\]\s*verbs\s*=\s*\[(.*?)\]", body, re.DOTALL)
+    if len(rules) + len(urls) != len(re.findall(r"(?<![A-Za-z0-9_])rule\s*\{", body)):
+        raise SystemExit("a Terraform ClusterRole rule is not in api_groups/resources/verbs order")
+    return _clusterrole_kinds(rules, urls)
 
 
 def main() -> int:
@@ -267,8 +282,7 @@ def main() -> int:
     helm_kinds = helm_clusterrole_kinds(HELM_CLUSTERROLE.read_text())
     for path in TF_CLUSTERROLES:
         tf_kinds = terraform_clusterrole_kinds(path.read_text())
-        ok = compare(f"ClusterRole kinds: Helm vs {path.relative_to(REPO_ROOT)}", helm_kinds, tf_kinds) and ok
-
+        ok = compare(f"ClusterRole kinds: Helm vs {path.relative_to(REPO_ROOT)}", helm_kinds, tf_kinds, "Helm") and ok
 
     return 0 if ok else 1
 
