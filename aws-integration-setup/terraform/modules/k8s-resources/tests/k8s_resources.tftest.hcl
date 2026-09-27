@@ -158,7 +158,7 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].api_groups) == tolist(["batch"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].resources) == toset(["jobs"])
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].api_groups) == tolist(["batch"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].resources) == toset(["jobs", "cronjobs"])
     error_message = "Rule 2 must grant exactly the batch API group kinds the scanner lists"
   }
 
