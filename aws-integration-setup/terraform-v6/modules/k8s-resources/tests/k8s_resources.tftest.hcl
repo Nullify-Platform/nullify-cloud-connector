@@ -140,8 +140,8 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : length(rule.resources)]) == 26
-    error_message = "The managed-scan ClusterRole must list exactly the 26 config kinds; secrets are omitted because list returns values"
+    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : length(rule.resources)]) == 27
+    error_message = "The managed-scan ClusterRole must list exactly the 27 config kinds; secrets are omitted because list returns values"
   }
 
   # Pins the set, not just the size: swapping one kind for another keeps every
