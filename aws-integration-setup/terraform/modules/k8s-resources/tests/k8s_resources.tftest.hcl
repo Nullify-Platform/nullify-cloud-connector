@@ -26,7 +26,7 @@ run "collector_only_is_the_default" {
   }
 
   assert {
-    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
+    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.0"
     error_message = "The collector image must default to the pinned Nullify ECR Public tag"
   }
 
@@ -135,18 +135,15 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = length(kubernetes_cluster_role_v1.nullify_readonly[0].rule) == 8
-    error_message = "The managed-scan ClusterRole must have seven resource rules and one /version rule"
+    condition     = length(kubernetes_cluster_role_v1.nullify_readonly[0].rule) == 10
+    error_message = "The managed-scan ClusterRole must have nine resource rules and one discovery rule"
   }
 
   assert {
-    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : length(rule.resources)]) == 26
-    error_message = "The managed-scan ClusterRole must list exactly the 26 config kinds; secrets are omitted because list returns values"
+    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 9) : length(rule.resources)]) == 33
+    error_message = "The managed-scan ClusterRole must list exactly the 33 config and routing kinds; secrets are omitted because list returns values"
   }
 
-  # Pins the set, not just the size: swapping one kind for another keeps every
-  # count assertion green. Anything else that binds this group -- a chart, a
-  # manifest -- has to grant exactly these kinds.
   assert {
     condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].api_groups) == tolist([""]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[0].resources) == toset(["nodes", "namespaces", "pods", "services", "persistentvolumeclaims", "persistentvolumes", "configmaps", "resourcequotas", "limitranges", "serviceaccounts"])
     error_message = "Rule 0 must grant exactly the core API group kinds the scanner lists"
@@ -183,13 +180,32 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = alltrue([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 7) : tolist(rule.verbs) == tolist(["list"])])
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[7].api_groups) == tolist(["gateway.networking.k8s.io"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[7].resources) == toset(["gatewayclasses", "gateways", "httproutes", "referencegrants"])
+    error_message = "Rule 7 must grant exactly the four Gateway API routing kinds"
+  }
+
+  assert {
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[8].api_groups) == tolist(["networking.istio.io"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[8].resources) == toset(["virtualservices", "serviceentries", "destinationrules"])
+    error_message = "Rule 8 must grant exactly the three Istio routing kinds"
+  }
+
+  assert {
+    condition     = alltrue([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 9) : tolist(rule.verbs) == tolist(["list"])])
     error_message = "Resource rules must grant list only"
   }
 
   assert {
-    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[7].non_resource_urls) == tolist(["/version"]) && tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[7].verbs) == tolist(["get"])
-    error_message = "The only non-resource grant must be get /version"
+    condition = toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[9].non_resource_urls) == toset([
+      "/version", "/api", "/apis",
+      "/apis/gateway.networking.k8s.io/v1",
+      "/apis/gateway.networking.k8s.io/v1beta1",
+      "/apis/gateway.networking.k8s.io/v1alpha2",
+      "/apis/gateway.networking.k8s.io/v1alpha3",
+      "/apis/networking.istio.io/v1",
+      "/apis/networking.istio.io/v1beta1",
+      "/apis/networking.istio.io/v1alpha3",
+    ]) && tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[9].verbs) == tolist(["get"])
+    error_message = "The only non-resource grant must be get on the exact collector discovery URLs"
   }
 
   assert {
