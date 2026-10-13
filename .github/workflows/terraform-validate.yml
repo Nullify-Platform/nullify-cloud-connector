@@ -148,6 +148,9 @@ jobs:
       - name: compare Allow/Deny action sets
         run: python3 scripts/check_iam_policy_drift.py
 
+      - name: Check routing collector RBAC
+        run: python3 scripts/test_routing_rbac.py
+
   shellcheck:
     runs-on: ubuntu-latest
     steps:

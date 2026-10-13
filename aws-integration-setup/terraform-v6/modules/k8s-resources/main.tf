@@ -174,7 +174,19 @@ resource "kubernetes_cluster_role" "nullify_readonly_role" {
   }
 
   rule {
-    non_resource_urls = ["/version"]
+    api_groups = ["gateway.networking.k8s.io"]
+    resources  = ["gatewayclasses", "gateways", "httproutes", "referencegrants"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    api_groups = ["networking.istio.io"]
+    resources  = ["virtualservices", "serviceentries", "destinationrules"]
+    verbs      = ["list"]
+  }
+
+  rule {
+    non_resource_urls = ["/version", "/api", "/apis", "/apis/gateway.networking.k8s.io/v1", "/apis/gateway.networking.k8s.io/v1beta1", "/apis/networking.istio.io/v1", "/apis/networking.istio.io/v1beta1", "/apis/networking.istio.io/v1alpha3"]
     verbs             = ["get"]
   }
 }

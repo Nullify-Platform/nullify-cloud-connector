@@ -31,6 +31,14 @@ locals {
       api_groups = ["admissionregistration.k8s.io"]
       resources  = ["validatingwebhookconfigurations", "mutatingwebhookconfigurations", "validatingadmissionpolicies", "validatingadmissionpolicybindings"]
     },
+    {
+      api_groups = ["gateway.networking.k8s.io"]
+      resources  = ["gatewayclasses", "gateways", "httproutes", "referencegrants"]
+    },
+    {
+      api_groups = ["networking.istio.io"]
+      resources  = ["virtualservices", "serviceentries", "destinationrules"]
+    },
   ]
 }
 
@@ -56,7 +64,7 @@ resource "kubernetes_cluster_role_v1" "nullify_readonly" {
   }
 
   rule {
-    non_resource_urls = ["/version"]
+    non_resource_urls = ["/version", "/api", "/apis", "/apis/gateway.networking.k8s.io/v1", "/apis/gateway.networking.k8s.io/v1beta1", "/apis/networking.istio.io/v1", "/apis/networking.istio.io/v1beta1", "/apis/networking.istio.io/v1alpha3"]
     verbs             = ["get"]
   }
 }
