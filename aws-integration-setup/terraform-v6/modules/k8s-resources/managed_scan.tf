@@ -64,7 +64,7 @@ resource "kubernetes_cluster_role_v1" "nullify_readonly" {
   }
 
   rule {
-    non_resource_urls = ["/version", "/api", "/apis", "/apis/gateway.networking.k8s.io/v1", "/apis/gateway.networking.k8s.io/v1beta1", "/apis/networking.istio.io/v1", "/apis/networking.istio.io/v1beta1", "/apis/networking.istio.io/v1alpha3"]
+    non_resource_urls = ["/version", "/api", "/apis", "/apis/gateway.networking.k8s.io/v1", "/apis/gateway.networking.k8s.io/v1beta1", "/apis/gateway.networking.k8s.io/v1alpha2", "/apis/gateway.networking.k8s.io/v1alpha3", "/apis/networking.istio.io/v1", "/apis/networking.istio.io/v1beta1", "/apis/networking.istio.io/v1alpha3"]
     verbs             = ["get"]
   }
 }

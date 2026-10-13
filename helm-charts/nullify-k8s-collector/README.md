@@ -254,12 +254,16 @@ Debug mode enables the `ENABLE_DEBUG_LOG` environment variable, which provides m
 Collector 3.48.0 lists GatewayClass, Gateway, HTTPRoute and ReferenceGrant
 from `gateway.networking.k8s.io`, and VirtualService, ServiceEntry and
 DestinationRule from `networking.istio.io`. Only installed, supported API
-versions are listed. The scan payload records complete (including empty),
+versions are listed. Discovery inspects experimental Gateway API version
+metadata to distinguish an absent kind from an unsupported version; it never
+lists experimental routing objects. Routing failures stay isolated from core
+cluster collection. The scan payload records complete (including empty),
 absent, denied, failed and unsupported outcomes for each resource kind.
 
 The chart grants `list` on these seven resources and `get` on API discovery
 endpoints. It does not grant Secret access or write/watch permissions.
-Header/query literals, direct-response bodies and status messages are redacted; certificate and
+Header/query literals (including negative Istio header matches), infrastructure
+annotation/label values, direct-response bodies and status messages are redacted; certificate and
 credential references are retained. Collected declarations do not prove
 that a route is programmed or receiving traffic.
 
