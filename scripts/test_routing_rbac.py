@@ -66,7 +66,7 @@ class RoutingRBAC(unittest.TestCase):
                 )
                 self.assertIsNotNone(discovery)
                 endpoints = values(discovery[1])
-                self.assertTrue(DISCOVERY <= endpoints)
+                self.assertEqual(endpoints, DISCOVERY | {"/version"})
                 self.assertFalse(any("*" in endpoint for endpoint in endpoints))
                 verb = re.match(
                     r"\s*verbs\s*[:=]\s*\[([^\]]*)\]",
