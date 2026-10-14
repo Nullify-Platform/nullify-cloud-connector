@@ -72,7 +72,7 @@ variable "kubernetes_namespace" {
 variable "collector_image" {
   type        = string
   description = "Container image for the Kubernetes collector. Defaults to a pinned tag of Nullify's ECR Public image"
-  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.46.0"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.0"
 }
 
 variable "cronjob_schedule" {

@@ -51,7 +51,7 @@ collector:
     # on k8s-collector-latest: a moved tag is what every Helm install runs.
     image:
         repository: public.ecr.aws/w4o2j2x4/integrations
-        tag: k8s-collector-3.46.0
+        tag: k8s-collector-3.48.0
         pullPolicy: IfNotPresent
 
     # Resource limits

@@ -10,7 +10,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
-> **Image tag:** the default `collector.image.tag` is `k8s-collector-3.46.0`,
+> **Image tag:** the default `collector.image.tag` is `k8s-collector-3.48.0`,
 > the same pin as the Terraform `k8s-resources` module.
 
 ## Supported platforms
@@ -59,7 +59,7 @@ The chart refuses to render when a required value is missing or still a placehol
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `serviceAccount.namespace` | Namespace of every namespaced object; `""` means the release namespace. Must already exist. | `nullify` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
-| `collector.image.tag` | Image tag | `k8s-collector-3.46.0` |
+| `collector.image.tag` | Image tag | `k8s-collector-3.48.0` |
 | `collector.image.pullPolicy` | Pull policy | `IfNotPresent` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `""` (required) |
@@ -248,3 +248,24 @@ To enable debug logging for troubleshooting:
    ```
 
 Debug mode enables the `ENABLE_DEBUG_LOG` environment variable, which provides more detailed logging information to help diagnose collection issues.
+
+## Routing inventory
+
+Collector 3.48.0 lists GatewayClass, Gateway, HTTPRoute and ReferenceGrant
+from `gateway.networking.k8s.io`, and VirtualService, ServiceEntry and
+DestinationRule from `networking.istio.io`. Only installed, supported API
+versions are listed. Discovery inspects experimental Gateway API version
+metadata to distinguish an absent kind from an unsupported version; it never
+lists experimental routing objects. Routing failures stay isolated from core
+cluster collection. The scan payload records complete (including empty),
+absent, denied, failed and unsupported outcomes for each resource kind.
+
+The chart grants `list` on these seven resources and `get` on API discovery
+endpoints. It does not grant Secret access or write/watch permissions.
+Header/query literals (including negative Istio header matches), infrastructure
+annotation/label values, direct-response bodies and status messages are redacted; certificate and
+credential references are retained. Collected declarations do not prove
+that a route is programmed or receiving traffic.
+
+Upgrading an existing collector requires both the new image and the updated
+ClusterRole. Publish collector 3.48.0 before installing this chart version.

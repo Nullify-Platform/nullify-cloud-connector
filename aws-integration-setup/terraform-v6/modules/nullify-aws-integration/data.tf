@@ -176,6 +176,7 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "iam:ListGroupPolicies",
       "iam:ListGroups",
       "iam:ListGroupsForUser",
+      "iam:ListInstanceProfiles",
       "iam:ListMFADevices",
       "iam:ListOpenIDConnectProviders",
       "iam:ListPolicies",
