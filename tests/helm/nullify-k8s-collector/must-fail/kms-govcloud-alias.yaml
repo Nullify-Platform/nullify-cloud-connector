@@ -2,6 +2,7 @@
 collector:
   clusterName: example-eks-cluster
   s3:
+    keyPrefix: k8s-collector/GitHub-10000001/
     bucket: example-nullify-bucket
   kms:
     keyArn: arn:aws-us-gov:kms:us-gov-west-1:123456789012:alias/example-customer-upload

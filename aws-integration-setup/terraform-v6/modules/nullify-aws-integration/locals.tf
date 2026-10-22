@@ -17,7 +17,7 @@ locals {
   oidc_subject = "system:serviceaccount:${var.kubernetes_namespace}:${var.service_account_name}"
 
   # S3 configuration
-  enable_s3_access = var.s3_bucket_name != "" || var.nullify_s3_access_point_arn != ""
+  enable_s3_access = var.collector_upload_prefix != "" && (var.s3_bucket_name != "" || var.nullify_s3_access_point_arn != "")
   s3_bucket_arn    = var.s3_bucket_name != "" ? "arn:${data.aws_partition.current.partition}:s3:::${var.s3_bucket_name}" : ""
 
   # KMS configuration. IAM never resolves an alias ARN in a Resource, so

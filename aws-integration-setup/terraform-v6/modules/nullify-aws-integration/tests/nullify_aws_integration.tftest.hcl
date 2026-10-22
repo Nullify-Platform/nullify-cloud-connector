@@ -29,9 +29,10 @@ mock_provider "aws" {
 }
 
 variables {
-  customer_name    = "acme"
-  external_id      = "external-id-123456"
-  nullify_role_arn = "arn:aws:iam::123456789012:role/NullifyRole"
+  collector_upload_prefix = "k8s-collector/GitHub-10000001/"
+  customer_name           = "acme"
+  external_id             = "external-id-123456"
+  nullify_role_arn        = "arn:aws:iam::123456789012:role/NullifyRole"
 }
 
 run "cross_account_alias_grants_the_alias_and_key_wildcard" {
@@ -189,7 +190,7 @@ run "s3_access_point_policy_grants_put_only_under_the_collector_prefix" {
   }
 
   assert {
-    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/*"])
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/GitHub-10000001/*"])
     error_message = "The access point statement must be scoped to the k8s-collector object prefix, not the whole access point"
   }
 }
@@ -239,5 +240,17 @@ run "permission_bar_scopes_secret_shaped_reads" {
   assert {
     condition     = !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ecr:GetDownloadUrlForLayer") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ecr:BatchGetImage") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ecr:GetAuthorizationToken") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "lambda:GetFunction") && !contains(data.aws_iam_policy_document.deny_actions_policy.statement[0].actions, "ssm:GetDocument")
     error_message = "Image pull, lambda:GetFunction and scoped GetDocument must not be denied"
+  }
+}
+
+run "an_unbound_collector_gets_no_s3_upload_grant" {
+  command = plan
+  variables {
+    collector_upload_prefix     = ""
+    nullify_s3_access_point_arn = "arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads"
+  }
+  assert {
+    condition     = length(aws_iam_policy.s3_access_policy) == 0
+    error_message = "A source prefix is required before granting collector uploads."
   }
 }

@@ -58,6 +58,12 @@
         "Default": "",
         "AllowedPattern": "^(arn:aws:s3:[a-z0-9-]+:[0-9]{12}:accesspoint/[a-z0-9-]{3,50})?$",
         "ConstraintDescription": "Must be empty or an S3 access point ARN (arn:aws:s3:<region>:<account>:accesspoint/<name>)."
+      },
+      "CollectorUploadPrefix": {
+        "Type": "String",
+        "Default": "",
+        "AllowedPattern": "^$|^k8s-collector/(?!k8s-collector/$)[A-Za-z0-9][A-Za-z0-9._-]{0,252}/$",
+        "Description": "Copy collectorUploadPrefix from Nullify settings, including its trailing slash. Required when EKS collector integration is enabled."
       }
     },
     "Conditions": {
@@ -122,6 +128,54 @@
               },
               ""
             ]
+          }
+        ]
+      },
+      "CollectorUploadsEnabled": {
+        "Fn::And": [
+          {
+            "Condition": "EKSIntegrationEnabled"
+          },
+          {
+            "Fn::Not": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "CollectorUploadPrefix"
+                  },
+                  ""
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "Rules": {
+      "CollectorPrefixRequired": {
+        "RuleCondition": {
+          "Fn::Equals": [
+            {
+              "Ref": "EnableEKSIntegration"
+            },
+            "true"
+          ]
+        },
+        "Assertions": [
+          {
+            "Assert": {
+              "Fn::Not": [
+                {
+                  "Fn::Equals": [
+                    {
+                      "Ref": "CollectorUploadPrefix"
+                    },
+                    ""
+                  ]
+                }
+              ]
+            },
+            "AssertDescription": "CollectorUploadPrefix from Nullify settings is required when EKS collector integration is enabled."
           }
         ]
       }
@@ -324,7 +378,9 @@
                     },
                     "Effect": "Allow",
                     "Principal": {
-                      "AWS": {"Fn::Sub": "${CrossAccountRoleArn}"}
+                      "AWS": {
+                        "Fn::Sub": "${CrossAccountRoleArn}"
+                      }
                     }
                   }
                 ],
@@ -334,7 +390,7 @@
           },
           "ManagedPolicyArns": {
             "Fn::If": [
-              "EKSIntegrationEnabled",
+              "CollectorUploadsEnabled",
               {
                 "Fn::If": [
                   "KMSKeyProvided",
@@ -615,9 +671,9 @@
       },
       "S3AccessPolicy": {
         "Type": "AWS::IAM::ManagedPolicy",
-        "Condition": "EKSIntegrationEnabled",
+        "Condition": "CollectorUploadsEnabled",
         "Properties": {
-          "Description": "S3 access for Nullify bucket",
+          "Description": "Source-qualified collector uploads for the Nullify bucket",
           "ManagedPolicyName": {
             "Fn::Sub": "AWSIntegration-${CustomerName}-S3Access"
           },
@@ -628,7 +684,6 @@
                 "Effect": "Allow",
                 "Action": [
                   "s3:PutObject",
-                  "s3:ListBucket",
                   "s3:PutObjectAcl"
                 ],
                 "Resource": {
@@ -636,29 +691,35 @@
                     "S3AccessPointProvided",
                     [
                       {
-                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/${CollectorUploadPrefix}*"
                       },
                       {
-                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
-                      },
-                      {
-                        "Ref": "NullifyS3AccessPointArn"
-                      },
-                      {
-                        "Fn::Sub": "${NullifyS3AccessPointArn}/object/*"
+                        "Fn::Sub": "${NullifyS3AccessPointArn}/object/${CollectorUploadPrefix}*"
                       }
                     ],
                     [
                       {
-                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
-                      },
-                      {
-                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/*"
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/${CollectorUploadPrefix}*"
                       }
                     ]
                   ]
+                }
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": {
+                  "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}"
                 },
-                "Condition": {}
+                "Condition": {
+                  "StringLike": {
+                    "s3:prefix": {
+                      "Fn::Sub": "${CollectorUploadPrefix}*"
+                    }
+                  }
+                }
               }
             ]
           }

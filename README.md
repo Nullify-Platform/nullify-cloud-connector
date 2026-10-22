@@ -19,7 +19,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 
 ### **Use Cases**
 - **Kubernetes Security Scanning** - Deploy collectors to gather cluster metadata
-- **AWS Account Integration** - Set up cross-account access for security assessments  
+- **AWS Account Integration** - Set up cross-account access for security assessments
 - **Multi-Cloud Deployments** - Consistent infrastructure across environments
 - **Multi-Cluster Support** - Integrate multiple EKS clusters across regions
 - **GitOps Workflows** - Automated deployment and updates via CI/CD
@@ -507,4 +507,22 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. ✅ Use `values-example.yaml` as a template only
 5. 🔍 Verify IRSA configuration before deployment
 
-**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page. 
+**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page.
+
+## Collector 4 source prefix cutover
+
+Collector image `k8s-collector-4.0.0` requires the source-qualified upload prefix
+returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
+prefix together. The old shared prefix is rejected; existing shared-prefix
+objects are never imported as a fallback.
+
+- Helm: copy the value into `collector.s3.keyPrefix`.
+- Terraform: pass `collector_upload_prefix` to both the AWS integration role
+  module and each `k8s-resources` collector module.
+- CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
+  trailing slash. An enabled EKS collector without this value fails validation.
+
+The paired Nullify backend release scopes bucket, access point and federated
+OIDC role permissions to each source, and resolves ingestion by source plus
+cluster name. Publish collector 4 and deploy that backend before rolling out
+these templates. Require a fresh source-bound snapshot after each upgrade.

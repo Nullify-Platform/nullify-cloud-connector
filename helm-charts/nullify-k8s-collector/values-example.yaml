@@ -30,7 +30,7 @@ collector:
   # S3 configuration (from Nullify configure page)
   s3:
     bucket: "your-nullify-bucket"
-    keyPrefix: "k8s-collector"
+    keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
 
   # KMS configuration (from Nullify configure page)
   kms:
@@ -86,7 +86,7 @@ labels:
 #   clusterName: "my-gke-cluster"
 #   s3:
 #     bucket: "your-nullify-bucket"
-#     keyPrefix: "k8s-collector"
+#     keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
 #   kms:
 #     keyArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
 #   gke:

@@ -366,3 +366,21 @@ Remove in this order so no access entry outlives the role:
 3. Delete the main stack.
 
 `../scripts/cleanup.sh --method cloudformation --stack-name nullify-aws-integration --region <stack-region> --eks-access-regions eu-west-1,us-east-1` does steps 2 and 3 in that order. Without `--region`, the main stack is looked up in the AWS CLI's configured region.
+
+## Collector 4 source prefix cutover
+
+Collector image `k8s-collector-4.0.0` requires the source-qualified upload prefix
+returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
+prefix together. The old shared prefix is rejected; existing shared-prefix
+objects are never imported as a fallback.
+
+- Helm: copy the value into `collector.s3.keyPrefix`.
+- Terraform: pass `collector_upload_prefix` to both the AWS integration role
+  module and each `k8s-resources` collector module.
+- CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
+  trailing slash. An enabled EKS collector without this value fails validation.
+
+The paired Nullify backend release scopes bucket, access point and federated
+OIDC role permissions to each source, and resolves ingestion by source plus
+cluster name. Publish collector 4 and deploy that backend before rolling out
+these templates. Require a fresh source-bound snapshot after each upgrade.

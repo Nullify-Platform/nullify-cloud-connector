@@ -4,6 +4,7 @@ collector:
   aws:
     region: us-east-1
   s3:
+    keyPrefix: k8s-collector/GitHub-10000001/
     bucket: example-nullify-bucket
   kms:
     keyArn: arn:aws:kms:eu-central-1:123456789012:alias/example-customer-upload

@@ -1,5 +1,9 @@
 mock_provider "kubernetes" {}
 
+variables {
+  collector_upload_prefix = "k8s-collector/GitHub-10000001/"
+}
+
 run "collector_only_is_the_default" {
   command = plan
 
@@ -26,7 +30,7 @@ run "collector_only_is_the_default" {
   }
 
   assert {
-    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.0"
+    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-4.0.0"
     error_message = "The collector image must default to the pinned Nullify ECR Public tag"
   }
 
@@ -244,4 +248,24 @@ run "invalid_kms_arns_are_rejected" {
   }
 
   expect_failures = [var.kms_key_arn]
+}
+
+run "collector_requires_a_source_prefix" {
+  command = plan
+  variables {
+    iam_role_arn            = "arn:aws:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+    cluster_name            = "acme-prod"
+    kms_key_arn             = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
+    collector_upload_prefix = ""
+  }
+  expect_failures = [kubernetes_cron_job_v1.k8s_collector]
+}
+
+run "collector_rejects_the_shared_prefix" {
+  command = plan
+  variables {
+    enable_collector        = false
+    collector_upload_prefix = "k8s-collector/k8s-collector/"
+  }
+  expect_failures = [var.collector_upload_prefix]
 }
