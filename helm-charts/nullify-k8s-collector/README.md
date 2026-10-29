@@ -10,7 +10,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
-> **Image tag:** the default `collector.image.tag` is `k8s-collector-3.48.0`,
+> **Image tag:** the default `collector.image.tag` is `k8s-collector-4.0.0`,
 > the same pin as the Terraform `k8s-resources` module.
 
 ## Supported platforms
@@ -59,11 +59,11 @@ The chart refuses to render when a required value is missing or still a placehol
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `serviceAccount.namespace` | Namespace of every namespaced object; `""` means the release namespace. Must already exist. | `nullify` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
-| `collector.image.tag` | Image tag | `k8s-collector-3.48.0` |
+| `collector.image.tag` | Image tag | `k8s-collector-4.0.0` |
 | `collector.image.pullPolicy` | Pull policy | `IfNotPresent` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `""` (required) |
-| `collector.s3.keyPrefix` | S3 key prefix | `k8s-collector` |
+| `collector.s3.keyPrefix` | Source prefix returned as `collectorUploadPrefix` | `""` (required) |
 | `collector.aws.region` | Region of the **Nullify S3 bucket**, not your cluster. Defaults to the region in `collector.kms.keyArn`; any other value is rejected, because S3 only accepts a KMS key from the bucket's region. | `""` |
 | `collector.clusterName` | Cluster name (must match your actual cluster name) | `""` (required) |
 | `collector.kms.keyArn` | KMS key ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>` or alias ARN `arn:aws:kms:<region>:<account-id>:alias/<name>`, from the Nullify configure page. With an alias, the IAM role's KMS statement must cover the key the alias resolves to, for example `arn:aws:kms:<region>:<account-id>:key/*`; see [KMS alias ARNs](#kms-alias-arns). | `""` (required) |
@@ -242,7 +242,7 @@ To enable debug logging for troubleshooting:
    ```bash
    # Wait for the next job to run or trigger manually
    kubectl create job --from=cronjob/nullify-k8s-collector manual-debug-run -n nullify
-   
+
    # View debug logs
    kubectl logs -l job-name=manual-debug-run -n nullify
    ```
@@ -268,4 +268,26 @@ credential references are retained. Collected declarations do not prove
 that a route is programmed or receiving traffic.
 
 Upgrading an existing collector requires both the new image and the updated
-ClusterRole. Publish collector 3.48.0 before installing this chart version.
+ClusterRole. This chart requires collector 4.0.0 and its source-qualified upload protocol.
+
+
+## Collector 4 source prefix cutover
+
+Collector image `k8s-collector-4.0.0` uploads under the source-qualified prefix
+returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
+set the prefix together, one cluster at a time.
+
+- Helm: copy the value into `collector.s3.keyPrefix`. Chart 0.6.0 does not
+  render without it.
+- Terraform: pass `collector_upload_prefix` to both the AWS integration role
+  module and each `k8s-resources` collector module.
+- CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
+  trailing slash. An enabled EKS collector without this value fails validation.
+
+The role keeps write access to the pre-4.0 layout `k8s-collector/k8s-collector/`
+next to the source prefix, so a 3.x collector keeps uploading until it is
+upgraded, and a cluster rolled back to 3.x keeps working. Nullify ingests each
+cluster from its newest upload in either layout. A 3.x configuration on the
+`4.0.0` image (no key prefix, or `k8s-collector`) keeps writing the pre-4.0
+layout. Deploy the paired Nullify backend before rolling out these templates,
+and confirm a source-prefixed snapshot was ingested after each upgrade.

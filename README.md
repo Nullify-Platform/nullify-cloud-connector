@@ -19,7 +19,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 
 ### **Use Cases**
 - **Kubernetes Security Scanning** - Deploy collectors to gather cluster metadata
-- **AWS Account Integration** - Set up cross-account access for security assessments  
+- **AWS Account Integration** - Set up cross-account access for security assessments
 - **Multi-Cloud Deployments** - Consistent infrastructure across environments
 - **Multi-Cluster Support** - Integrate multiple EKS clusters across regions
 - **GitOps Workflows** - Automated deployment and updates via CI/CD
@@ -507,4 +507,25 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. ✅ Use `values-example.yaml` as a template only
 5. 🔍 Verify IRSA configuration before deployment
 
-**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page. 
+**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page.
+
+## Collector 4 source prefix cutover
+
+Collector image `k8s-collector-4.0.0` uploads under the source-qualified prefix
+returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
+set the prefix together, one cluster at a time.
+
+- Helm: copy the value into `collector.s3.keyPrefix`. Chart 0.6.0 does not
+  render without it.
+- Terraform: pass `collector_upload_prefix` to both the AWS integration role
+  module and each `k8s-resources` collector module.
+- CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
+  trailing slash. An enabled EKS collector without this value fails validation.
+
+The role keeps write access to the pre-4.0 layout `k8s-collector/k8s-collector/`
+next to the source prefix, so a 3.x collector keeps uploading until it is
+upgraded, and a cluster rolled back to 3.x keeps working. Nullify ingests each
+cluster from its newest upload in either layout. A 3.x configuration on the
+`4.0.0` image (no key prefix, or `k8s-collector`) keeps writing the pre-4.0
+layout. Deploy the paired Nullify backend before rolling out these templates,
+and confirm a source-prefixed snapshot was ingested after each upgrade.

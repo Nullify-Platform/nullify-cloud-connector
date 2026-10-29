@@ -72,7 +72,7 @@ variable "kubernetes_namespace" {
 variable "collector_image" {
   type        = string
   description = "Container image for the Kubernetes collector. Defaults to a pinned tag of Nullify's ECR Public image"
-  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.0"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-4.0.0"
 }
 
 variable "cronjob_schedule" {
@@ -96,4 +96,16 @@ variable "enable_debug" {
   type        = bool
   description = "Enable debug logging for troubleshooting"
   default     = false
+}
+
+variable "collector_upload_prefix" {
+  type        = string
+  description = "Exact collectorUploadPrefix from Nullify settings. Required for collector uploads; each source owns a separate k8s-collector/<source-tenant-id>/ prefix."
+  default     = ""
+  validation {
+    condition = var.collector_upload_prefix == "" || (
+      can(regex("^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector/k8s-collector"
+    )
+    error_message = "collector_upload_prefix must be the source-qualified prefix from Nullify settings."
+  }
 }

@@ -249,13 +249,9 @@ data "aws_iam_policy_document" "s3_access_policy" {
       effect = "Allow"
       actions = [
         "s3:PutObject",
-        "s3:ListBucket",
         "s3:PutObjectAcl"
       ]
-      resources = [
-        statement.value,
-        "${statement.value}/*"
-      ]
+      resources = [for prefix in local.collector_upload_prefixes : "${statement.value}/${prefix}*"]
     }
   }
 
@@ -267,7 +263,20 @@ data "aws_iam_policy_document" "s3_access_policy" {
         "s3:PutObject",
         "s3:PutObjectAcl"
       ]
-      resources = ["${statement.value}/object/k8s-collector/*"]
+      resources = [for prefix in local.collector_upload_prefixes : "${statement.value}/object/${prefix}*"]
+    }
+  }
+  dynamic "statement" {
+    for_each = var.s3_bucket_name != "" ? [local.s3_bucket_arn] : []
+    content {
+      effect    = "Allow"
+      actions   = ["s3:ListBucket"]
+      resources = [statement.value]
+      condition {
+        test     = "StringLike"
+        variable = "s3:prefix"
+        values   = [for prefix in local.collector_upload_prefixes : "${prefix}*"]
+      }
     }
   }
 }

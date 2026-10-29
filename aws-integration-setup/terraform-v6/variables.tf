@@ -136,3 +136,15 @@ variable "nullify_region" {
   description = "Your Nullify region from the configure page (ap-southeast-2, eu-central-1 or us-east-2). Required when enable_managed_scan is true"
   default     = ""
 }
+
+variable "collector_upload_prefix" {
+  type        = string
+  description = "Exact collectorUploadPrefix from Nullify settings. Required for collector uploads; each source owns a separate k8s-collector/<source-tenant-id>/ prefix."
+  default     = ""
+  validation {
+    condition = var.collector_upload_prefix == "" || (
+      can(regex("^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector/k8s-collector"
+    )
+    error_message = "collector_upload_prefix must be the source-qualified prefix from Nullify settings."
+  }
+}

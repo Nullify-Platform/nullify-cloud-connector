@@ -93,6 +93,7 @@ output "deployment_summary" {
     customer_name             = var.customer_name
     aws_region                = var.aws_region
     s3_bucket                 = var.s3_bucket_name != "" ? var.s3_bucket_name : null
+    collector_upload_prefix   = var.collector_upload_prefix
     s3_integration_enabled    = local.enable_s3_access
     kms_integration_enabled   = local.enable_kms_access
     kubernetes_integration    = var.enable_kubernetes_integration

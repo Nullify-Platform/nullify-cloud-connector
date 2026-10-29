@@ -110,4 +110,8 @@ Rejects missing or placeholder values the CronJob cannot run without.
 {{- if eq $provider "gcp" -}}
 {{- $_ := required "collector.gke.awsRoleArn is required when cloudProvider is gcp: Nullify provides it after you register the cluster's OIDC issuer" (.Values.collector.gke.awsRoleArn | default .Values.collector.gke.nullifyAwsRoleArn) -}}
 {{- end -}}
+{{- $prefix := required "collector.s3.keyPrefix is required: copy collectorUploadPrefix from Nullify settings" .Values.collector.s3.keyPrefix -}}
+{{- if or (eq (trimSuffix "/" $prefix) "k8s-collector/k8s-collector") (not (regexMatch "^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$" $prefix)) -}}
+{{- fail "collector.s3.keyPrefix must be the source-qualified k8s-collector/<source-tenant-id>/ prefix from Nullify settings" -}}
+{{- end -}}
 {{- end }}

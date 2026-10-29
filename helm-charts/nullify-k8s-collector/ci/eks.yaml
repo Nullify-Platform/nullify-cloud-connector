@@ -3,6 +3,7 @@ cloudProvider: aws
 collector:
   clusterName: example-eks-cluster
   s3:
+    keyPrefix: k8s-collector/GitHub-10000001/
     bucket: example-nullify-bucket
   kms:
     keyArn: arn:aws:kms:eu-central-1:123456789012:key/00000000-0000-0000-0000-000000000000

@@ -13,6 +13,7 @@ module "nullify_aws_integration" {
   # Optional variables with defaults
   aws_region                    = var.aws_region
   s3_bucket_name                = var.s3_bucket_name
+  collector_upload_prefix       = var.collector_upload_prefix
   nullify_s3_access_point_arn   = var.nullify_s3_access_point_arn
   kms_key_arn                   = var.kms_key_arn
   enable_kubernetes_integration = var.enable_kubernetes_integration
