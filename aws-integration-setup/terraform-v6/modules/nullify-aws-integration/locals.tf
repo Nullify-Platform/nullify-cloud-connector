@@ -17,8 +17,14 @@ locals {
   oidc_subject = "system:serviceaccount:${var.kubernetes_namespace}:${var.service_account_name}"
 
   # S3 configuration
-  enable_s3_access = var.collector_upload_prefix != "" && (var.s3_bucket_name != "" || var.nullify_s3_access_point_arn != "")
-  s3_bucket_arn    = var.s3_bucket_name != "" ? "arn:${data.aws_partition.current.partition}:s3:::${var.s3_bucket_name}" : ""
+  enable_s3_access = var.s3_bucket_name != "" || var.nullify_s3_access_point_arn != ""
+  # The source's own upload prefix and, until every collector of the fleet has
+  # cut over, the pre-4.0 shared layout a 3.x collector still writes.
+  collector_upload_prefixes = compact([
+    var.collector_upload_prefix != "" ? "${trimsuffix(var.collector_upload_prefix, "/")}/" : "",
+    "k8s-collector/k8s-collector/",
+  ])
+  s3_bucket_arn = var.s3_bucket_name != "" ? "arn:${data.aws_partition.current.partition}:s3:::${var.s3_bucket_name}" : ""
 
   # KMS configuration. IAM never resolves an alias ARN in a Resource, so
   # key/* is granted next to an alias ARN in that account and region. A

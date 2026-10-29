@@ -251,7 +251,7 @@ data "aws_iam_policy_document" "s3_access_policy" {
         "s3:PutObject",
         "s3:PutObjectAcl"
       ]
-      resources = ["${statement.value}/${trimsuffix(var.collector_upload_prefix, "/")}/*"]
+      resources = [for prefix in local.collector_upload_prefixes : "${statement.value}/${prefix}*"]
     }
   }
 
@@ -263,7 +263,7 @@ data "aws_iam_policy_document" "s3_access_policy" {
         "s3:PutObject",
         "s3:PutObjectAcl"
       ]
-      resources = ["${statement.value}/object/${trimsuffix(var.collector_upload_prefix, "/")}/*"]
+      resources = [for prefix in local.collector_upload_prefixes : "${statement.value}/object/${prefix}*"]
     }
   }
   dynamic "statement" {
@@ -275,7 +275,7 @@ data "aws_iam_policy_document" "s3_access_policy" {
       condition {
         test     = "StringLike"
         variable = "s3:prefix"
-        values   = ["${trimsuffix(var.collector_upload_prefix, "/")}/*"]
+        values   = [for prefix in local.collector_upload_prefixes : "${prefix}*"]
       }
     }
   }

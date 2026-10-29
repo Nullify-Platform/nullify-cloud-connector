@@ -39,6 +39,9 @@ def render(value, parameters, conditions):
 
 class CollectorUploadScope(unittest.TestCase):
     def test_two_sources_never_grant_sibling_uploads(self):
+        # Both keep the pre-4.0 layout (k8s-collector/k8s-collector/) so a 3.x
+        # collector, or one rolled back to 3.x, keeps uploading until the fleet
+        # has cut over; neither is granted the other's prefix.
         policy = TEMPLATE["Resources"]["S3AccessPolicy"]["Properties"]["PolicyDocument"]
         for source in ("GitHub-1", "GitHub-2"):
             for access_point in (False, True):
@@ -51,15 +54,15 @@ class CollectorUploadScope(unittest.TestCase):
                     rendered = render(policy, parameters, {"S3AccessPointProvided": access_point})
                     grants = [statement for statement in rendered["Statement"] if "s3:PutObject" in statement["Action"]]
                     self.assertTrue(grants)
-                    for target in ("GitHub-1", "GitHub-2"):
+                    for target, expected in (("GitHub-1", source == "GitHub-1"), ("GitHub-2", source == "GitHub-2"), ("k8s-collector", True)):
                         objects = [f"arn:aws:s3:::nullify-collector-uploads/k8s-collector/{target}/prod-data.json"]
                         if access_point:
                             objects.append(f"{parameters['NullifyS3AccessPointArn']}/object/k8s-collector/{target}/prod-data.json")
                         for obj in objects:
                             allowed = any(fnmatch.fnmatchcase(obj, resource) for grant in grants for resource in grant["Resource"])
-                            self.assertEqual(allowed, source == target, obj)
+                            self.assertEqual(allowed, expected, obj)
                     listing = next(statement for statement in rendered["Statement"] if "s3:ListBucket" in statement["Action"])
-                    self.assertEqual(listing["Condition"]["StringLike"]["s3:prefix"], f"k8s-collector/{source}/*")
+                    self.assertEqual(listing["Condition"]["StringLike"]["s3:prefix"], [f"k8s-collector/{source}/*", "k8s-collector/k8s-collector/*"])
 
     def test_shared_and_malformed_prefixes_are_rejected(self):
         pattern = TEMPLATE["Parameters"]["CollectorUploadPrefix"]["AllowedPattern"]

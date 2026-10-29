@@ -694,12 +694,21 @@
                         "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/${CollectorUploadPrefix}*"
                       },
                       {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/k8s-collector/k8s-collector/*"
+                      },
+                      {
                         "Fn::Sub": "${NullifyS3AccessPointArn}/object/${CollectorUploadPrefix}*"
+                      },
+                      {
+                        "Fn::Sub": "${NullifyS3AccessPointArn}/object/k8s-collector/k8s-collector/*"
                       }
                     ],
                     [
                       {
                         "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/${CollectorUploadPrefix}*"
+                      },
+                      {
+                        "Fn::Sub": "arn:aws:s3:::${NullifyS3Bucket}/k8s-collector/k8s-collector/*"
                       }
                     ]
                   ]
@@ -715,9 +724,12 @@
                 },
                 "Condition": {
                   "StringLike": {
-                    "s3:prefix": {
-                      "Fn::Sub": "${CollectorUploadPrefix}*"
-                    }
+                    "s3:prefix": [
+                      {
+                        "Fn::Sub": "${CollectorUploadPrefix}*"
+                      },
+                      "k8s-collector/k8s-collector/*"
+                    ]
                   }
                 }
               }

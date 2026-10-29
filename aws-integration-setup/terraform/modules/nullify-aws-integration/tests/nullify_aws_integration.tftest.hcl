@@ -210,8 +210,8 @@ run "s3_access_point_policy_grants_put_only_under_the_collector_prefix" {
   }
 
   assert {
-    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/GitHub-10000001/*"])
-    error_message = "The access point statement must be scoped to the k8s-collector object prefix, not the whole access point"
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/GitHub-10000001/*", "arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/k8s-collector/*"])
+    error_message = "The access point statement must be scoped to the source prefix and the pre-4.0 layout, not the whole access point"
   }
 }
 
@@ -263,14 +263,29 @@ run "permission_bar_scopes_secret_shaped_reads" {
   }
 }
 
-run "an_unbound_collector_gets_no_s3_upload_grant" {
+run "an_unbound_collector_keeps_only_the_pre_4_0_layout" {
   command = plan
   variables {
     collector_upload_prefix     = ""
     nullify_s3_access_point_arn = "arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads"
   }
   assert {
-    condition     = length(aws_iam_policy.s3_access_policy) == 0
-    error_message = "A source prefix is required before granting collector uploads."
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/k8s-collector/*"])
+    error_message = "A configuration without a source prefix must keep its 3.x collector uploading to the pre-4.0 layout, and nothing else."
+  }
+}
+
+run "a_bound_bucket_collector_lists_only_its_prefixes" {
+  command = plan
+  variables {
+    s3_bucket_name = "nullify-uploads"
+  }
+  assert {
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:::nullify-uploads/k8s-collector/GitHub-10000001/*", "arn:aws:s3:::nullify-uploads/k8s-collector/k8s-collector/*"])
+    error_message = "The bucket statement must grant the source prefix and the pre-4.0 layout only."
+  }
+  assert {
+    condition     = toset(one([for statement in data.aws_iam_policy_document.s3_access_policy[0].statement : one(statement.condition).values if contains(statement.actions, "s3:ListBucket")])) == toset(["k8s-collector/GitHub-10000001/*", "k8s-collector/k8s-collector/*"])
+    error_message = "Listing must stay within the source prefix and the pre-4.0 layout."
   }
 }

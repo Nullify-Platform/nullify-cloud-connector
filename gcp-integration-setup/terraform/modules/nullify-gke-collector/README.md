@@ -71,18 +71,21 @@ For all other cases, use the standard flow above.
 
 ## Collector 4 source prefix cutover
 
-Collector image `k8s-collector-4.0.0` requires the source-qualified upload prefix
+Collector image `k8s-collector-4.0.0` uploads under the source-qualified prefix
 returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
-prefix together. The old shared prefix is rejected; existing shared-prefix
-objects are never imported as a fallback.
+set the prefix together, one cluster at a time.
 
-- Helm: copy the value into `collector.s3.keyPrefix`.
+- Helm: copy the value into `collector.s3.keyPrefix`. Chart 0.6.0 does not
+  render without it.
 - Terraform: pass `collector_upload_prefix` to both the AWS integration role
   module and each `k8s-resources` collector module.
 - CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
   trailing slash. An enabled EKS collector without this value fails validation.
 
-The paired Nullify backend release scopes bucket, access point and federated
-OIDC role permissions to each source, and resolves ingestion by source plus
-cluster name. Publish collector 4 and deploy that backend before rolling out
-these templates. Require a fresh source-bound snapshot after each upgrade.
+The role keeps write access to the pre-4.0 layout `k8s-collector/k8s-collector/`
+next to the source prefix, so a 3.x collector keeps uploading until it is
+upgraded, and a cluster rolled back to 3.x keeps working. Nullify ingests each
+cluster from its newest upload in either layout. A 3.x configuration on the
+`4.0.0` image (no key prefix, or `k8s-collector`) keeps writing the pre-4.0
+layout. Deploy the paired Nullify backend before rolling out these templates,
+and confirm a source-prefixed snapshot was ingested after each upgrade.
