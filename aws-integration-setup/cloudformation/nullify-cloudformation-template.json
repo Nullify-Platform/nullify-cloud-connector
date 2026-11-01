@@ -582,6 +582,8 @@
                   "s3:ListAllMyBuckets",
                   "sagemaker:Describe*",
                   "sagemaker:List*",
+                  "scheduler:GetSchedule",
+                  "scheduler:ListSchedules",
                   "secretsmanager:GetResourcePolicy",
                   "secretsmanager:List*",
                   "sns:GetTopicAttributes",
