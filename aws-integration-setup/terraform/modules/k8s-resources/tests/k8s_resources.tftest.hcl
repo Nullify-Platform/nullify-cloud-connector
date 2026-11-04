@@ -26,7 +26,7 @@ run "collector_only_is_the_default" {
   }
 
   assert {
-    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.0"
+    condition     = kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].image == "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.1"
     error_message = "The collector image must default to the pinned Nullify ECR Public tag"
   }
 

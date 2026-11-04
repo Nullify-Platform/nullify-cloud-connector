@@ -10,7 +10,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
-> **Image tag:** the default `collector.image.tag` is `k8s-collector-3.48.0`,
+> **Image tag:** the default `collector.image.tag` is `k8s-collector-3.48.1`,
 > the same pin as the Terraform `k8s-resources` module.
 
 ## Supported platforms
@@ -59,7 +59,7 @@ The chart refuses to render when a required value is missing or still a placehol
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `serviceAccount.namespace` | Namespace of every namespaced object; `""` means the release namespace. Must already exist. | `nullify` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
-| `collector.image.tag` | Image tag | `k8s-collector-3.48.0` |
+| `collector.image.tag` | Image tag | `k8s-collector-3.48.1` |
 | `collector.image.pullPolicy` | Pull policy | `IfNotPresent` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `""` (required) |
