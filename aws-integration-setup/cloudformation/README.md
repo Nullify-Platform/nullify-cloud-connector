@@ -230,7 +230,7 @@ On an existing stack, add that line to the `update-stack` command above.
 
 ## Managed EKS scan (no in-cluster agent)
 
-Nullify lists Kubernetes resources in your EKS cluster from Nullify's cloud-scan compute, using the read-only role this template creates. Nothing runs in the cluster. The scan only calls `list`, on 27 kinds:
+Nullify lists Kubernetes resources in your EKS cluster from Nullify's cloud-scan compute, using the read-only role this template creates. Nothing runs in the cluster. The scan only calls `list`, on 34 kinds:
 
 | API group | Resources |
 |---|---|
@@ -343,7 +343,7 @@ Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (
 `setup-eks-managed-scan.sh verify` checks that:
 
 - the authentication mode supports access entries, the access entry exists with **only** the expected group, and **no** EKS access policy is associated;
-- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 27 resources, and `create pods`, `get`/`list secrets`, `get`/`create pods/exec`, `get`/`list pods/log`, `get`/`create pods/attach`, `get`/`create pods/portforward`, `get nodes/proxy`, and `escalate` / `bind` on clusterroles do not. `impersonate` users / serviceaccounts / groups is required `no` when `kubectl auth can-i` accepts those checks; otherwise it is skipped;
+- `kubectl auth can-i list <resource> --all-namespaces --as nullify-verify --as-group nullify-readonly` answers `yes` for all 34 resources, and `create pods`, `get`/`list secrets`, `get`/`create pods/exec`, `get`/`list pods/log`, `get`/`create pods/attach`, `get`/`create pods/portforward`, `get nodes/proxy`, and `escalate` / `bind` on clusterroles do not. `impersonate` users / serviceaccounts / groups is required `no` when `kubectl auth can-i` accepts those checks; otherwise it is skipped;
 - `publicAccessCidrs` admits Nullify's egress IPs and does not contain `0.0.0.0/0`.
 
 `can-i` exercises Kubernetes RBAC only. It cannot see access-policy grants or prove that Nullify can reach the endpoint. Finish by confirming the cluster connects on the Nullify configure page.
