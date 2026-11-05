@@ -44,6 +44,6 @@ variable "tags" {
 
 variable "kms_key_arn" {
   type        = string
-  description = "The ARN of the KMS key for key management operations (optional, provided by Nullify if needed)"
+  description = "The KMS ARN shown on the Nullify configure page (optional): a key ARN or an alias ARN"
   default     = ""
-} 
+}

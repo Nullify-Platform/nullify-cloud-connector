@@ -8,6 +8,7 @@ on:
       - "scripts/publish-helm-repo.sh"
       - "scripts/test-helm-charts.sh"
       - "scripts/check-rbac-manifest.sh"
+      - "scripts/test_routing_rbac.py"
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   push:
@@ -18,6 +19,7 @@ on:
       - "scripts/publish-helm-repo.sh"
       - "scripts/test-helm-charts.sh"
       - "scripts/check-rbac-manifest.sh"
+      - "scripts/test_routing_rbac.py"
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   workflow_dispatch:
@@ -65,6 +67,9 @@ jobs:
       - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: ${{ env.HELM_VERSION }}
+
+      - name: Check routing collector RBAC
+        run: python3 scripts/test_routing_rbac.py
 
       - name: Lint and render
         run: scripts/test-helm-charts.sh "$CHART"
