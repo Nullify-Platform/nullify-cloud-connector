@@ -8,11 +8,9 @@ groupName: nullify-readonly
 clusterRoleName: nullify-readonly
 clusterRoleBindingName: nullify-readonly
 
-# Match these to collectSecrets / collectConfigMaps on the cluster in Nullify.
-# Withholding a kind while the matching option is on fails the scan.
-# The managed scan lists Secrets as a Table (name, type, key count, age). It
-# does not receive Secret values or key names.
-grantSecretsRead: true
+# Secret list permission can return all Secret values. Enable it only when
+# that access is intended; the default managed-scan verifier rejects it.
+grantSecretsRead: false
 grantConfigMapsRead: true
 
 # Extra subjects appended to the ClusterRoleBinding, for example the username
@@ -29,10 +27,10 @@ extraSubjects: []
 # accepted (get reads a named object; watch streams live values). Wildcard
 # apiGroups or resources, every subresource other than status and scale (exec,
 # log and proxy, and CRD subresources such as a VM console or vnc), and any
-# nonResourceURLs are rejected (/version is already granted with get).
+# nonResourceURLs are rejected; the required discovery URLs are built in.
 extraRules: []
-#  - apiGroups: ["batch"]
-#    resources: ["cronjobs"]
+#  - apiGroups: ["storage.k8s.io"]
+#    resources: ["storageclasses"]
 #    verbs: ["list"]
 
 # Labels and annotations added to both objects. Do not set

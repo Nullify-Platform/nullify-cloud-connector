@@ -12,41 +12,36 @@ installs the two cluster-scoped objects:
 
 | Object | Name (default) | Grants |
 |---|---|---|
-| ClusterRole | `nullify-readonly` | `list` on the 27 kinds below, and `get` on `/version`. No `get` or `watch` on resources, no exec, logs, proxy, custom resources or writes. |
+| ClusterRole | `nullify-readonly` | `list` on the 34 kinds below, and `get` on the discovery URLs. No `get` or `watch` on resources, no exec, logs, proxy or writes. |
 | ClusterRoleBinding | `nullify-readonly` | Binds the ClusterRole to Group `nullify-readonly` |
 
 | API group | Kinds (verb `list`) |
 |---|---|
-| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, secrets, resourcequotas, limitranges, serviceaccounts |
+| core | nodes, namespaces, pods, services, persistentvolumeclaims, persistentvolumes, configmaps, resourcequotas, limitranges, serviceaccounts |
 | `apps` | deployments, daemonsets, statefulsets, replicasets |
-| `batch` | jobs |
+| `batch` | jobs, cronjobs |
 | `networking.k8s.io` | ingresses, networkpolicies |
 | `discovery.k8s.io` | endpointslices |
+| `gateway.networking.k8s.io` | gatewayclasses, gateways, httproutes, referencegrants |
+| `networking.istio.io` | virtualservices, serviceentries, destinationrules |
 | `rbac.authorization.k8s.io` | roles, rolebindings, clusterroles, clusterrolebindings |
 | `admissionregistration.k8s.io` | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
-These are exactly the lists the scanner makes when `collectSecrets` and
-`collectConfigMaps` are on (the defaults). It also reads `/version`. The
-default `system:public-info-viewer` binding usually allows that, but hardened
-clusters sometimes remove it, and a denied `/version` fails the whole scan, so
-the ClusterRole grants `get` on `/version` itself. Clusters older than 1.30 do
-not serve ValidatingAdmissionPolicies; the rule is harmless there, and the
-scanner skips that kind.
-
-The scan runs every namespace and fails the whole cluster if any required list
-is denied, so the binding has to be cluster-wide. Jobs are the exception: a
-denied Jobs list is skipped, and pods started by a CronJob are then attributed
-to their Job instead of the CronJob.
+The role also grants `get` on `/version`, `/api`, `/apis` and the supported
+Gateway API and Istio discovery endpoints. These grants allow discovery on
+hardened clusters without wildcard URL permissions. Unsupported API kinds are
+skipped. A denied resource list is recorded as a coverage gap.
 
 ## Secrets and ConfigMaps
 
-The managed scan lists Secrets with the Kubernetes Table API (`includeObject=None`).
-Nullify stores name, type, key count and age. It does not receive Secret values
-or key names.
+Secret access is disabled by default. Kubernetes `list secrets` can return all
+Secret values, even though the scanner requests Table metadata. Set
+`grantSecretsRead: true` only if that access is intended; it also makes the
+repository's default managed-scan verifier fail its Secret-denial check.
 
-`grantSecretsRead` and `grantConfigMapsRead` must match `collectSecrets` and
-`collectConfigMaps` on the cluster in Nullify. Setting a flag to `false` without
-turning the matching option off fails the scan for the whole cluster.
+`grantConfigMapsRead` defaults to `true`. Collection options in Nullify should
+match the granted kinds. A denied list creates a coverage gap rather than
+failing the whole scan.
 
 ## Prerequisites
 
@@ -188,7 +183,7 @@ throwaway username that has no bindings of its own. Your identity needs
 
 ```bash
 AS=(--as nullify-verify --as-group "$NULLIFY_GROUP")
-for r in nodes namespaces persistentvolumes \
+for r in nodes namespaces persistentvolumes gatewayclasses.gateway.networking.k8s.io \
   clusterroles.rbac.authorization.k8s.io clusterrolebindings.rbac.authorization.k8s.io \
   validatingwebhookconfigurations.admissionregistration.k8s.io \
   mutatingwebhookconfigurations.admissionregistration.k8s.io \
@@ -196,18 +191,23 @@ for r in nodes namespaces persistentvolumes \
   validatingadmissionpolicybindings.admissionregistration.k8s.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" "${AS[@]}")"
 done
-for r in pods services persistentvolumeclaims configmaps secrets resourcequotas limitranges serviceaccounts \
-  deployments.apps daemonsets.apps statefulsets.apps replicasets.apps jobs.batch \
+for r in pods services persistentvolumeclaims configmaps resourcequotas limitranges serviceaccounts \
+  deployments.apps daemonsets.apps statefulsets.apps replicasets.apps jobs.batch cronjobs.batch \
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io endpointslices.discovery.k8s.io \
-  roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io; do
+  roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io \
+  gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io \
+  referencegrants.gateway.networking.k8s.io virtualservices.networking.istio.io \
+  serviceentries.networking.istio.io destinationrules.networking.istio.io; do
   printf '%-64s %s\n' "$r" "$(kubectl auth can-i list "$r" --all-namespaces "${AS[@]}")"
 done
+kubectl auth can-i list secrets --all-namespaces "${AS[@]}"     # no
 kubectl auth can-i get secrets --all-namespaces "${AS[@]}"      # no
 kubectl auth can-i get pods/exec --all-namespaces "${AS[@]}"    # no
 kubectl auth can-i create pods --all-namespaces "${AS[@]}"      # no
 ```
 
-Every `list` line must print `yes`. This proves the group's RBAC only. Check
+The resource-list loops must print `yes`; the Secret checks must print `no`.
+This proves the group's RBAC only. Check
 the role-to-group mapping with `aws eks describe-access-entry`, and confirm the
 whole path with **Verify** in the Nullify console.
 
@@ -227,8 +227,8 @@ whole path with **Verify** in the Nullify console.
 > RBAC, and only with `--access-scope type=cluster`; a namespace-scoped association
 > fails the scan.
 
-`AmazonEKSViewPolicy` does not work. It lacks nodes, persistentvolumes, secrets,
-the four RBAC kinds and the four admission kinds, so the scan fails.
+`AmazonEKSViewPolicy` does not work. It lacks nodes, persistentvolumes, the four RBAC kinds and the four admission
+kinds, leaving those kinds uncollected.
 
 ## Values
 
@@ -237,7 +237,7 @@ the four RBAC kinds and the four admission kinds, so the scan fails.
 | `groupName` | `nullify-readonly` | Group bound to the ClusterRole. Must match the access entry's `--kubernetes-groups`. Names starting `system:` are rejected. |
 | `clusterRoleName` | `nullify-readonly` | ClusterRole name |
 | `clusterRoleBindingName` | `nullify-readonly` | ClusterRoleBinding name |
-| `grantSecretsRead` | `true` | Include `secrets`. Must match `collectSecrets` on the cluster in Nullify. |
+| `grantSecretsRead` | `false` | Opt in to Secret-value access. The default managed-scan verifier rejects this grant. |
 | `grantConfigMapsRead` | `true` | Include `configmaps`. Must match `collectConfigMaps` on the cluster in Nullify. |
 | `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are the `default` ServiceAccount in any namespace and ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
 | `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); no `nonResourceURLs` (`/version` is already granted with `get`). |

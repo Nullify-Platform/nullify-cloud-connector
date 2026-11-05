@@ -33,8 +33,16 @@ for side in manifest chart; do
     echo "::error::$side normalised to $count objects, expected the ClusterRole and ClusterRoleBinding"
     exit 1
   fi
-  if ! jq -e '.[] | select(.kind == "ClusterRole") | .rules[] | select(.nonResourceURLs == ["/version"] and .verbs == ["get"])' "$work/$side.json" >/dev/null; then
+  if ! jq -e '.[] | select(.kind == "ClusterRole") | .rules[] | select(((.nonResourceURLs // []) | index("/version")) != null and .verbs == ["get"])' "$work/$side.json" >/dev/null; then
     echo "::error::$side ClusterRole does not grant get on /version, which the strict managed scan needs"
+    exit 1
+  fi
+  if jq -e '.[] | select(.kind == "ClusterRole") | .rules[] | select(any(.resources[]?; . == "secrets"))' "$work/$side.json" >/dev/null; then
+    echo "::error::$side default ClusterRole must not grant Secret access"
+    exit 1
+  fi
+  if ! jq -e '.[] | select(.kind == "ClusterRole") | .rules[] | select(.apiGroups == ["batch"] and .verbs == ["list"] and ((.resources // []) | index("cronjobs")) != null)' "$work/$side.json" >/dev/null; then
+    echo "::error::$side ClusterRole must grant list on batch CronJobs"
     exit 1
   fi
 done

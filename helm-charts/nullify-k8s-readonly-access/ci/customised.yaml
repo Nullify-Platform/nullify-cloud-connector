@@ -12,9 +12,6 @@ extraSubjects:
     name: nullify-scanner
     namespace: nullify
 extraRules:
-  - apiGroups: ["batch"]
-    resources: ["cronjobs"]
-    verbs: ["list"]
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]
     verbs: ["list"]

@@ -155,9 +155,9 @@ kubectl logs -l job-name=<job-name> -n nullify
 Nullify can read an EKS cluster's configuration from Nullify's AWS account through the cluster's public API endpoint, using the read-only integration role. Nothing runs in the cluster; you grant list-only RBAC to a group and map the integration role to that group with an EKS access entry.
 
 - RBAC: the [`nullify-k8s-readonly-access`](helm-charts/nullify-k8s-readonly-access/README.md) chart, or the equivalent raw manifest [`manifests/nullify-readonly-rbac.yaml`](manifests/nullify-readonly-rbac.yaml) for kubectl and Flux.
-- Default: ClusterRole `nullify-readonly` with `list` on 27 kinds and `get` on `/version`, bound to group `nullify-readonly`.
-- Secrets are listed as a Table (name, type, key count, age). The scanner does not receive Secret values or key names. `grantSecretsRead` / `grantConfigMapsRead` must match `collectSecrets` / `collectConfigMaps` on the cluster in Nullify.
-- Do not use `AmazonEKSViewPolicy` (the scan fails); `AmazonEKSAdminViewPolicy` works but is far broader. See the chart README before choosing it.
+- Default: ClusterRole `nullify-readonly` with `list` on 34 kinds, no Secret access by default, and `get` on discovery URLs, bound to group `nullify-readonly`.
+- Secret access is disabled by default. Opting in grants access to Secret values, even though the scanner requests Table metadata. Collection options should match the granted kinds.
+- Use the RBAC role rather than EKS access policies. `AmazonEKSViewPolicy` lacks required kinds; `AmazonEKSAdminViewPolicy` grants Secret and other unintended access. The managed-scan verifier rejects associated access policies.
 
 | | In-cluster collector | Managed EKS scan |
 |---|---|---|
@@ -165,7 +165,7 @@ Nullify can read an EKS cluster's configuration from Nullify's AWS account throu
 | Network | Outbound from the cluster to AWS S3/STS | Inbound to the EKS public endpoint from Nullify egress IPs |
 | Private-only endpoint | Supported | Not supported |
 | In-cluster objects | ServiceAccount, ClusterRole, ClusterRoleBinding, CronJob | ClusterRole, ClusterRoleBinding |
-| A denied kind | Skipped | Whole cluster scan fails |
+| A denied kind | Coverage gap | Coverage gap |
 | Platforms | EKS, GKE | EKS |
 
 ### Map the Nullify role to the group

@@ -32,7 +32,7 @@ rules:
     resources: ["deployments", "daemonsets", "statefulsets", "replicasets"]
     verbs: ["list"]
   - apiGroups: ["batch"]
-    resources: ["jobs"]
+    resources: ["jobs", "cronjobs"]
     verbs: ["list"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
@@ -50,7 +50,13 @@ rules:
       - validatingadmissionpolicies
       - validatingadmissionpolicybindings
     verbs: ["list"]
-  - nonResourceURLs: ["/version"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gatewayclasses", "gateways", "httproutes", "referencegrants"]
+    verbs: ["list"]
+  - apiGroups: ["networking.istio.io"]
+    resources: ["virtualservices", "serviceentries", "destinationrules"]
+    verbs: ["list"]
+  - nonResourceURLs: ["/version", "/api", "/apis", "/apis/gateway.networking.k8s.io/v1", "/apis/gateway.networking.k8s.io/v1beta1", "/apis/gateway.networking.k8s.io/v1alpha2", "/apis/gateway.networking.k8s.io/v1alpha3", "/apis/networking.istio.io/v1", "/apis/networking.istio.io/v1beta1", "/apis/networking.istio.io/v1alpha3"]
     verbs: ["get"]
   {{- with .Values.extraRules }}
   {{- toYaml . | nindent 2 }}
