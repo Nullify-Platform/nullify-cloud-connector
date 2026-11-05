@@ -36,7 +36,9 @@ def values(raw):
 class RoutingRBAC(unittest.TestCase):
     def test_routing_permissions(self):
         paths = [
-            ROOT / "helm-charts/nullify-k8s-collector/templates/clusterrole.yaml"
+            ROOT / "helm-charts/nullify-k8s-collector/templates/clusterrole.yaml",
+            ROOT / "helm-charts/nullify-k8s-readonly-access/templates/clusterrole.yaml",
+            ROOT / "manifests/nullify-readonly-rbac.yaml"
         ]
         for version in ("terraform", "terraform-v6"):
             base = ROOT / "aws-integration-setup" / version / "modules/k8s-resources"

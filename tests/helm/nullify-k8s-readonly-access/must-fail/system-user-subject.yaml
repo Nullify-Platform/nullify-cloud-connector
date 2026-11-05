@@ -1,0 +1,5 @@
+# expect: extraSubjects User "System:Anonymous" must not start with "system:"
+extraSubjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: "  System:Anonymous"

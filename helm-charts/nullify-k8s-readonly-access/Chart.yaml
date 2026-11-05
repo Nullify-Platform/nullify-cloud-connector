@@ -1,0 +1,14 @@
+apiVersion: v2
+name: nullify-k8s-readonly-access
+description: Read-only Kubernetes RBAC that lets Nullify's managed EKS scan list cluster configuration. Installs no workload.
+type: application
+version: 0.1.0
+kubeVersion: ">=1.21.0-0"
+maintainers:
+  - name: Nullify
+    url: https://nullify.ai
+keywords:
+  - security
+  - kubernetes
+  - rbac
+  - eks
