@@ -106,10 +106,13 @@ The access entry carries the Kubernetes group `nullify-readonly`, bound to the C
 | batch | jobs, cronjobs |
 | networking.k8s.io | ingresses, networkpolicies |
 | discovery.k8s.io | endpointslices |
+| gateway.networking.k8s.io | gatewayclasses, gateways, httproutes, referencegrants |
+| networking.istio.io | virtualservices, serviceentries, destinationrules |
 | rbac.authorization.k8s.io | roles, rolebindings, clusterroles, clusterrolebindings |
 | admissionregistration.k8s.io | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
-Plus `get` on the non-resource URL `/version`.
+Plus `get` on `/version`, `/api`, `/apis` and the supported Gateway API and
+Istio discovery endpoints.
 
 Neither mode lists Secrets. Kubernetes has no metadata-only RBAC verb for Secrets: `list secrets` returns `.data` values, so the ClusterRole omits the kind.
 

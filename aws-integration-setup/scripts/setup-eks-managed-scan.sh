@@ -41,6 +41,10 @@ RBAC_RESOURCES=(
   configmaps resourcequotas limitranges serviceaccounts
   deployments.apps daemonsets.apps statefulsets.apps replicasets.apps
   jobs.batch cronjobs.batch
+  gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io
+  httproutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
+  virtualservices.networking.istio.io serviceentries.networking.istio.io
+  destinationrules.networking.istio.io
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io
   endpointslices.discovery.k8s.io
   roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io
@@ -49,6 +53,17 @@ RBAC_RESOURCES=(
   mutatingwebhookconfigurations.admissionregistration.k8s.io
   validatingadmissionpolicies.admissionregistration.k8s.io
   validatingadmissionpolicybindings.admissionregistration.k8s.io
+)
+
+RBAC_DISCOVERY_URLS=(
+  /version /api /apis
+  /apis/gateway.networking.k8s.io/v1
+  /apis/gateway.networking.k8s.io/v1beta1
+  /apis/gateway.networking.k8s.io/v1alpha2
+  /apis/gateway.networking.k8s.io/v1alpha3
+  /apis/networking.istio.io/v1
+  /apis/networking.istio.io/v1beta1
+  /apis/networking.istio.io/v1alpha3
 )
 
 ACTION=""
@@ -1063,6 +1078,14 @@ verify_rbac() {
       check_pass "group $GROUP can list $resource"
     else
       check_fail "group $GROUP cannot list $resource (got: ${answer:-no answer})"
+    fi
+  done
+  for resource in "${RBAC_DISCOVERY_URLS[@]}"; do
+    answer="$("${KUBECTL[@]}" auth can-i get "$resource" --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+    if [[ "$answer" == yes* ]]; then
+      check_pass "group $GROUP can get $resource"
+    else
+      check_fail "group $GROUP cannot get $resource (got: ${answer:-no answer})"
     fi
   done
   answer="$("${KUBECTL[@]}" auth can-i create pods --all-namespaces --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"

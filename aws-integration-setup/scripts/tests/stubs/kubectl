@@ -16,6 +16,14 @@ for arg in "$@"; do
   previous="$arg"
 done
 
+if [[ -n "${FAKE_CAN_I_NO:-}" && " $FAKE_CAN_I_NO " == *" $verb $resource "* ]]; then
+  echo no
+  exit 0
+fi
+if [[ "$verb" == get && ( "$resource" == /version || "$resource" == /api || "$resource" == /apis || "$resource" == /apis/gateway.networking.k8s.io/* || "$resource" == /apis/networking.istio.io/* ) ]]; then
+  echo yes
+  exit 0
+fi
 if [[ "$verb" == list && "$resource" != */* && "$resource" != secrets ]]; then
   echo yes
   exit 0

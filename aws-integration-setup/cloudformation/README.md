@@ -239,6 +239,8 @@ Nullify lists Kubernetes resources in your EKS cluster from Nullify's cloud-scan
 | batch | jobs, cronjobs |
 | networking.k8s.io | ingresses, networkpolicies |
 | discovery.k8s.io | endpointslices |
+| gateway.networking.k8s.io | gatewayclasses, gateways, httproutes, referencegrants |
+| networking.istio.io | virtualservices, serviceentries, destinationrules |
 | rbac.authorization.k8s.io | roles, rolebindings, clusterroles, clusterrolebindings |
 | admissionregistration.k8s.io | validatingwebhookconfigurations, mutatingwebhookconfigurations, validatingadmissionpolicies, validatingadmissionpolicybindings |
 
