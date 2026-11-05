@@ -116,3 +116,15 @@ variable "kms_key_arn" {
     error_message = "Must be empty, a KMS key ARN (arn:aws:kms:<region>:<account-id>:key/<key-id>) or a KMS alias ARN (arn:aws:kms:<region>:<account-id>:alias/<name>)"
   }
 }
+
+variable "collector_upload_prefix" {
+  type        = string
+  description = "Exact collectorUploadPrefix from Nullify settings. Required for collector uploads; each source owns a separate k8s-collector/<source-tenant-id>/ prefix."
+  default     = ""
+  validation {
+    condition = var.collector_upload_prefix == "" || (
+      can(regex("^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector/k8s-collector"
+    )
+    error_message = "collector_upload_prefix must be the source-qualified prefix from Nullify settings."
+  }
+}

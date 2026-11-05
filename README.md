@@ -19,7 +19,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 
 ### **Use Cases**
 - **Kubernetes Security Scanning** - Deploy collectors to gather cluster metadata
-- **AWS Account Integration** - Set up cross-account access for security assessments  
+- **AWS Account Integration** - Set up cross-account access for security assessments
 - **Multi-Cloud Deployments** - Consistent infrastructure across environments
 - **Multi-Cluster Support** - Integrate multiple EKS clusters across regions
 - **GitOps Workflows** - Automated deployment and updates via CI/CD
@@ -507,4 +507,27 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 4. ✅ Use `values-example.yaml` as a template only
 5. 🔍 Verify IRSA configuration before deployment
 
-**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page. 
+**Remember**: This repository contains generic templates. Always use placeholder values and obtain real configuration from the Nullify configure page.
+
+## Collector 4 source prefix cutover
+
+Collector image `k8s-collector-4.0.0` uploads under the source-qualified prefix
+returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
+set the prefix together, one cluster at a time.
+
+- Helm: copy the value into `collector.s3.keyPrefix`. Chart 0.6.0 does not
+  render without it.
+- Terraform: pass `collector_upload_prefix` to both the AWS integration role
+  module and each `k8s-resources` collector module.
+- CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
+  trailing slash. An enabled EKS collector without this value fails validation.
+
+A role configured with a source prefix grants uploads only to that prefix. The
+Terraform module keeps the shared layout only for configurations with no source
+prefix. Upgrade the role and collector together; a 3.x collector cannot use the
+new grant. Once the backend sees a source-qualified upload for a cluster, it
+rejects every shared-layout upload for that source and cluster, regardless of
+its timestamp. Keep a source-qualified collector for rollback.
+
+Deploy the paired Nullify backend before these templates. Confirm that each
+upgraded cluster's snapshot was ingested into its assigned source.

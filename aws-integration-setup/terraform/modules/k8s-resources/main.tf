@@ -230,6 +230,11 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
 
   lifecycle {
     precondition {
+      condition     = var.collector_upload_prefix != ""
+      error_message = "collector_upload_prefix is required when enable_collector is true: copy collectorUploadPrefix from Nullify settings."
+    }
+
+    precondition {
       condition     = var.cluster_name != ""
       error_message = "cluster_name is required when enable_collector is true. It must match your actual cluster name exactly, as AWS reports it, and it must match a cluster registered on the Nullify configure page: Nullify joins the upload on this name and silently drops or skips it otherwise. It also names the upload, <prefix>/k8s-collector/<cluster_name>-data.json, so collectors without a name all overwrite the same k8s-collector/default-name-data.json object."
     }
@@ -285,7 +290,7 @@ resource "kubernetes_cron_job_v1" "k8s_collector" {
 
               env {
                 name  = "NULLIFY_S3_KEY_PREFIX"
-                value = "k8s-collector"
+                value = var.collector_upload_prefix
               }
 
               env {

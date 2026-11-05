@@ -366,3 +366,7 @@ Remove in this order so no access entry outlives the role:
 3. Delete the main stack.
 
 `../scripts/cleanup.sh --method cloudformation --stack-name nullify-aws-integration --region <stack-region> --eks-access-regions eu-west-1,us-east-1` does steps 2 and 3 in that order. Without `--region`, the main stack is looked up in the AWS CLI's configured region.
+
+## Collector 4 source prefix cutover
+
+See the [upgrade and rollback requirements](../../README.md#collector-4-source-prefix-cutover).
