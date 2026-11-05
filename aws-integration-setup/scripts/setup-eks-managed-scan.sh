@@ -126,7 +126,7 @@ Actions:
            describe calls still run so the printed commands are concrete.
   apply    Make the changes: authentication mode (only with
            --allow-auth-mode-change), access entry, RBAC, publicAccessCidrs.
-  verify   Check the access entry, RBAC (kubectl auth can-i) and publicAccessCidrs.
+  verify   Check the access entry, Kubernetes RBAC and publicAccessCidrs.
   remove   Undo apply: RBAC manifest objects (except Helm-managed ones), access
            entries tagged ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}, and the CIDRs
            recorded in the ${ADDED_CIDRS_TAG_KEY} cluster tag, plus any CIDRs in
@@ -1066,15 +1066,22 @@ verify_access_entry() {
 }
 
 verify_rbac() {
-  local resource answer
+  local resource api_group api_resource answer
   if ! command -v kubectl >/dev/null 2>&1; then
     check_fail "kubectl is not installed; cannot check RBAC"
     return 0
   fi
   setup_kubectl
   for resource in "${RBAC_RESOURCES[@]}"; do
-    answer="$("${KUBECTL[@]}" auth can-i list "$resource" --all-namespaces --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
-    if [[ "$answer" == yes* ]]; then
+    api_group=""
+    api_resource="${resource%%.*}"
+    if [[ "$resource" == *.* ]]; then
+      api_group="${resource#*.}"
+    fi
+    answer="$(printf '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","group":"%s","resource":"%s"}}}' \
+      "$api_group" "$api_resource" | "${KUBECTL[@]}" create -f - --validate=false \
+      -o jsonpath='{.status.allowed}' --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+    if [[ "$answer" == true ]]; then
       check_pass "group $GROUP can list $resource"
     else
       check_fail "group $GROUP cannot list $resource (got: ${answer:-no answer})"

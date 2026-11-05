@@ -4,6 +4,19 @@
 # returns values); list on subresources and every other check is no unless
 # FAKE_CAN_I_YES lists "verb resource".
 
+if [[ " $* " == *" create -f - "* ]]; then
+  request="$(cat)"
+  resource="$(printf '%s' "$request" | sed -n 's/.*"resource":"\([^"]*\)".*/\1/p')"
+  group="$(printf '%s' "$request" | sed -n 's/.*"group":"\([^"]*\)".*/\1/p')"
+  resource="${resource}${group:+.$group}"
+  if [[ -n "${FAKE_CAN_I_NO:-}" && " $FAKE_CAN_I_NO " == *" list $resource "* ]]; then
+    echo false
+  else
+    echo true
+  fi
+  exit 0
+fi
+
 verb=""
 resource=""
 previous=""
