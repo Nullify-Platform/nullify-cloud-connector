@@ -216,7 +216,8 @@ jobs:
                 exit 1
               fi
               manifests="$(git show "refs/tags/${tag}:helm-charts/${name}/README.md" 2>/dev/null | grep -oE '\bmanifests/[A-Za-z0-9_.-]+\.ya?ml\b' | sort -u | tr '\n' ' ' || true)"
-              if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" ${manifests} </dev/null; then
+              read -r -a manifest_paths <<< "$manifests"
+              if ! git diff --quiet "refs/tags/${tag}" "${target}" -- "helm-charts/${name}" "${manifest_paths[@]}" </dev/null; then
                 echo "::error::tag ${tag} exists but its tree for helm-charts/${name} ${manifests}differs from ${target}; the existing tag does not match; investigate before re-running."
                 exit 1
               fi
