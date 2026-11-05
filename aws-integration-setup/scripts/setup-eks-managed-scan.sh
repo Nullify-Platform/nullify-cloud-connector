@@ -40,7 +40,11 @@ RBAC_RESOURCES=(
   nodes namespaces pods services persistentvolumeclaims persistentvolumes
   configmaps resourcequotas limitranges serviceaccounts
   deployments.apps daemonsets.apps statefulsets.apps replicasets.apps
-  jobs.batch
+  jobs.batch cronjobs.batch
+  gatewayclasses.gateway.networking.k8s.io gateways.gateway.networking.k8s.io
+  httproutes.gateway.networking.k8s.io referencegrants.gateway.networking.k8s.io
+  virtualservices.networking.istio.io serviceentries.networking.istio.io
+  destinationrules.networking.istio.io
   ingresses.networking.k8s.io networkpolicies.networking.k8s.io
   endpointslices.discovery.k8s.io
   roles.rbac.authorization.k8s.io rolebindings.rbac.authorization.k8s.io
@@ -49,6 +53,17 @@ RBAC_RESOURCES=(
   mutatingwebhookconfigurations.admissionregistration.k8s.io
   validatingadmissionpolicies.admissionregistration.k8s.io
   validatingadmissionpolicybindings.admissionregistration.k8s.io
+)
+
+RBAC_DISCOVERY_URLS=(
+  /version /api /apis
+  /apis/gateway.networking.k8s.io/v1
+  /apis/gateway.networking.k8s.io/v1beta1
+  /apis/gateway.networking.k8s.io/v1alpha2
+  /apis/gateway.networking.k8s.io/v1alpha3
+  /apis/networking.istio.io/v1
+  /apis/networking.istio.io/v1beta1
+  /apis/networking.istio.io/v1alpha3
 )
 
 ACTION=""
@@ -111,7 +126,7 @@ Actions:
            describe calls still run so the printed commands are concrete.
   apply    Make the changes: authentication mode (only with
            --allow-auth-mode-change), access entry, RBAC, publicAccessCidrs.
-  verify   Check the access entry, RBAC (kubectl auth can-i) and publicAccessCidrs.
+  verify   Check the access entry, Kubernetes RBAC and publicAccessCidrs.
   remove   Undo apply: RBAC manifest objects (except Helm-managed ones), access
            entries tagged ${MANAGED_BY_TAG_KEY}=${MANAGED_BY_TAG_VALUE}, and the CIDRs
            recorded in the ${ADDED_CIDRS_TAG_KEY} cluster tag, plus any CIDRs in
@@ -1051,18 +1066,33 @@ verify_access_entry() {
 }
 
 verify_rbac() {
-  local resource answer
+  local resource api_group api_resource answer
   if ! command -v kubectl >/dev/null 2>&1; then
     check_fail "kubectl is not installed; cannot check RBAC"
     return 0
   fi
   setup_kubectl
   for resource in "${RBAC_RESOURCES[@]}"; do
-    answer="$("${KUBECTL[@]}" auth can-i list "$resource" --all-namespaces --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
-    if [[ "$answer" == yes* ]]; then
+    api_group=""
+    api_resource="${resource%%.*}"
+    if [[ "$resource" == *.* ]]; then
+      api_group="${resource#*.}"
+    fi
+    answer="$(printf '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectAccessReview","spec":{"resourceAttributes":{"verb":"list","group":"%s","resource":"%s"}}}' \
+      "$api_group" "$api_resource" | "${KUBECTL[@]}" create -f - --validate=false \
+      -o jsonpath='{.status.allowed}' --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+    if [[ "$answer" == true ]]; then
       check_pass "group $GROUP can list $resource"
     else
       check_fail "group $GROUP cannot list $resource (got: ${answer:-no answer})"
+    fi
+  done
+  for resource in "${RBAC_DISCOVERY_URLS[@]}"; do
+    answer="$("${KUBECTL[@]}" auth can-i get "$resource" --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"
+    if [[ "$answer" == yes* ]]; then
+      check_pass "group $GROUP can get $resource"
+    else
+      check_fail "group $GROUP cannot get $resource (got: ${answer:-no answer})"
     fi
   done
   answer="$("${KUBECTL[@]}" auth can-i create pods --all-namespaces --as "$VERIFY_USER" --as-group "$GROUP" 2>/dev/null || true)"

@@ -81,6 +81,16 @@ jobs:
       - name: bats
         run: bats aws-integration-setup/scripts/tests
 
+      - name: Install kubectl for authorization regression
+        run: |
+          curl -fsSLo /tmp/kubectl https://dl.k8s.io/release/v1.33.9/bin/linux/amd64/kubectl
+          curl -fsSLo /tmp/kubectl.sha256 https://dl.k8s.io/release/v1.33.9/bin/linux/amd64/kubectl.sha256
+          echo "$(cat /tmp/kubectl.sha256)  /tmp/kubectl" | sha256sum --check
+          sudo install /tmp/kubectl /usr/local/bin/kubectl
+
+      - name: Verify authorization without optional CRDs
+        run: python3 aws-integration-setup/scripts/tests/test_verify_rbac.py
+
   bats-bash-3-2:
     name: bats (bash 3.2)
     runs-on: ubuntu-latest

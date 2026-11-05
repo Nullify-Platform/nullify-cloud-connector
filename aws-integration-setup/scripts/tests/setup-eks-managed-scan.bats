@@ -20,10 +20,11 @@ setup() {
   FAKE_UPDATES=""
   FAKE_ADMIN_VIEW_SCOPE=""
   FAKE_CAN_I_YES=""
+  FAKE_CAN_I_NO=""
   unset FAKE_ASSOCIATED_POLICIES FAKE_KUBERNETES_GROUPS
   export PATH FAKE_AWS_LOG FAKE_AWS_STATE FAKE_PUBLIC FAKE_PRIVATE FAKE_UPDATE_STATUS \
     FAKE_CIDRS_READ_FAILS FAKE_DESCRIBE_UPDATE_FAILS FAKE_UPDATES FAKE_ADMIN_VIEW_SCOPE \
-    FAKE_CAN_I_YES
+    FAKE_CAN_I_YES FAKE_CAN_I_NO
   mkdir -p "$FAKE_AWS_STATE/tags"
   set_cidrs "$BASE_CIDR"
 }
@@ -451,4 +452,15 @@ output_has() {
   [ "$(tag_value nullify-added-cidrs)" = "18.198.60.231/32" ]
   [ "$(tag_value nullify-pending-cidrs)" = "18.157.227.250/32" ]
   output_has "tags unchanged"
+}
+
+@test "verify requires CronJob, routing and discovery permissions" {
+  set_cidrs "$NULLIFY_EU"
+  for check in "list cronjobs.batch" "list gateways.gateway.networking.k8s.io" "list virtualservices.networking.istio.io" "get /apis/gateway.networking.k8s.io/v1"; do
+    FAKE_CAN_I_NO="$check"
+    export FAKE_CAN_I_NO
+    run_setup verify --nullify-region eu-central-1 --kube-context test
+    [ "$status" -ne 0 ]
+    output_has "group nullify-readonly cannot $check"
+  done
 }

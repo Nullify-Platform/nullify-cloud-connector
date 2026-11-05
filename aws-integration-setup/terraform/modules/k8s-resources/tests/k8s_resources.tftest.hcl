@@ -144,8 +144,8 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 9) : length(rule.resources)]) == 33
-    error_message = "The managed-scan ClusterRole must list exactly the 33 config and routing kinds; secrets are omitted because list returns values"
+    condition     = sum([for rule in slice(kubernetes_cluster_role_v1.nullify_readonly[0].rule, 0, 9) : length(rule.resources)]) == 34
+    error_message = "The managed-scan ClusterRole must list exactly the 34 config and routing kinds; secrets are omitted because list returns values"
   }
 
   assert {
@@ -159,7 +159,7 @@ run "managed_scan_rbac_only" {
   }
 
   assert {
-    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].api_groups) == tolist(["batch"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].resources) == toset(["jobs"])
+    condition     = tolist(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].api_groups) == tolist(["batch"]) && toset(kubernetes_cluster_role_v1.nullify_readonly[0].rule[2].resources) == toset(["jobs", "cronjobs"])
     error_message = "Rule 2 must grant exactly the batch API group kinds the scanner lists"
   }
 
