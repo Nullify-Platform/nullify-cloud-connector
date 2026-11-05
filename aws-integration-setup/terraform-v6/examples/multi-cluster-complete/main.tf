@@ -72,6 +72,7 @@ module "nullify_aws_integration" {
   aws_region                  = var.aws_region
   s3_bucket_name              = var.s3_bucket_name
   nullify_s3_access_point_arn = var.nullify_s3_access_point_arn
+  collector_upload_prefix     = var.collector_upload_prefix
   kms_key_arn                 = var.kms_key_arn
 
   enable_kubernetes_integration = local.collector
@@ -85,14 +86,15 @@ module "k8s_resources_primary" {
   providers = {
     kubernetes = kubernetes.primary
   }
-  iam_role_arn         = module.nullify_aws_integration.role_arn
-  cluster_name         = local.primary_name
-  s3_bucket_name       = local.collector_upload_target
-  kms_key_arn          = var.kms_key_arn
-  aws_region           = var.aws_region
-  kubernetes_namespace = var.kubernetes_namespace
-  cronjob_schedule     = var.cronjob_schedule
-  collector_image      = var.collector_image
+  iam_role_arn            = module.nullify_aws_integration.role_arn
+  cluster_name            = local.primary_name
+  s3_bucket_name          = local.collector_upload_target
+  collector_upload_prefix = var.collector_upload_prefix
+  kms_key_arn             = var.kms_key_arn
+  aws_region              = var.aws_region
+  kubernetes_namespace    = var.kubernetes_namespace
+  cronjob_schedule        = var.cronjob_schedule
+  collector_image         = var.collector_image
 
   enable_collector         = local.collector
   enable_managed_scan_rbac = local.managed
@@ -103,14 +105,15 @@ module "k8s_resources_secondary" {
   providers = {
     kubernetes = kubernetes.secondary
   }
-  iam_role_arn         = module.nullify_aws_integration.role_arn
-  cluster_name         = local.secondary_name
-  s3_bucket_name       = local.collector_upload_target
-  kms_key_arn          = var.kms_key_arn
-  aws_region           = var.aws_region
-  kubernetes_namespace = var.kubernetes_namespace
-  cronjob_schedule     = var.cronjob_schedule
-  collector_image      = var.collector_image
+  iam_role_arn            = module.nullify_aws_integration.role_arn
+  cluster_name            = local.secondary_name
+  s3_bucket_name          = local.collector_upload_target
+  collector_upload_prefix = var.collector_upload_prefix
+  kms_key_arn             = var.kms_key_arn
+  aws_region              = var.aws_region
+  kubernetes_namespace    = var.kubernetes_namespace
+  cronjob_schedule        = var.cronjob_schedule
+  collector_image         = var.collector_image
 
   enable_collector         = local.collector
   enable_managed_scan_rbac = local.managed

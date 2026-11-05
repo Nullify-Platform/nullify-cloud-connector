@@ -210,8 +210,8 @@ run "s3_access_point_policy_grants_put_only_under_the_collector_prefix" {
   }
 
   assert {
-    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/GitHub-10000001/*", "arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/k8s-collector/*"])
-    error_message = "The access point statement must be scoped to the source prefix and the pre-4.0 layout, not the whole access point"
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/GitHub-10000001/*"])
+    error_message = "The access point statement must be scoped to the assigned source prefix, not the whole access point"
   }
 }
 
@@ -275,17 +275,17 @@ run "an_unbound_collector_keeps_only_the_pre_4_0_layout" {
   }
 }
 
-run "a_bound_bucket_collector_lists_only_its_prefixes" {
+run "a_bound_bucket_collector_lists_only_its_prefix" {
   command = plan
   variables {
     s3_bucket_name = "nullify-uploads"
   }
   assert {
-    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:::nullify-uploads/k8s-collector/GitHub-10000001/*", "arn:aws:s3:::nullify-uploads/k8s-collector/k8s-collector/*"])
-    error_message = "The bucket statement must grant the source prefix and the pre-4.0 layout only."
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:::nullify-uploads/k8s-collector/GitHub-10000001/*"])
+    error_message = "The bucket statement must grant the assigned source prefix only."
   }
   assert {
-    condition     = toset(one([for statement in data.aws_iam_policy_document.s3_access_policy[0].statement : one(statement.condition).values if contains(statement.actions, "s3:ListBucket")])) == toset(["k8s-collector/GitHub-10000001/*", "k8s-collector/k8s-collector/*"])
-    error_message = "Listing must stay within the source prefix and the pre-4.0 layout."
+    condition     = toset(one([for statement in data.aws_iam_policy_document.s3_access_policy[0].statement : one(statement.condition).values if contains(statement.actions, "s3:ListBucket")])) == toset(["k8s-collector/GitHub-10000001/*"])
+    error_message = "Listing must stay within the assigned source prefix."
   }
 }

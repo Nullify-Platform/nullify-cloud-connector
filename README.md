@@ -522,10 +522,12 @@ set the prefix together, one cluster at a time.
 - CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
   trailing slash. An enabled EKS collector without this value fails validation.
 
-The role keeps write access to the pre-4.0 layout `k8s-collector/k8s-collector/`
-next to the source prefix, so a 3.x collector keeps uploading until it is
-upgraded, and a cluster rolled back to 3.x keeps working. Nullify ingests each
-cluster from its newest upload in either layout. A 3.x configuration on the
-`4.0.0` image (no key prefix, or `k8s-collector`) keeps writing the pre-4.0
-layout. Deploy the paired Nullify backend before rolling out these templates,
-and confirm a source-prefixed snapshot was ingested after each upgrade.
+A role configured with a source prefix grants uploads only to that prefix. The
+Terraform module keeps the shared layout only for configurations with no source
+prefix. Upgrade the role and collector together; a 3.x collector cannot use the
+new grant. Once the backend sees a source-qualified upload for a cluster, it
+rejects every shared-layout upload for that source and cluster, regardless of
+its timestamp. Keep a source-qualified collector for rollback.
+
+Deploy the paired Nullify backend before these templates. Confirm that each
+upgraded cluster's snapshot was ingested into its assigned source.

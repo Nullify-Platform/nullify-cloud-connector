@@ -80,7 +80,7 @@ variable "cronjob_schedule" {
 variable "collector_image" {
   type        = string
   description = "Container image for the Kubernetes collector"
-  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.1"
+  default     = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-4.0.0"
 }
 
 variable "tags" {
@@ -97,4 +97,17 @@ variable "kms_key_arn" {
   type        = string
   description = "The KMS ARN shown on the Nullify configure page: a key ARN or an alias ARN. Required when scan_mode is collector -- the collector refuses to upload without KMS encryption"
   default     = ""
+}
+
+variable "collector_upload_prefix" {
+  type        = string
+  description = "The source-qualified collectorUploadPrefix from Nullify settings. Required in collector mode"
+  default     = ""
+
+  validation {
+    condition = var.collector_upload_prefix == "" || (
+      can(regex("^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector/k8s-collector"
+    )
+    error_message = "collector_upload_prefix must be the source-qualified prefix from Nullify settings."
+  }
 }

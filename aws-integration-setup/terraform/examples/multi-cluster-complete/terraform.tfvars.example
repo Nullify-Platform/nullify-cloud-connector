@@ -33,6 +33,8 @@ aws_region = "ap-southeast-2"
 # S3 access point ARN for collector uploads (optional, shown on the Nullify configure page if used)
 # nullify_s3_access_point_arn = "arn:aws:s3:ap-southeast-2:123456789012:accesspoint/acme-corp-k8s-collector"
 
+collector_upload_prefix = "k8s-collector/GitHub-10000001/"
+
 # KMS ARN from the Nullify configure page. A key ARN or an alias ARN both work.
 # REQUIRED when scan_mode is collector: the collector refuses to upload without KMS
 # encryption, and there is no opt-out. The key lives in Nullify's account, not yours,
@@ -46,7 +48,7 @@ kubernetes_namespace = "nullify"
 cronjob_schedule = "0 0 * * *"
 
 # Collector image (defaults to a pinned tag of Nullify's ECR Public image)
-# collector_image = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.1"
+# collector_image = "public.ecr.aws/w4o2j2x4/integrations:k8s-collector-4.0.0"
 
 # Tags to apply to all AWS resources
 tags = {
