@@ -240,6 +240,8 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "s3:ListAllMyBuckets",
       "sagemaker:Describe*",
       "sagemaker:List*",
+      "scheduler:GetSchedule",
+      "scheduler:ListSchedules",
       "secretsmanager:GetResourcePolicy",
       "secretsmanager:List*",
       "sns:GetTopicAttributes",
