@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import check_iam_policy_drift as policy_drift
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = json.loads((ROOT / "aws-integration-setup/cloudformation/nullify-cloudformation-template.json").read_text())
 
@@ -35,6 +37,36 @@ def render(value, parameters, conditions):
         condition, yes, no = value["Fn::If"]
         return render(yes if conditions[condition] else no, parameters, conditions)
     return {key: render(item, parameters, conditions) for key, item in value.items()}
+
+
+class CloudConfigurationReadPermissions(unittest.TestCase):
+    def policy_sources(self):
+        yield "CloudFormation", policy_drift.cfn_entries(policy_drift.READONLY_RESOURCES), policy_drift.cfn_entries(policy_drift.DENY_RESOURCES)
+        for tree in policy_drift.TERRAFORM_TREES:
+            source = ROOT / tree / policy_drift.DATA_TF_RELATIVE
+            yield tree, policy_drift.terraform_entries(source, policy_drift.READONLY_SOURCES), policy_drift.terraform_entries(source, [policy_drift.DENY_SOURCE])
+
+    def test_actual_templates_grant_configuration_reads(self):
+        for source, allowed, denied in self.policy_sources():
+            with self.subTest(source=source):
+                self.assertTrue(policy_drift.grants_cloud_configuration_read(allowed, denied))
+
+    def test_missing_broad_scoped_or_denied_grants_do_not_pass(self):
+        required = ("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())
+        for source, allowed, denied in self.policy_sources():
+            self.assertIn(required, allowed)
+            without = allowed - {required}
+            cases = {
+                "missing": without,
+                "wildcard": without | {("Allow", "action", "lambda:Get*", ("resources", ("*",)), ())},
+                "scoped": without | {("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("arn:aws:lambda:us-east-1:123456789012:function:one",)), ())},
+                "wrong effect": without | {("Deny", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())},
+            }
+            for case, changed in cases.items():
+                with self.subTest(source=source, case=case):
+                    self.assertFalse(policy_drift.grants_cloud_configuration_read(changed, denied))
+            with self.subTest(source=source, case="explicit deny"):
+                self.assertFalse(policy_drift.grants_cloud_configuration_read(allowed, denied | {("Deny", "action", "lambda:*", ("resources", ("*",)), ())}))
 
 
 class CollectorUploadScope(unittest.TestCase):

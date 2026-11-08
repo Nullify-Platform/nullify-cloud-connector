@@ -21,6 +21,7 @@ statement -- before comparing.
 Exits non-zero and prints the symmetric difference on any mismatch.
 """
 
+import fnmatch
 import json
 import re
 import sys
@@ -203,6 +204,17 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     return entries
 
 
+def grants_cloud_configuration_read(readonly: set, denied: set) -> bool:
+    action = "lambda:GetFunctionConfiguration"
+    required = ("Allow", "action", action, ("resources", ("*",)), ())
+    if required not in readonly:
+        return False
+    return not any(
+        effect == "Deny" and (key == "not_action" or fnmatch.fnmatchcase(action.lower(), pattern.lower()))
+        for effect, key, pattern, _, _ in denied
+    )
+
+
 def compare(label: str, cfn: set, terraform: set, reference: str = "CloudFormation") -> bool:
     if cfn == terraform:
         print(f"OK: {label} matches ({len(cfn)} entries)")
@@ -270,12 +282,17 @@ def main() -> int:
     cfn_readonly = cfn_entries(READONLY_RESOURCES)
     cfn_deny = cfn_entries(DENY_RESOURCES)
 
-    ok = True
+    ok = grants_cloud_configuration_read(cfn_readonly, cfn_deny)
+    if not ok:
+        print("MISSING: exact Lambda configuration-read grant in CloudFormation")
     for tree in TERRAFORM_TREES:
         data_tf = REPO_ROOT / tree / DATA_TF_RELATIVE
         tf_readonly = terraform_entries(data_tf, READONLY_SOURCES)
         tf_deny = terraform_entries(data_tf, [DENY_SOURCE])
 
+        if not grants_cloud_configuration_read(tf_readonly, tf_deny):
+            print(f"MISSING: exact Lambda configuration-read grant in {tree}")
+            ok = False
         ok = compare(f"Allow statements: CloudFormation vs {tree}", cfn_readonly, tf_readonly) and ok
         ok = compare(f"Deny statements: CloudFormation vs {tree}", cfn_deny, tf_deny) and ok
 
