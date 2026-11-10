@@ -87,7 +87,7 @@ Azure cloud access is separate from Entra sign-in, Azure DevOps, and Teams. The 
 
 ## Helm release compatibility
 
-The public Helm index observed on 11 November 2026 serves collector chart **0.5.0** with image **3.48.0**. This source tree contains chart **0.6.0** with image **4.0.0**. The source version requires `collector.s3.keyPrefix` from a compatible backend. Confirm the backend rollout and exact `collectorUploadPrefix` with Nullify before installing from source or upgrading to collector 4. Do not infer the prefix or upgrade only the image. The source readonly-access chart is also absent from that observed index; use a reviewed source checkout or the raw manifest until publication is verified.
+The public Helm index now serves collector chart **0.6.0** with image **4.0.0** and readonly-access chart **0.1.0**. Publication was verified on 11 November 2026 after releasing the queued GitHub Pages workflow. Collector **0.5.0**, with image **3.48.0**, remains available for the existing backend contract. Collector 4 requires `collector.s3.keyPrefix` from a compatible backend. Confirm the backend rollout and exact `collectorUploadPrefix` with Nullify before upgrading. Do not infer the prefix or upgrade only the image.
 
 ## ⚙️ **Helm Chart Deployment**
 
