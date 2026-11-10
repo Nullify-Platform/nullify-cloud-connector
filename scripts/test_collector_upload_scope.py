@@ -37,6 +37,31 @@ def render(value, parameters, conditions):
     return {key: render(item, parameters, conditions) for key, item in value.items()}
 
 
+class ConnectorPolicyProbeScope(unittest.TestCase):
+    def test_only_the_connector_role_can_be_simulated(self):
+        statements = TEMPLATE["Resources"]["ReadOnlyAccessPolicy2"]["Properties"]["PolicyDocument"]["Statement"]
+        grants = [item for item in statements if "iam:SimulatePrincipalPolicy" in item["Action"]]
+        self.assertEqual(len(grants), 1)
+        for partition in ("aws", "aws-us-gov", "aws-cn"):
+            parameters = {"AWS::Partition": partition, "AWS::AccountId": "123456789012", "CustomerName": "acme"}
+            grant = render(grants[0], parameters, {})
+            own = f"arn:{partition}:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+            self.assertEqual(grant["Resource"], own)
+            self.assertEqual(grant["Action"], ["iam:SimulatePrincipalPolicy"])
+            self.assertEqual(grant["Effect"], "Allow")
+            for foreign in (own.replace("acme", "other"), own.replace("123456789012", "999999999999")):
+                self.assertFalse(fnmatch.fnmatchcase(foreign, grant["Resource"]))
+
+    def test_terraform_keeps_the_same_self_scope(self):
+        for version in ("terraform", "terraform-v6"):
+            source = (ROOT / f"aws-integration-setup/{version}/modules/nullify-aws-integration/data.tf").read_text()
+            statements = re.findall(r"statement \{(.*?)\n  \}", source, re.S)
+            grants = [item for item in statements if '"iam:SimulatePrincipalPolicy"' in item]
+            self.assertEqual(len(grants), 1)
+            self.assertIn('resources = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"]', grants[0])
+            self.assertIn('actions   = ["iam:SimulatePrincipalPolicy"]', grants[0])
+
+
 class CollectorUploadScope(unittest.TestCase):
     def test_two_sources_never_grant_sibling_uploads(self):
         policy = TEMPLATE["Resources"]["S3AccessPolicy"]["Properties"]["PolicyDocument"]
