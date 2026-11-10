@@ -658,6 +658,14 @@
                 "Condition": {}
               },
               {
+                "Sid": "SimulateConnectorPolicy",
+                "Effect": "Allow",
+                "Action": ["iam:SimulatePrincipalPolicy"],
+                "Resource": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
+                }
+              },
+              {
                 "Effect": "Allow",
                 "Action": [
                   "ssm:GetDocument"

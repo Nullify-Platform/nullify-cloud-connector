@@ -3,6 +3,7 @@
 import fnmatch
 import json
 import re
+import runpy
 import shutil
 import subprocess
 import tempfile
@@ -35,6 +36,78 @@ def render(value, parameters, conditions):
         condition, yes, no = value["Fn::If"]
         return render(yes if conditions[condition] else no, parameters, conditions)
     return {key: render(item, parameters, conditions) for key, item in value.items()}
+
+
+class ConnectorPolicyProbeScope(unittest.TestCase):
+    def test_drift_parser_does_not_use_a_nested_role_name(self):
+        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
+        module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
+        expected = drift["cfn_entries"](drift["READONLY_RESOURCES"])
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            shutil.copy(module / "data.tf", target / "data.tf")
+            locals_text = (module / "locals.tf").read_text()
+            (target / "locals.tf").write_text(locals_text)
+            self.assertEqual(expected, drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"]))
+            wrong = re.sub(r'(?m)^(\s*role_name\s*=\s*).*$', r'\1"wrong-role"', locals_text)
+            wrong = wrong.rsplit("}", 1)[0] + '\n harmless_metadata = {\n role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n }\n}\n'
+            (target / "locals.tf").write_text(wrong)
+            self.assertNotEqual(expected, drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"]))
+
+    def test_drift_parser_refuses_unsupported_role_expressions(self):
+        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
+        prefix = 'role_name_prefix = "AWSIntegration-${var.customer_name}"\n'
+        role = 'role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n'
+        cases = {
+            "nested first": 'locals {\n metadata = {\n' + prefix + role + '}\n' + prefix + 'role_name = "wrong-role"\n}\n',
+            "block comment": 'locals {\n /*\n' + prefix + role + '*/\n' + prefix + 'role_name = "wrong-role"\n}\n',
+            "conditional": 'locals {\n' + prefix + role.rstrip() + ' != "" ? "wrong-role" : "other-role"\n}\n',
+            "heredoc": 'locals {\n' + prefix + 'role_name = <<-EOT\nwrong-role\nEOT\n}\n',
+        }
+        module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            shutil.copy(module / "data.tf", target / "data.tf")
+            for name, source in cases.items():
+                with self.subTest(name=name):
+                    (target / "locals.tf").write_text(source)
+                    with self.assertRaises(SystemExit):
+                        drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"])
+
+    def test_drift_normalization_preserves_role_and_account_boundaries(self):
+        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
+        cfn = drift["_norm_cfn_value"]({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"})
+        resource = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"
+        locals_ = {"role_name": "${local.role_name_prefix}-NullifyReadOnlyRole", "role_name_prefix": "AWSIntegration-${var.customer_name}"}
+        normalize = drift["_norm_tf_value"]
+        self.assertEqual(cfn, normalize(resource, locals_))
+        self.assertNotEqual(cfn, normalize(resource, {**locals_, "role_name": "another-role"}))
+        self.assertNotEqual(cfn, normalize(resource.replace("${data.aws_caller_identity.current.account_id}", "999999999999"), locals_))
+        with self.assertRaises(SystemExit):
+            normalize(resource, {"role_name": "${local.role_name}"})
+
+    def test_only_the_connector_role_can_be_simulated(self):
+        statements = TEMPLATE["Resources"]["ReadOnlyAccessPolicy2"]["Properties"]["PolicyDocument"]["Statement"]
+        grants = [item for item in statements if "iam:SimulatePrincipalPolicy" in item["Action"]]
+        self.assertEqual(len(grants), 1)
+        for partition in ("aws", "aws-us-gov", "aws-cn"):
+            parameters = {"AWS::Partition": partition, "AWS::AccountId": "123456789012", "CustomerName": "acme"}
+            grant = render(grants[0], parameters, {})
+            own = f"arn:{partition}:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
+            self.assertEqual(grant["Resource"], own)
+            self.assertEqual(grant["Action"], ["iam:SimulatePrincipalPolicy"])
+            self.assertEqual(grant["Effect"], "Allow")
+            for foreign in (own.replace("acme", "other"), own.replace("123456789012", "999999999999")):
+                self.assertFalse(fnmatch.fnmatchcase(foreign, grant["Resource"]))
+
+    def test_terraform_keeps_the_same_self_scope(self):
+        for version in ("terraform", "terraform-v6"):
+            source = (ROOT / f"aws-integration-setup/{version}/modules/nullify-aws-integration/data.tf").read_text()
+            statements = re.findall(r"statement \{(.*?)\n  \}", source, re.S)
+            grants = [item for item in statements if '"iam:SimulatePrincipalPolicy"' in item]
+            self.assertEqual(len(grants), 1)
+            self.assertIn('resources = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"]', grants[0])
+            self.assertIn('actions   = ["iam:SimulatePrincipalPolicy"]', grants[0])
 
 
 class CollectorUploadScope(unittest.TestCase):

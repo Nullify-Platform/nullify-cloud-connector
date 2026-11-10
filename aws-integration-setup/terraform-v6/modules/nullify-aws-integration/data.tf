@@ -236,6 +236,13 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
   }
 
   statement {
+    sid       = "SimulateConnectorPolicy"
+    effect    = "Allow"
+    actions   = ["iam:SimulatePrincipalPolicy"]
+    resources = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"]
+  }
+
+  statement {
     effect    = "Allow"
     actions   = ["ssm:GetDocument"]
     resources = ["arn:${data.aws_partition.current.partition}:ssm:*:*:document/SSM-SessionManagerRunShell"]

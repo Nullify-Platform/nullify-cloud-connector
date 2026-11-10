@@ -204,6 +204,12 @@ aws cloudformation update-stack \
 
 `UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
+### Connector permission preflight
+
+The read-only role can call `iam:SimulatePrincipalPolicy` only for its own role ARN. Nullify uses this read-only diagnostic to check collector permissions; it does not grant the simulated actions or permit changes to IAM. The Session Manager document grant remains restricted to `SSM-SessionManagerRunShell`.
+
+Existing installations need the updated template applied through their existing stack or StackSet. Deploy the resource-aware Nullify permission probe before updating the connector: an older probe evaluates `ssm:GetDocument` against `*` and can report a false gap for the restricted document grant. A successful role assumption alone does not prove complete collector coverage.
+
 ### 5. Collector upload target
 
 The Nullify configure page shows the upload target for the Helm chart's `collector.s3.bucket`. Which form it shows decides the setup:
