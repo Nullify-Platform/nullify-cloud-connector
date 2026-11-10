@@ -39,6 +39,41 @@ def render(value, parameters, conditions):
 
 
 class ConnectorPolicyProbeScope(unittest.TestCase):
+    def test_drift_parser_does_not_use_a_nested_role_name(self):
+        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
+        module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
+        expected = drift["cfn_entries"](drift["READONLY_RESOURCES"])
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            shutil.copy(module / "data.tf", target / "data.tf")
+            locals_text = (module / "locals.tf").read_text()
+            (target / "locals.tf").write_text(locals_text)
+            self.assertEqual(expected, drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"]))
+            wrong = re.sub(r'(?m)^(\s*role_name\s*=\s*).*$', r'\1"wrong-role"', locals_text)
+            wrong = wrong.rsplit("}", 1)[0] + '\n harmless_metadata = {\n role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n }\n}\n'
+            (target / "locals.tf").write_text(wrong)
+            self.assertNotEqual(expected, drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"]))
+
+    def test_drift_parser_refuses_unsupported_role_expressions(self):
+        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
+        prefix = 'role_name_prefix = "AWSIntegration-${var.customer_name}"\n'
+        role = 'role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n'
+        cases = {
+            "nested first": 'locals {\n metadata = {\n' + prefix + role + '}\n' + prefix + 'role_name = "wrong-role"\n}\n',
+            "block comment": 'locals {\n /*\n' + prefix + role + '*/\n' + prefix + 'role_name = "wrong-role"\n}\n',
+            "conditional": 'locals {\n' + prefix + role.rstrip() + ' != "" ? "wrong-role" : "other-role"\n}\n',
+            "heredoc": 'locals {\n' + prefix + 'role_name = <<-EOT\nwrong-role\nEOT\n}\n',
+        }
+        module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            shutil.copy(module / "data.tf", target / "data.tf")
+            for name, source in cases.items():
+                with self.subTest(name=name):
+                    (target / "locals.tf").write_text(source)
+                    with self.assertRaises(SystemExit):
+                        drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"])
+
     def test_drift_normalization_preserves_role_and_account_boundaries(self):
         drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
         cfn = drift["_norm_cfn_value"]({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"})

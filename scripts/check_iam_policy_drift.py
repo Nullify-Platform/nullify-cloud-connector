@@ -92,6 +92,24 @@ def _norm_tf_value(value: str, local_strings=None) -> str:
     return _TF_CUSTOMER.sub("${customer_name}", value)
 
 
+def _terraform_role_locals(path: Path) -> dict:
+    skip = r"(?:\s|\#[^\n]*(?:\n|$)|//[^\n]*(?:\n|$))*"
+    quoted = r'"(?:\\.|[^"\\\r\n])*"'
+    line_end = r"[ \t]*(?:(?:\#|//)[^\n]*)?(?:\r?\n|(?=\}))"
+    pattern = (
+        r"\A" + skip + r"locals" + skip + r"\{" + skip
+        + r"role_name_prefix[ \t]*=[ \t]*(?P<prefix>" + quoted + r")" + line_end + skip
+        + r"role_name[ \t]*=[ \t]*(?P<name>" + quoted + r")" + line_end
+    )
+    match = re.match(pattern, path.read_text())
+    if match is None:
+        raise SystemExit(f"unsupported role locals in {path}: expected leading literal role_name_prefix and role_name assignments")
+    try:
+        return {"role_name_prefix": json.loads(match["prefix"]), "role_name": json.loads(match["name"])}
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"unsupported role string in {path}: {error}") from error
+
+
 def _norm_resources(resources, negated: bool) -> tuple:
     key = "not_resources" if negated else "resources"
     return (key, tuple(sorted(resources)) if resources else ())
@@ -207,10 +225,7 @@ def _conditions(block: str) -> list:
 def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     text = data_tf.read_text()
     locals_path = data_tf.with_name("locals.tf")
-    local_strings = dict(re.findall(
-        r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"\n]*)"\s*$',
-        locals_path.read_text() if locals_path.exists() else "", re.MULTILINE,
-    ))
+    local_strings = _terraform_role_locals(locals_path) if "${local.role_name}" in text else {}
     entries: set = set()
     for name in data_source_names:
         for block in _find_statement_blocks(text, name):
