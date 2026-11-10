@@ -47,22 +47,49 @@ Entry = tuple
 _PARTITION_TOKEN = "${partition}"
 _CFN_PARTITION = re.compile(r"\$\{AWS::Partition\}")
 _TF_PARTITION = re.compile(r"\$\{data\.aws_partition\.current\.partition\}")
+_CFN_ACCOUNT = re.compile(r"\$\{AWS::AccountId\}")
+_TF_ACCOUNT = re.compile(r"\$\{data\.aws_caller_identity\.current\.account_id\}")
+_CFN_CUSTOMER = re.compile(r"\$\{CustomerName\}")
+_TF_CUSTOMER = re.compile(r"\$\{var\.customer_name\}")
+_TF_LOCAL = re.compile(r"\$\{local\.([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _norm_cfn_string(value: str) -> str:
+    value = _CFN_PARTITION.sub(_PARTITION_TOKEN, value)
+    value = _CFN_ACCOUNT.sub("${account_id}", value)
+    return _CFN_CUSTOMER.sub("${customer_name}", value)
 
 
 def _norm_cfn_value(value) -> str:
     if isinstance(value, str):
-        return _CFN_PARTITION.sub(_PARTITION_TOKEN, value)
+        return _norm_cfn_string(value)
     if isinstance(value, dict) and "Fn::Sub" in value:
         template = value["Fn::Sub"]
         if isinstance(template, list):
             template = template[0]
         if isinstance(template, str):
-            return _CFN_PARTITION.sub(_PARTITION_TOKEN, template)
+            return _norm_cfn_string(template)
     raise SystemExit(f"unsupported CloudFormation IAM value: {value!r}")
 
 
-def _norm_tf_value(value: str) -> str:
-    return _TF_PARTITION.sub(_PARTITION_TOKEN, value)
+def _norm_tf_value(value: str, local_strings=None) -> str:
+    local_strings = local_strings or {}
+
+    def expand(text, seen):
+        def replace(match):
+            name = match[1]
+            if name not in local_strings:
+                return match[0]
+            if name in seen:
+                raise SystemExit(f"cyclic Terraform string local: {name}")
+            return expand(local_strings[name], seen | {name})
+
+        return _TF_LOCAL.sub(replace, text)
+
+    value = expand(value, set())
+    value = _TF_PARTITION.sub(_PARTITION_TOKEN, value)
+    value = _TF_ACCOUNT.sub("${account_id}", value)
+    return _TF_CUSTOMER.sub("${customer_name}", value)
 
 
 def _norm_resources(resources, negated: bool) -> tuple:
@@ -179,6 +206,11 @@ def _conditions(block: str) -> list:
 
 def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     text = data_tf.read_text()
+    locals_path = data_tf.with_name("locals.tf")
+    local_strings = dict(re.findall(
+        r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"\n]*)"\s*$',
+        locals_path.read_text() if locals_path.exists() else "", re.MULTILINE,
+    ))
     entries: set = set()
     for name in data_source_names:
         for block in _find_statement_blocks(text, name):
@@ -190,14 +222,14 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
                 actions, actions_negated = not_actions, True
             else:
                 actions, actions_negated = _string_list(block, "actions"), False
-            actions = [_norm_tf_value(action) for action in actions]
+            actions = [_norm_tf_value(action, local_strings) for action in actions]
 
             not_resources = _string_list(block, "not_resources")
             if not_resources:
                 resources, resources_negated = not_resources, True
             else:
                 resources, resources_negated = _string_list(block, "resources"), False
-            resources = [_norm_tf_value(resource) for resource in resources]
+            resources = [_norm_tf_value(resource, local_strings) for resource in resources]
 
             entries |= _flatten(effect, actions, actions_negated, resources, resources_negated, _conditions(block))
     return entries

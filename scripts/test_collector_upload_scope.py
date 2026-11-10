@@ -3,6 +3,7 @@
 import fnmatch
 import json
 import re
+import runpy
 import shutil
 import subprocess
 import tempfile
@@ -38,6 +39,18 @@ def render(value, parameters, conditions):
 
 
 class ConnectorPolicyProbeScope(unittest.TestCase):
+    def test_drift_normalization_preserves_role_and_account_boundaries(self):
+        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
+        cfn = drift["_norm_cfn_value"]({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"})
+        resource = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"
+        locals_ = {"role_name": "${local.role_name_prefix}-NullifyReadOnlyRole", "role_name_prefix": "AWSIntegration-${var.customer_name}"}
+        normalize = drift["_norm_tf_value"]
+        self.assertEqual(cfn, normalize(resource, locals_))
+        self.assertNotEqual(cfn, normalize(resource, {**locals_, "role_name": "another-role"}))
+        self.assertNotEqual(cfn, normalize(resource.replace("${data.aws_caller_identity.current.account_id}", "999999999999"), locals_))
+        with self.assertRaises(SystemExit):
+            normalize(resource, {"role_name": "${local.role_name}"})
+
     def test_only_the_connector_role_can_be_simulated(self):
         statements = TEMPLATE["Resources"]["ReadOnlyAccessPolicy2"]["Properties"]["PolicyDocument"]["Statement"]
         grants = [item for item in statements if "iam:SimulatePrincipalPolicy" in item["Action"]]
