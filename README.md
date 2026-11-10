@@ -89,6 +89,8 @@ Azure cloud access is separate from Entra sign-in, Azure DevOps, and Teams. The 
 
 The public Helm index now serves collector chart **0.6.0** with image **4.0.0** and readonly-access chart **0.1.0**. Publication was verified on 11 November 2026 after releasing the queued GitHub Pages workflow. Collector **0.5.0**, with image **3.48.0**, remains available for the existing backend contract. Collector 4 requires `collector.s3.keyPrefix` from a compatible backend. Confirm the backend rollout and exact `collectorUploadPrefix` with Nullify before upgrading. Do not infer the prefix or upgrade only the image.
 
+The current CloudFormation and Terraform collector paths also require the source-prefix contract; pinning Helm 0.5.0 does not make current IAM templates compatible with an older backend. Use the complete template/chart version set confirmed by Nullify.
+
 ## ⚙️ **Helm Chart Deployment**
 
 ### **Option 1: Install from Helm Repository (Recommended)**
@@ -373,7 +375,7 @@ nullify-cloud-connector/
     ├── 🔧 terraform/                     # Terraform Modules
     │   ├── modules/
     │   │   ├── nullify-gcp-integration/  # WIF pool, provider, SA, IAM bindings
-    │   │   └── nullify-gke-collector/    # GKE k8s-collector deployment
+    │   │   └── nullify-gke-collector/    # Optional GCP service-account identity resources
     │   ├── examples/                     # Example configurations
     │   ├── terraform.tfvars.example      # Example configuration
     │   └── README.md                     # GCP Terraform documentation
@@ -387,7 +389,7 @@ nullify-cloud-connector/
 
 | Component | Purpose | Use When |
 |-----------|---------|----------|
-| **🎯 Helm Charts** | Deploy K8s collector (EKS via IRSA, GKE via Workload Identity) | You have EKS or GKE and prefer K8s-native tools |
+| **🎯 Helm Charts** | Deploy K8s collector (EKS via IRSA, GKE via projected service-account tokens) | You have EKS or GKE and prefer K8s-native tools |
 | **🏗️ CloudFormation** | Set up AWS IAM roles and policies | You prefer AWS-native infrastructure |
 | **🔧 Terraform** | Modular infrastructure-as-code with multi-cluster support | You use Terraform for infrastructure |
 | **🤖 GitHub Actions** | Automated testing and publishing | You want CI/CD for chart updates |
@@ -418,7 +420,7 @@ serviceAccount:
 
 ### **Basic Configuration**
 
-All required values are provided in the Nullify configure page.
+For chart 0.6.0, use the exact source-qualified prefix supplied by a compatible Nullify deployment. Replace every placeholder below; if the prefix is unavailable, stop and request compatible deployment values. Use the earlier 0.5.0 quick start only with the matching existing backend and IAM policy.
 
 ```yaml
 collector:
@@ -427,7 +429,7 @@ collector:
   clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
-    keyPrefix: "k8s-collector"
+    keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
   schedule: "0 2 * * *"              # Daily at 2 AM UTC
@@ -486,9 +488,12 @@ Each release is tagged `<chart>-v<version>` (for example `nullify-k8s-collector-
 Collector releases up to 0.2.0 were tagged `vX.Y.Z`; only 0.2.0 of those is still in the repository.
 
 ### **Deployment Management**
+
+The following command keeps the 0.5.0 contract. To upgrade to 0.6.0, first complete the [collector 4 cutover](#collector-4-source-prefix-cutover), including paired backend, IAM policy and exact prefix.
+
 ```bash
-# Upgrade the chart
-helm upgrade nullify-collector nullify/nullify-k8s-collector \
+# Keep the version used by the existing-backend quick start
+helm upgrade nullify-collector nullify/nullify-k8s-collector --version 0.5.0 \
   -f values-production.yaml \
   --namespace nullify
 

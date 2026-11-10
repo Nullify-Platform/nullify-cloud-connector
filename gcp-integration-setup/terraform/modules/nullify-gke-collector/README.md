@@ -15,7 +15,7 @@ The Nullify k8s-collector on GKE uses a projected Kubernetes ServiceAccount toke
 
 2. Paste the URL into the Nullify console under **Settings → Connectors → GCP → GKE OIDC issuer URLs**.
 
-3. Nullify returns the **role ARN**. For source chart 0.6.0, obtain the exact `collectorUploadPrefix` and confirm the paired backend rollout first. Copy the bucket, prefix, and KMS key from your deployment settings; the values below are placeholders. Leave the AWS region unset so the chart derives the upload region from the KMS key. Deploy the Helm chart:
+3. Nullify returns the **role ARN**. For source chart 0.6.0, obtain the exact `collectorUploadPrefix` and confirm the paired backend rollout first. Copy the bucket, prefix, and KMS key from your deployment settings; the values below are placeholders. Leave the AWS region unset so the chart derives the upload region from the KMS key. Save the following as `values-gke.yaml`, replace every placeholder, then deploy the Helm chart:
 
    ```yaml
    cloudProvider: gcp
