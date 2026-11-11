@@ -6,16 +6,12 @@
 # minting a per-tenant RS256 JWT with `tenant_id` as a custom claim. The
 # subject token is exchanged via Google STS for a short-lived federated
 # access token, then used to impersonate the service account this module
-# creates. The pool's `attribute_condition` pins trust to the customer's
-# specific Nullify tenant id, so even if Nullify's signing key were stolen
-# an attacker could not mint a token accepted by another tenant's provider.
+# creates.
 #
 # No long-lived secrets are minted by this module. The customer can revoke
 # access at any time by deleting the workload identity provider, the service
 # account, or both.
 #
-# Permissions are intentionally read-only and limited to service-configuration
-# and network-topology metadata. There are NO data-plane permissions:
 #   - storage: bucket metadata only, never object data
 #   - secret manager: secret metadata only, never secret payloads
 #   - bigquery: schema/IAM only, never table rows
@@ -86,7 +82,6 @@ locals {
     # KMS key rings + crypto keys.
     "roles/cloudkms.viewer",
 
-    # Logging sinks + exclusions (config only — no log payload access).
     "roles/logging.viewer",
 
     # Cloud Run services + revisions.
@@ -333,11 +328,6 @@ resource "google_iam_workload_identity_pool_provider" "nullify_oidc" {
     issuer_uri = var.nullify_oidc_issuer_uri
   }
 
-  # Pin trust to this specific Nullify tenant. Nullify's OIDC issuer is
-  # multi-tenant; the JWT carries a `tenant_id` custom claim. Without this
-  # condition any Nullify tenant could exchange a token against this
-  # provider. With it, even if Nullify's signing key were stolen, an
-  # attacker could not mint a token accepted by another tenant's provider.
   attribute_condition = "assertion.tenant_id == \"${var.nullify_tenant_id}\""
 
   attribute_mapping = {
