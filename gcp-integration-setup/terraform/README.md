@@ -80,7 +80,14 @@ If your organisation restricts API enablement via Service Usage org
 policies, ensure the following are allowlisted on the host project:
 `iam.googleapis.com`, `iamcredentials.googleapis.com`, `sts.googleapis.com`,
 `cloudresourcemanager.googleapis.com`, `cloudasset.googleapis.com`,
-`serviceusage.googleapis.com`.
+`serviceusage.googleapis.com`, `cloudkms.googleapis.com`,
+`sqladmin.googleapis.com`, `spanner.googleapis.com`,
+`dataflow.googleapis.com`, `bigquery.googleapis.com`,
+`orgpolicy.googleapis.com`, `accesscontextmanager.googleapis.com`.
+
+The last seven count each read against the quota of the service account's
+own project, so they must be enabled in the host project even when the
+scanned projects already enable them. Enabling an API grants no access.
 
 To enable them manually:
 
@@ -88,7 +95,9 @@ To enable them manually:
 gcloud services enable \
   iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
   cloudresourcemanager.googleapis.com cloudasset.googleapis.com \
-  serviceusage.googleapis.com \
+  serviceusage.googleapis.com cloudkms.googleapis.com sqladmin.googleapis.com \
+  spanner.googleapis.com dataflow.googleapis.com bigquery.googleapis.com \
+  orgpolicy.googleapis.com accesscontextmanager.googleapis.com \
   --project=YOUR_HOST_PROJECT
 ```
 

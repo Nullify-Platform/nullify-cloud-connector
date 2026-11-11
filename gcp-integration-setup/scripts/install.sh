@@ -29,7 +29,9 @@ SA_NAME="${NULLIFY_SA_NAME:-nullify-cloud-connector}"
 SA_EMAIL="${SA_NAME}@${NULLIFY_HOST_PROJECT}.iam.gserviceaccount.com"
 
 # Required APIs on the host project. Without these enabled, the WIF pool /
-# provider / service account creation calls fail with cryptic 403s. Mirrors
+# provider / service account creation calls fail with cryptic 403s, and the
+# APIs that count calls against the service account's own project (cloudkms
+# onwards) cannot be read. Enabling an API grants no access. Mirrors
 # `apis.tf` in the Terraform module.
 echo "==> Enabling required Google Cloud APIs on ${NULLIFY_HOST_PROJECT}"
 gcloud services enable \
@@ -39,6 +41,13 @@ gcloud services enable \
   cloudresourcemanager.googleapis.com \
   cloudasset.googleapis.com \
   serviceusage.googleapis.com \
+  cloudkms.googleapis.com \
+  sqladmin.googleapis.com \
+  spanner.googleapis.com \
+  dataflow.googleapis.com \
+  bigquery.googleapis.com \
+  orgpolicy.googleapis.com \
+  accesscontextmanager.googleapis.com \
   --project="${NULLIFY_HOST_PROJECT}"
 
 # API enablement is documented as synchronous but the IAM API's "enabled"
