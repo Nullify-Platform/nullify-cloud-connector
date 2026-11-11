@@ -16,6 +16,7 @@ SA_EMAIL="${SA_NAME}@${NULLIFY_HOST_PROJECT}.iam.gserviceaccount.com"
 CUSTOM_ROLE_ID="nullifyCloudConnector"
 
 ROLES=(
+  roles/browser
   roles/cloudasset.viewer
   roles/iam.securityReviewer
   roles/compute.viewer

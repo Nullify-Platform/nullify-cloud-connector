@@ -15,8 +15,9 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 - The pool's attribute condition pins trust to your specific Nullify
   tenant id (`assertion.tenant_id == "<your tenant id>"`). Any other
   Nullify tenant's token is rejected by GCP before any permission check
-  happens — so even if Nullify's signing key were stolen, an attacker
-  could not mint a token accepted by another tenant's provider.
+  happens. This check trusts the tenant claim in a token signed by Nullify.
+  A compromised signing key can forge that claim. Key protection, rotation
+  and revocation remain required.
 
 ## Predefined roles
 
@@ -29,7 +30,6 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 | `roles/cloudsql.viewer` | Cloud SQL instance + replica config. |
 | `roles/spanner.viewer` | Spanner instance + database config. |
 | `roles/cloudkms.viewer` | KMS key ring + crypto key config (no key material). |
-| `roles/logging.viewer` | Logging sink + exclusion config (no log content). |
 | `roles/run.viewer` | Cloud Run service + revision config. |
 | `roles/cloudfunctions.viewer` | Cloud Functions config. |
 | `roles/appengine.appViewer` | App Engine service + version config. |
@@ -40,10 +40,11 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 ## Custom role: `nullifyCloudConnector`
 
 Read-only permissions on services that don't have a predefined viewer role.
-Strict allowlist of `*.get` / `*.list` only.
+Explicit allowlist of read-only permissions.
 
 | Permission | Purpose |
 | --- | --- |
+| `logging.sinks.list`, `logging.logMetrics.list`, `logging.buckets.list` | List sink, log-based metric and log-bucket configuration used by the collector. Does not grant `logging.logEntries.list`. |
 | `compute.securityPolicies.get/list` | Cloud Armor WAF rule discovery. |
 | `accesscontextmanager.servicePerimeters.get/list` * | VPC Service Controls perimeters. |
 | `orgpolicy.policies.list` + `orgpolicy.policy.get` * | Organisation policy discovery. |
@@ -64,6 +65,8 @@ Strict allowlist of `*.get` / `*.list` only.
 | `securitycenter.sources.get/list` | Security Command Center source config (which detection sources are wired up). **Not** `securitycenter.findings.*` or `securitycenter.assets.*` — finding contents are runtime data. Org-scope only; harmless no-op at project scope. |
 
 \* Permissions marked with an asterisk are only includable in **organisation-scoped** custom roles — GCP rejects them in a project-scoped custom role because the underlying resources live at the organisation. They are silently omitted when this module is deployed without `organization_id` (single-project installs); a single-project install simply has no VPC SC or org-policy data to read.
+
+Earlier module versions granted `roles/logging.viewer`, which includes log-entry reads. This module replaces that grant with the three logging metadata-list permissions above. Existing Terraform installations keep their old grant until an administrator applies the updated Terraform and confirms its removal. The gcloud installer stops adding that role but does not remove existing grants. For a script-managed installation, review the service account’s existing organization IAM bindings and remove the old Logs Viewer grant explicitly after confirming that no other workload requires it. The uninstall script retains removal of this legacy grant. Review the current [Google Cloud Logging role definition](https://docs.cloud.google.com/iam/docs/roles-permissions/logging) when comparing plans.
 
 ## What Nullify cannot do
 

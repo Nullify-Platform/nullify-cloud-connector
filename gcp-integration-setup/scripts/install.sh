@@ -104,7 +104,7 @@ CUSTOM_ROLE_TITLE="Nullify Cloud Connector (read-only)"
 CUSTOM_ROLE_DESCRIPTION="Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
 
 # shellcheck disable=SC2089
-CUSTOM_ROLE_PERMISSIONS="compute.securityPolicies.get,compute.securityPolicies.list,accesscontextmanager.servicePerimeters.get,accesscontextmanager.servicePerimeters.list,orgpolicy.policies.list,orgpolicy.policy.get,alloydb.clusters.get,alloydb.clusters.list,alloydb.instances.get,alloydb.instances.list,file.instances.get,file.instances.list,redis.instances.get,redis.instances.list,memcache.instances.get,memcache.instances.list,artifactregistry.repositories.get,artifactregistry.repositories.list,dns.managedZones.get,dns.managedZones.list,dns.resourceRecordSets.list,apigateway.gateways.get,apigateway.gateways.list,apigateway.apis.get,apigateway.apis.list,apigateway.apiconfigs.get,apigateway.apiconfigs.list,storage.buckets.get,storage.buckets.list,storage.buckets.getIamPolicy,secretmanager.secrets.get,secretmanager.secrets.list,bigquery.datasets.get,bigquery.tables.get,bigquery.tables.list,bigquery.routines.get,bigquery.routines.list,batch.jobs.get,batch.jobs.list,workflows.workflows.get,workflows.workflows.list,datastore.databases.getMetadata,datastore.databases.list,aiplatform.endpoints.get,aiplatform.endpoints.list,securitycenter.sources.get,securitycenter.sources.list"
+CUSTOM_ROLE_PERMISSIONS="logging.sinks.list,logging.logMetrics.list,logging.buckets.list,compute.securityPolicies.get,compute.securityPolicies.list,accesscontextmanager.servicePerimeters.get,accesscontextmanager.servicePerimeters.list,orgpolicy.policies.list,orgpolicy.policy.get,alloydb.clusters.get,alloydb.clusters.list,alloydb.instances.get,alloydb.instances.list,file.instances.get,file.instances.list,redis.instances.get,redis.instances.list,memcache.instances.get,memcache.instances.list,artifactregistry.repositories.get,artifactregistry.repositories.list,dns.managedZones.get,dns.managedZones.list,dns.resourceRecordSets.list,apigateway.gateways.get,apigateway.gateways.list,apigateway.apis.get,apigateway.apis.list,apigateway.apiconfigs.get,apigateway.apiconfigs.list,storage.buckets.get,storage.buckets.list,storage.buckets.getIamPolicy,secretmanager.secrets.get,secretmanager.secrets.list,bigquery.datasets.get,bigquery.tables.get,bigquery.tables.list,bigquery.tables.getIamPolicy,pubsub.topics.getIamPolicy,bigquery.routines.get,bigquery.routines.list,batch.jobs.get,batch.jobs.list,workflows.workflows.get,workflows.workflows.list,datastore.databases.getMetadata,datastore.databases.list,aiplatform.endpoints.get,aiplatform.endpoints.list,securitycenter.sources.get,securitycenter.sources.list"
 
 echo "==> Creating organisation custom role ${CUSTOM_ROLE_ID}"
 if gcloud iam roles describe "${CUSTOM_ROLE_ID}" --organization="${NULLIFY_ORG_ID}" >/dev/null 2>&1; then
@@ -125,6 +125,7 @@ fi
 
 echo "==> Granting predefined viewer roles at the organisation"
 ROLES=(
+  roles/browser
   roles/cloudasset.viewer
   roles/iam.securityReviewer
   roles/compute.viewer
@@ -132,7 +133,6 @@ ROLES=(
   roles/cloudsql.viewer
   roles/spanner.viewer
   roles/cloudkms.viewer
-  roles/logging.viewer
   roles/run.viewer
   roles/cloudfunctions.viewer
   roles/appengine.appViewer
@@ -151,6 +151,9 @@ done
 echo
 echo "Nullify GCP integration installed successfully."
 echo
-echo "Paste these values into the Nullify console under Settings -> Cloud Integrations -> GCP:"
+echo "Paste these values into the Nullify console under Settings -> Connectors -> GCP:"
 echo "  Service Account Email:        ${SA_EMAIL}"
 echo "  Workload Identity Provider:   projects/$(gcloud projects describe "${NULLIFY_HOST_PROJECT}" --format='value(projectNumber)')/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
+
+echo "Save the connection, then select Validate and confirm the first inventory result."
+echo "For older installations, review and remove the previous roles/logging.viewer grant separately."

@@ -19,6 +19,10 @@ ephemeral "aws_eks_cluster_auth" "primary" {
 token = ephemeral.aws_eks_cluster_auth.primary.token
 ```
 
+## Collector version compatibility
+
+The current `k8s-resources` module deploys collector 4.0.0 and requires `collector_upload_prefix` whenever the collector is enabled. Obtain the exact `collectorUploadPrefix` and confirm the paired Nullify backend rollout first. Pass that same prefix to the AWS integration role module and each collector module. Do not apply current collector templates to an older backend or upgrade only the image. See the [cutover and rollback requirements](../../README.md#collector-4-source-prefix-cutover). Cloud-only and managed-scan configurations do not need a collector upload prefix.
+
 ## Requirements
 
 - Terraform >= 1.8 (>= 1.10 for the `multi-cluster-complete` and `managed-scan` examples)
@@ -105,6 +109,7 @@ module "nullify_eks_access" {
 - `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
 - `s3_bucket_name`: S3 bucket for scan results (optional)
 - `nullify_s3_access_point_arn`: S3 access point for collector uploads (optional)
+- `collector_upload_prefix`: Exact source prefix from Nullify; required on collector module instances and passed to the IAM module for collector 4
 - `kms_key_arn`: KMS key ARN or alias ARN from the Nullify configure page; see "KMS" in `../terraform/README.md`. Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `enable_kubernetes_integration`: Set to `true` for EKS integration
 - `eks_cluster_arns`: List of EKS cluster ARNs to integrate with, in any region
@@ -115,11 +120,11 @@ module "nullify_eks_access" {
 - `tags`: Resource tags
 - `cronjob_schedule`: Deprecated and unused here; set the schedule on `k8s-resources`
 
-`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true, with no unencrypted opt-out. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
+`k8s-resources` requires `cluster_name`, `kms_key_arn` and `collector_upload_prefix` whenever `enable_collector` is true, with no unencrypted opt-out. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
 
 A cluster cannot run the collector and the managed scan at once: the two paths register it under different identities, duplicating its inventory. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination -- `enable_collector` and `enable_managed_scan_rbac` may be set together on one `k8s-resources` instance to stage a cutover, since the ClusterRole it applies is inert until an access entry uses it. See "Kubernetes Resources" in `../terraform/README.md`.
 
-`k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.1`, the same tag the Helm chart deploys. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
+`k8s-resources` defaults `collector_image` to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-4.0.0`, the same tag as Helm chart 0.6.0. Both require the collector 4 source-prefix contract. Replace any explicit `nullify/k8s-collector:latest`: Nullify does not publish that Docker Hub image.
 
 ## Upgrade Notes
 

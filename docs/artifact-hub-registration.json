@@ -1,0 +1,11 @@
+{
+  "kind": "Helm charts",
+  "name": "nullify",
+  "displayName": "Nullify Kubernetes",
+  "url": "https://nullify-platform.github.io/nullify-cloud-connector/",
+  "disabled": false,
+  "scannerDisabled": false,
+  "repositoryID": "158135dc-d5cd-4016-9d22-5494d9510594",
+  "status": "registered; indexing pending",
+  "registeredOn": "2026-11-11"
+}
