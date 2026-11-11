@@ -493,6 +493,9 @@ for pkg in "$new_dir"/*.tgz; do
   cp "$pkg" "$SITE_DIR/"
 done
 cp "$new_dir/index.yaml" "$SITE_DIR/index.yaml"
+if [ -f artifacthub-repo.yml ]; then
+  cp artifacthub-repo.yml "$SITE_DIR/artifacthub-repo.yml"
+fi
 
 while IFS= read -r url; do
   [ -f "$SITE_DIR/$(basename "$url")" ] || die "index.yaml lists $url but the site has no such file"

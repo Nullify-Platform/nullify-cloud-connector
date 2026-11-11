@@ -171,3 +171,7 @@ values-secret.yml
 /published.txt
 /release.txt
 /skipped.txt
+
+# Python script caches
+__pycache__/
+*.pyc
