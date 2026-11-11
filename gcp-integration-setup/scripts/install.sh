@@ -29,9 +29,7 @@ SA_NAME="${NULLIFY_SA_NAME:-nullify-cloud-connector}"
 SA_EMAIL="${SA_NAME}@${NULLIFY_HOST_PROJECT}.iam.gserviceaccount.com"
 
 # Required APIs on the host project. Without these enabled, the WIF pool /
-# provider / service account creation calls fail with cryptic 403s, and the
-# APIs that count calls against the service account's own project (cloudkms
-# onwards) cannot be read. Enabling an API grants no access. Mirrors
+# provider / service account creation calls fail with cryptic 403s. Mirrors
 # `apis.tf` in the Terraform module.
 echo "==> Enabling required Google Cloud APIs on ${NULLIFY_HOST_PROJECT}"
 gcloud services enable \
@@ -41,6 +39,13 @@ gcloud services enable \
   cloudresourcemanager.googleapis.com \
   cloudasset.googleapis.com \
   serviceusage.googleapis.com \
+  --project="${NULLIFY_HOST_PROJECT}"
+
+# These APIs count Nullify's reads against the service account's own
+# project. A failure here does not stop the install: only the blocked
+# services are not read. Mirrors `scan_quota` in `apis.tf`.
+echo "==> Enabling scan APIs on ${NULLIFY_HOST_PROJECT}"
+if ! gcloud services enable \
   cloudkms.googleapis.com \
   sqladmin.googleapis.com \
   spanner.googleapis.com \
@@ -48,7 +53,10 @@ gcloud services enable \
   bigquery.googleapis.com \
   orgpolicy.googleapis.com \
   accesscontextmanager.googleapis.com \
-  --project="${NULLIFY_HOST_PROJECT}"
+  --project="${NULLIFY_HOST_PROJECT}"; then
+  echo "WARNING: could not enable all scan APIs on ${NULLIFY_HOST_PROJECT}." >&2
+  echo "Nullify cannot read the services whose API is not enabled there." >&2
+fi
 
 # API enablement is documented as synchronous but the IAM API's "enabled"
 # state propagates eventually-consistent. On a fresh project the next

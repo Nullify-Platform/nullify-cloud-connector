@@ -87,7 +87,13 @@ policies, ensure the following are allowlisted on the host project:
 
 The last seven count each read against the quota of the service account's
 own project, so they must be enabled in the host project even when the
-scanned projects already enable them. Enabling an API grants no access.
+scanned projects already enable them. The module enables them separately
+(`enable_scan_quota_apis`, default `true`), so an organisation policy that
+blocks one does not stop the install; Nullify then cannot read that service.
+The roles, not the APIs, decide what Nullify can read.
+
+Existing installs: re-apply the module, or run the command below, to
+enable the seven APIs.
 
 To enable them manually:
 

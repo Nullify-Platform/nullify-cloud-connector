@@ -5,13 +5,6 @@
 # disabled"). Enabling them up front lets Terraform create everything in
 # one shot.
 #
-# Some Google APIs count every call against the quota of the calling
-# service account's own project, not the project that is read. The Nullify
-# service account lives in the host project, so those APIs must also be
-# enabled here, or every read of them fails with "API has not been used in
-# project <host> before or it is disabled". Enabling an API grants no access:
-# the read-only roles below still decide what Nullify can read.
-#
 # `disable_on_destroy = false` because these APIs may be in use by other
 # resources in the project; disabling them on `terraform destroy` would
 # break those.
@@ -23,8 +16,25 @@ resource "google_project_service" "required" {
     "cloudresourcemanager.googleapis.com",
     "cloudasset.googleapis.com",
     "serviceusage.googleapis.com",
+  ])
+  project            = var.host_project_id
+  service            = each.value
+  disable_on_destroy = false
+}
 
-    # Read through the host project's quota.
+# Some Google APIs count every call against the quota of the calling
+# service account's own project, not the project that is read. The Nullify
+# service account lives in the host project, so these APIs must also be
+# enabled here, or every read of them fails with "API has not been used in
+# project <host> before or it is disabled". The roles in main.tf, not these
+# APIs, decide what Nullify can read. Google can enable dependent APIs with
+# them.
+#
+# No other resource depends on these. If an organisation policy blocks one
+# of them, the install still completes and only that service is not read.
+# Set `enable_scan_quota_apis = false` to manage them yourself.
+resource "google_project_service" "scan_quota" {
+  for_each = var.enable_scan_quota_apis ? toset([
     "cloudkms.googleapis.com",
     "sqladmin.googleapis.com",
     "spanner.googleapis.com",
@@ -32,7 +42,7 @@ resource "google_project_service" "required" {
     "bigquery.googleapis.com",
     "orgpolicy.googleapis.com",
     "accesscontextmanager.googleapis.com",
-  ])
+  ]) : toset([])
   project            = var.host_project_id
   service            = each.value
   disable_on_destroy = false

@@ -85,3 +85,9 @@ variable "service_account_name" {
   type        = string
   default     = "nullify-cloud-connector"
 }
+
+variable "enable_scan_quota_apis" {
+  description = "Enable in the host project the APIs that count Nullify's reads against the service account's own project (KMS, Cloud SQL, Spanner, Dataflow, BigQuery, Org Policy, Access Context Manager). Without them Nullify cannot read those services."
+  type        = bool
+  default     = true
+}
