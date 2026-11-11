@@ -32,8 +32,10 @@ secrets.
 ## What this does NOT provision
 
 - No Cloud Storage object reads, Secret Manager secret payload reads or
-  BigQuery table-row reads through the custom role. The predefined
-  `roles/logging.viewer` grant permits log-entry reads. See the full
+  BigQuery table-row reads through the custom role. The custom
+  logging metadata list permissions replace the older `roles/logging.viewer`
+  grant. Existing installations must apply the updated module and confirm
+  that the old grant is removed. See the full
   [permissions guide](../docs/permissions.md) for the granted roles.
 - No write permissions. Nullify cannot modify your environment.
 - No long-lived secrets. Revoke at any time with `terraform destroy`.

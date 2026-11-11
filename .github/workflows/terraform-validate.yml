@@ -106,6 +106,7 @@ jobs:
           - 1.8.5
           - 1.10.5
         directory:
+          - gcp-integration-setup/terraform/modules/nullify-gcp-integration
           - aws-integration-setup/terraform/modules/eks-managed-scan-access
           - aws-integration-setup/terraform/modules/k8s-resources
           - aws-integration-setup/terraform/modules/nullify-aws-integration

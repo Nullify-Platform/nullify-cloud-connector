@@ -30,7 +30,6 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 | `roles/cloudsql.viewer` | Cloud SQL instance + replica config. |
 | `roles/spanner.viewer` | Spanner instance + database config. |
 | `roles/cloudkms.viewer` | KMS key ring + crypto key config (no key material). |
-| `roles/logging.viewer` | Logging sinks and exclusion configuration. This role also permits log-entry reads; it is not limited to configuration metadata. |
 | `roles/run.viewer` | Cloud Run service + revision config. |
 | `roles/cloudfunctions.viewer` | Cloud Functions config. |
 | `roles/appengine.appViewer` | App Engine service + version config. |
@@ -45,6 +44,7 @@ Explicit allowlist of read-only permissions.
 
 | Permission | Purpose |
 | --- | --- |
+| `logging.sinks.list`, `logging.logMetrics.list`, `logging.buckets.list` | List sink, log-based metric and log-bucket configuration used by the collector. Does not grant `logging.logEntries.list`. |
 | `compute.securityPolicies.get/list` | Cloud Armor WAF rule discovery. |
 | `accesscontextmanager.servicePerimeters.get/list` * | VPC Service Controls perimeters. |
 | `orgpolicy.policies.list` + `orgpolicy.policy.get` * | Organisation policy discovery. |
@@ -66,7 +66,7 @@ Explicit allowlist of read-only permissions.
 
 \* Permissions marked with an asterisk are only includable in **organisation-scoped** custom roles — GCP rejects them in a project-scoped custom role because the underlying resources live at the organisation. They are silently omitted when this module is deployed without `organization_id` (single-project installs); a single-project install simply has no VPC SC or org-policy data to read.
 
-The predefined roles are broader than the custom role. In particular, `roles/logging.viewer` includes `logging.logEntries.list`. Review the current [Google Cloud Logging role definition](https://docs.cloud.google.com/iam/docs/roles-permissions/logging) before granting access. This documentation change does not narrow the deployed IAM grants.
+Earlier module versions granted `roles/logging.viewer`, which includes log-entry reads. This module replaces that grant with the three logging metadata-list permissions below. Existing installations keep their old grant until an administrator applies the updated Terraform and confirms its removal. Review the current [Google Cloud Logging role definition](https://docs.cloud.google.com/iam/docs/roles-permissions/logging) when comparing plans.
 
 ## What Nullify cannot do
 

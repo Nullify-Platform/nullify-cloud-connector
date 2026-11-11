@@ -82,8 +82,6 @@ locals {
     # KMS key rings + crypto keys.
     "roles/cloudkms.viewer",
 
-    "roles/logging.viewer",
-
     # Cloud Run services + revisions.
     "roles/run.viewer",
 
@@ -115,9 +113,11 @@ locals {
   # custom-role resources actually exists.
   custom_role_id = local.use_org_custom_role ? google_organization_iam_custom_role.nullify_cloud_connector[0].id : google_project_iam_custom_role.nullify_cloud_connector[0].id
 
-  # Permissions valid in both org- and project-scoped custom roles. Strict
-  # allowlist of *.get / *.list only — no mutations and no data-plane reads.
   custom_role_permissions_common = [
+    "logging.sinks.list",
+    "logging.logMetrics.list",
+    "logging.buckets.list",
+
     # Cloud Armor security policies (ingress WAF rules).
     "compute.securityPolicies.get",
     "compute.securityPolicies.list",
