@@ -66,7 +66,7 @@ Explicit allowlist of read-only permissions.
 
 \* Permissions marked with an asterisk are only includable in **organisation-scoped** custom roles — GCP rejects them in a project-scoped custom role because the underlying resources live at the organisation. They are silently omitted when this module is deployed without `organization_id` (single-project installs); a single-project install simply has no VPC SC or org-policy data to read.
 
-Earlier module versions granted `roles/logging.viewer`, which includes log-entry reads. This module replaces that grant with the three logging metadata-list permissions below. Existing installations keep their old grant until an administrator applies the updated Terraform and confirms its removal. Review the current [Google Cloud Logging role definition](https://docs.cloud.google.com/iam/docs/roles-permissions/logging) when comparing plans.
+Earlier module versions granted `roles/logging.viewer`, which includes log-entry reads. This module replaces that grant with the three logging metadata-list permissions above. Existing Terraform installations keep their old grant until an administrator applies the updated Terraform and confirms its removal. The gcloud installer stops adding that role but does not remove existing grants. For a script-managed installation, review the service account’s existing organization IAM bindings and remove the old Logs Viewer grant explicitly after confirming that no other workload requires it. The uninstall script retains removal of this legacy grant. Review the current [Google Cloud Logging role definition](https://docs.cloud.google.com/iam/docs/roles-permissions/logging) when comparing plans.
 
 ## What Nullify cannot do
 
