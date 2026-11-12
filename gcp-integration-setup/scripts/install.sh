@@ -41,21 +41,38 @@ gcloud services enable \
   serviceusage.googleapis.com \
   --project="${NULLIFY_HOST_PROJECT}"
 
-# These APIs count Nullify's reads against the service account's own
-# project. A failure here does not stop the install: only the blocked
-# services are not read. Mirrors `scan_quota` in `apis.tf`.
+enable_scan_api() {
+  local api="$1" attempt
+  for attempt in 1 2 3; do
+    if gcloud services enable "$api" --project="${NULLIFY_HOST_PROJECT}" &&
+      [[ "$(gcloud services describe "$api" --project="${NULLIFY_HOST_PROJECT}" --format='value(state)')" == "ENABLED" ]]; then
+      return 0
+    fi
+    if [[ "$attempt" -lt 3 ]]; then
+      sleep "$attempt"
+    fi
+  done
+  return 1
+}
+
+SCAN_APIS=(
+  cloudkms.googleapis.com
+  sqladmin.googleapis.com
+  spanner.googleapis.com
+  dataflow.googleapis.com
+  bigquery.googleapis.com
+  orgpolicy.googleapis.com
+  accesscontextmanager.googleapis.com
+)
+UNREADY_SCAN_APIS=()
 echo "==> Enabling scan APIs on ${NULLIFY_HOST_PROJECT}"
-if ! gcloud services enable \
-  cloudkms.googleapis.com \
-  sqladmin.googleapis.com \
-  spanner.googleapis.com \
-  dataflow.googleapis.com \
-  bigquery.googleapis.com \
-  orgpolicy.googleapis.com \
-  accesscontextmanager.googleapis.com \
-  --project="${NULLIFY_HOST_PROJECT}"; then
-  echo "WARNING: could not enable all scan APIs on ${NULLIFY_HOST_PROJECT}." >&2
-  echo "Nullify cannot read the services whose API is not enabled there." >&2
+for api in "${SCAN_APIS[@]}"; do
+  if ! enable_scan_api "$api"; then
+    UNREADY_SCAN_APIS+=("$api")
+  fi
+done
+if [[ "${#UNREADY_SCAN_APIS[@]}" -gt 0 ]]; then
+  printf 'WARNING: scan APIs are not ready on %s: %s\n' "${NULLIFY_HOST_PROJECT}" "${UNREADY_SCAN_APIS[*]}" >&2
 fi
 
 # API enablement is documented as synchronous but the IAM API's "enabled"
@@ -167,6 +184,10 @@ done
 
 echo
 echo "Nullify GCP integration installed successfully."
+printf 'Scan API readiness: %d/%d enabled\n' "$(( ${#SCAN_APIS[@]} - ${#UNREADY_SCAN_APIS[@]} ))" "${#SCAN_APIS[@]}"
+if [[ "${#UNREADY_SCAN_APIS[@]}" -gt 0 ]]; then
+  printf 'Enable these APIs in %s before scanning their services: %s\n' "${NULLIFY_HOST_PROJECT}" "${UNREADY_SCAN_APIS[*]}"
+fi
 echo
 echo "Paste these values into the Nullify console under Settings -> Cloud Integrations -> GCP:"
 echo "  Service Account Email:        ${SA_EMAIL}"

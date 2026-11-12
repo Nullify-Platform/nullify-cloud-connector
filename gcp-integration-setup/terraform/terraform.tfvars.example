@@ -3,6 +3,7 @@
 
 customer_name   = "acme-corp"
 host_project_id = "acme-security"
+enable_scan_quota_apis = true
 
 # Choose ONE of the three scoping modes below.
 

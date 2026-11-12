@@ -10,6 +10,7 @@ on:
   pull_request:
     paths:
       - "gcp-integration-setup/**"
+      - "scripts/test_gcp_installer.py"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
       - "scripts/**"
@@ -19,6 +20,7 @@ on:
       - main
     paths:
       - "gcp-integration-setup/**"
+      - "scripts/test_gcp_installer.py"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
       - "scripts/**"
@@ -106,6 +108,7 @@ jobs:
           - 1.8.5
           - 1.10.5
         directory:
+          - gcp-integration-setup/terraform
           - aws-integration-setup/terraform/modules/eks-managed-scan-access
           - aws-integration-setup/terraform/modules/k8s-resources
           - aws-integration-setup/terraform/modules/nullify-aws-integration
@@ -162,3 +165,6 @@ jobs:
           sudo apt-get install -y shellcheck >/dev/null
           shellcheck gcp-integration-setup/scripts/install.sh
           shellcheck gcp-integration-setup/scripts/uninstall.sh
+
+      - name: Exercise GCP installer with synthetic gcloud responses
+        run: python3 scripts/test_gcp_installer.py

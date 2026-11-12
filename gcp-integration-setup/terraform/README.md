@@ -87,13 +87,25 @@ policies, ensure the following are allowlisted on the host project:
 
 The last seven count each read against the quota of the service account's
 own project, so they must be enabled in the host project even when the
-scanned projects already enable them. The module enables them separately
-(`enable_scan_quota_apis`, default `true`), so an organisation policy that
-blocks one does not stop the install; Nullify then cannot read that service.
+scanned projects already enable them. The module manages them as separate Terraform resources
+(`enable_scan_quota_apis`, default `true`). Terraform apply fails if an
+organisation policy or permission blocks an API. Set
+`enable_scan_quota_apis = false` in `terraform.tfvars` to manage these APIs
+separately, then enable each permitted API in the host project. Nullify
+cannot read a service until its API is enabled there.
 The roles, not the APIs, decide what Nullify can read.
 
-Existing installs: re-apply the module, or run the command below, to
-enable the seven APIs.
+Existing installs: re-apply the module, or enable the seven APIs separately.
+The shell installer retries each scanner API up to three times and reports
+which remain disabled without stopping identity setup. Terraform remains
+strict; the `managed_scan_quota_apis` output lists its configured services,
+not their live readiness.
+
+The API additions are compatible with the deployed scanner. Deploy
+Nullify-Platform/nullify#18346 before checking Cloud Build coverage because
+that change reads its configuration through Cloud Asset Inventory. Customer
+re-application and a fresh scan without `CONSUMER_API_DISABLED` are separate
+activation checks after merging this module.
 
 To enable them manually:
 

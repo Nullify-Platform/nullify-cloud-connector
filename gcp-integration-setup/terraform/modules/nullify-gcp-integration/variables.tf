@@ -87,7 +87,7 @@ variable "service_account_name" {
 }
 
 variable "enable_scan_quota_apis" {
-  description = "Enable in the host project the APIs that count Nullify's reads against the service account's own project (KMS, Cloud SQL, Spanner, Dataflow, BigQuery, Org Policy, Access Context Manager). Without them Nullify cannot read those services."
+  description = "Enable in the host project the APIs that count Nullify's reads against the service account's own project (KMS, Cloud SQL, Spanner, Dataflow, BigQuery, Org Policy, Access Context Manager). Terraform apply fails if any API cannot be enabled. Set false to manage these APIs separately."
   type        = bool
   default     = true
 }

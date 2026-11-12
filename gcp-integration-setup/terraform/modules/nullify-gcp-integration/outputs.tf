@@ -27,3 +27,8 @@ output "next_steps" {
   description = "Human-readable next steps. Surfaces in the apply output so customers don't have to dig through the Nullify docs."
   value       = "Paste the service_account_email and workload_identity_provider outputs into the Nullify console under Settings -> Cloud Integrations -> GCP, then click Verify."
 }
+
+output "managed_scan_quota_apis" {
+  description = "Scanner APIs managed by this configuration. This is not a live readiness check."
+  value       = sort([for api in google_project_service.scan_quota : api.service])
+}

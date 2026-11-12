@@ -6,8 +6,9 @@
 module "nullify" {
   source = "../../"
 
-  customer_name   = "acme-corp"
-  host_project_id = "acme-security"
+  customer_name          = "acme-corp"
+  host_project_id        = "acme-security"
+  enable_scan_quota_apis = true
 
   scope       = "projects"
   project_ids = ["acme-security"]

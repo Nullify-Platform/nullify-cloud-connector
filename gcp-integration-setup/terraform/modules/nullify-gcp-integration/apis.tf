@@ -30,9 +30,8 @@ resource "google_project_service" "required" {
 # APIs, decide what Nullify can read. Google can enable dependent APIs with
 # them.
 #
-# No other resource depends on these. If an organisation policy blocks one
-# of them, the install still completes and only that service is not read.
-# Set `enable_scan_quota_apis = false` to manage them yourself.
+# Terraform apply fails if any API cannot be enabled.
+# Set `enable_scan_quota_apis = false` to manage these APIs separately.
 resource "google_project_service" "scan_quota" {
   for_each = var.enable_scan_quota_apis ? toset([
     "cloudkms.googleapis.com",
