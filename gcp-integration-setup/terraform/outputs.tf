@@ -24,3 +24,8 @@ output "next_steps" {
     To revoke access at any time, run `terraform destroy` from this directory.
   EOT
 }
+
+output "managed_scan_quota_apis" {
+  description = "Scanner APIs managed by this configuration. This is not a live readiness check."
+  value       = module.nullify_gcp_integration.managed_scan_quota_apis
+}

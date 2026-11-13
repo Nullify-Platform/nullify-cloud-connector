@@ -183,9 +183,8 @@ locals {
     "bigquery.routines.get",
     "bigquery.routines.list",
 
-    # Cloud Build: there is no buildTriggers.* IAM permission family, and the
-    # builds.* permissions expose execution data (logs/artifacts) which we
-    # intentionally avoid. Trigger-config visibility is therefore not granted.
+    # Cloud Build: no permission is added here. Nullify reads trigger and
+    # worker pool configuration through Cloud Asset Inventory.
 
     # Cloud Batch job spec. No task logs or output artifacts.
     "batch.jobs.get",

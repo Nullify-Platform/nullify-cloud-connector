@@ -77,10 +77,16 @@ Strict allowlist of `*.get` / `*.list` only.
 | Read Firestore document contents | No | `datastore.entities.*` is **not** granted. We only see the database list. The predefined `roles/datastore.viewer` is **not** used because it grants document reads. |
 | Run Vertex AI inference | No | `aiplatform.endpoints.predict` and `computeTokens` are **not** granted. We see endpoint config only — not models, datasets, or featurestores. The broader `roles/aiplatform.viewer` is **not** used. |
 | Read SCC findings | No | `securitycenter.findings.*` and `securitycenter.assets.*` are **not** granted. We only see which detection sources are configured. |
-| Read any Cloud Build config, logs, or artifacts | No | No Cloud Build permission is granted at all. The `cloudbuild.buildTriggers.*` IAM family does not exist, and `cloudbuild.builds.*` would expose execution data, so Cloud Build visibility is omitted. |
 | Read Cloud Batch task logs | No | Job spec only. No task logs or output artifacts. |
 | Modify your environment | No | Every role above is read-only. There are no write/admin roles. |
 | Run code or workloads | No | No `roles/run.invoker`, `roles/cloudfunctions.invoker` etc. |
+
+Cloud Build configuration is collected through Cloud Asset Inventory for trigger
+and worker pool assets. No `cloudbuild.*` permission is granted, but the broad
+asset viewer role also permits supported Build asset metadata. This is not a
+permission boundary that excludes execution metadata. See
+[Cloud Asset Inventory permissions](https://docs.cloud.google.com/asset-inventory/docs/roles-permissions#permissions)
+and [supported asset types](https://docs.cloud.google.com/asset-inventory/docs/asset-types).
 
 ## Revoking access
 

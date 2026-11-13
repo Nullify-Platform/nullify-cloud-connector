@@ -80,7 +80,48 @@ If your organisation restricts API enablement via Service Usage org
 policies, ensure the following are allowlisted on the host project:
 `iam.googleapis.com`, `iamcredentials.googleapis.com`, `sts.googleapis.com`,
 `cloudresourcemanager.googleapis.com`, `cloudasset.googleapis.com`,
-`serviceusage.googleapis.com`.
+`serviceusage.googleapis.com`, `cloudkms.googleapis.com`,
+`sqladmin.googleapis.com`, `spanner.googleapis.com`,
+`dataflow.googleapis.com`, `bigquery.googleapis.com`,
+`orgpolicy.googleapis.com`, `accesscontextmanager.googleapis.com`.
+
+These seven APIs must be enabled in the host project for the connector's
+service configuration reads. API enablement does not grant access to resources.
+Quota and billing attribution depend on the API and request; resource-based
+APIs can charge quota to the resource project rather than the host project.
+See [Google's quota project rules](https://docs.cloud.google.com/docs/quotas/quota-project).
+The module manages them as separate Terraform resources
+(`enable_scan_quota_apis`, default `true`). Terraform apply fails if an
+organisation policy or permission blocks an API, including
+`constraints/gcp.restrictServiceUsage` or the legacy
+`constraints/serviceuser.services`. Set
+`enable_scan_quota_apis = false` in `terraform.tfvars` to manage these APIs
+separately, then enable each permitted API in the host project. Nullify
+cannot read a service until its API is enabled there.
+The roles, not the APIs, decide what Nullify can read.
+For project scope without an organization ID, enabling Org Policy and Access
+Context Manager does not grant organization-level access; organization reads
+remain unavailable.
+
+API enablement can require active billing and can provision Google-managed
+service identities or dependent APIs. This module does not configure billing
+or change default service account grants. Review the host project billing
+and IAM policies before applying, particularly for Dataflow and its Compute
+Engine dependencies. If Compute Engine is enabled, its default service
+account is created; automatic Editor grants depend on organization policy.
+See [billing requirements](https://docs.cloud.google.com/billing/docs/how-to/modify-project),
+[service account types](https://docs.cloud.google.com/iam/docs/service-account-types),
+and [Dataflow identities](https://docs.cloud.google.com/dataflow/docs/concepts/security-and-permissions).
+
+The single-project example demonstrates `enable_scan_quota_apis = false`.
+Enable the seven APIs separately before using that example, or change it to
+`true` to let Terraform manage them.
+
+Existing installs: re-apply the module, or enable the seven APIs separately.
+The shell installer retries each scanner API up to three times and reports
+which remain disabled without stopping identity setup. Terraform remains
+strict; the `managed_scan_quota_apis` output lists its configured services,
+not their live readiness.
 
 To enable them manually:
 
@@ -88,7 +129,9 @@ To enable them manually:
 gcloud services enable \
   iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
   cloudresourcemanager.googleapis.com cloudasset.googleapis.com \
-  serviceusage.googleapis.com \
+  serviceusage.googleapis.com cloudkms.googleapis.com sqladmin.googleapis.com \
+  spanner.googleapis.com dataflow.googleapis.com bigquery.googleapis.com \
+  orgpolicy.googleapis.com accesscontextmanager.googleapis.com \
   --project=YOUR_HOST_PROJECT
 ```
 
