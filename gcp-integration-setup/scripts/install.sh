@@ -42,10 +42,11 @@ gcloud services enable \
   --project="${NULLIFY_HOST_PROJECT}"
 
 enable_scan_api() {
-  local api="$1" attempt
+  local api="$1" attempt enabled
   for attempt in 1 2 3; do
     if gcloud services enable "$api" --project="${NULLIFY_HOST_PROJECT}" &&
-      [[ "$(gcloud services list --enabled --project="${NULLIFY_HOST_PROJECT}" --filter="config.name=$api" --format='value(config.name)')" == "$api" ]]; then
+      enabled="$(gcloud services list --enabled --project="${NULLIFY_HOST_PROJECT}" --filter="config.name=$api" --format='value(config.name)')" &&
+      [[ "$enabled" == "$api" ]]; then
       return 0
     fi
     if [[ "$attempt" -lt 3 ]]; then

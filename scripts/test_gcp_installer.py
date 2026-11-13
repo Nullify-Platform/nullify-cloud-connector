@@ -38,6 +38,8 @@ elif args[:2] == ["services", "list"]:
     api = filters[0].split("=", 2)[2]
     if api != os.environ.get("UNREADY_API"):
         print(api)
+    if api == os.environ.get("FAILED_LIST_API"):
+        sys.exit(1)
 elif args[:1] == ["services"]:
     sys.exit("unsupported services subcommand: " + repr(args))
 elif args[:2] == ["projects", "describe"]:
@@ -104,6 +106,13 @@ class GCPInstaller(unittest.TestCase):
         self.assertEqual(3, len(lists))
         self.assertIn("Scan API readiness: 6/7 enabled", result.stdout)
         self.assertIn("bigquery.googleapis.com", result.stderr)
+
+    def test_failed_list_output_is_not_reported_ready(self):
+        result, calls = self.run_installer(FAILED_LIST_API="bigquery.googleapis.com")
+        self.assertEqual(0, result.returncode, result.stderr)
+        lists = [call for call in calls if call[:2] == ["services", "list"] and "--filter=config.name=bigquery.googleapis.com" in call]
+        self.assertEqual(3, len(lists))
+        self.assertIn("Scan API readiness: 6/7 enabled", result.stdout)
 
     def test_required_failure_stops_identity_setup(self):
         result, calls = self.run_installer(FAIL_REQUIRED="1")

@@ -113,6 +113,10 @@ See [billing requirements](https://docs.cloud.google.com/billing/docs/how-to/mod
 [service account types](https://docs.cloud.google.com/iam/docs/service-account-types),
 and [Dataflow identities](https://docs.cloud.google.com/dataflow/docs/concepts/security-and-permissions).
 
+The single-project example demonstrates `enable_scan_quota_apis = false`.
+Enable the seven APIs separately before using that example, or change it to
+`true` to let Terraform manage them.
+
 Existing installs: re-apply the module, or enable the seven APIs separately.
 The shell installer retries each scanner API up to three times and reports
 which remain disabled without stopping identity setup. Terraform remains
