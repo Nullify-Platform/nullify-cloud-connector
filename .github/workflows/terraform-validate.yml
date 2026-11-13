@@ -10,7 +10,6 @@ on:
   pull_request:
     paths:
       - "gcp-integration-setup/**"
-      - "scripts/test_gcp_installer.py"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
       - "scripts/**"
@@ -20,7 +19,6 @@ on:
       - main
     paths:
       - "gcp-integration-setup/**"
-      - "scripts/test_gcp_installer.py"
       - "aws-integration-setup/**"
       - "azure-integration-setup/**"
       - "scripts/**"

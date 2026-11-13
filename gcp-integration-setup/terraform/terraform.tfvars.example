@@ -1,9 +1,9 @@
 # Copy this file to terraform.tfvars and fill in the values from the Nullify
 # console (Settings -> Cloud Integrations -> GCP).
 
-customer_name   = "acme-corp"
-host_project_id = "acme-security"
-enable_scan_quota_apis = true
+customer_name          = "acme-corp"
+host_project_id        = "acme-security"
+enable_scan_quota_apis  = true
 
 # Choose ONE of the three scoping modes below.
 

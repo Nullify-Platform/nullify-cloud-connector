@@ -30,8 +30,16 @@ if args[:2] == ["services", "enable"]:
         attempts = sum(call[:3] == args[:3] for call in previous)
         if api == os.environ.get("TRANSIENT_API") and attempts == 0:
             sys.exit(1)
-elif args[:2] == ["services", "describe"]:
-    print("DISABLED" if args[2] == os.environ.get("UNREADY_API") else "ENABLED")
+elif args[:2] == ["services", "list"]:
+    assert "--enabled" in args
+    assert "--format=value(config.name)" in args
+    filters = [item for item in args if item.startswith("--filter=config.name=")]
+    assert len(filters) == 1
+    api = filters[0].split("=", 2)[2]
+    if api != os.environ.get("UNREADY_API"):
+        print(api)
+elif args[:1] == ["services"]:
+    sys.exit("unsupported services subcommand: " + repr(args))
 elif args[:2] == ["projects", "describe"]:
     print("123456789012")
 elif args[:3] == ["iam", "workload-identity-pools", "describe"]:
@@ -92,8 +100,8 @@ class GCPInstaller(unittest.TestCase):
     def test_disabled_after_enable_is_not_reported_ready(self):
         result, calls = self.run_installer(UNREADY_API="bigquery.googleapis.com")
         self.assertEqual(0, result.returncode, result.stderr)
-        describes = [call for call in calls if call[:3] == ["services", "describe", "bigquery.googleapis.com"]]
-        self.assertEqual(3, len(describes))
+        lists = [call for call in calls if call[:2] == ["services", "list"] and "--filter=config.name=bigquery.googleapis.com" in call]
+        self.assertEqual(3, len(lists))
         self.assertIn("Scan API readiness: 6/7 enabled", result.stdout)
         self.assertIn("bigquery.googleapis.com", result.stderr)
 

@@ -8,7 +8,7 @@ module "nullify" {
 
   customer_name          = "acme-corp"
   host_project_id        = "acme-security"
-  enable_scan_quota_apis = true
+  enable_scan_quota_apis = false
 
   scope       = "projects"
   project_ids = ["acme-security"]

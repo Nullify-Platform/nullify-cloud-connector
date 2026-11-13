@@ -45,7 +45,7 @@ enable_scan_api() {
   local api="$1" attempt
   for attempt in 1 2 3; do
     if gcloud services enable "$api" --project="${NULLIFY_HOST_PROJECT}" &&
-      [[ "$(gcloud services describe "$api" --project="${NULLIFY_HOST_PROJECT}" --format='value(state)')" == "ENABLED" ]]; then
+      [[ "$(gcloud services list --enabled --project="${NULLIFY_HOST_PROJECT}" --filter="config.name=$api" --format='value(config.name)')" == "$api" ]]; then
       return 0
     fi
     if [[ "$attempt" -lt 3 ]]; then
@@ -186,7 +186,7 @@ echo
 echo "Nullify GCP integration installed successfully."
 printf 'Scan API readiness: %d/%d enabled\n' "$(( ${#SCAN_APIS[@]} - ${#UNREADY_SCAN_APIS[@]} ))" "${#SCAN_APIS[@]}"
 if [[ "${#UNREADY_SCAN_APIS[@]}" -gt 0 ]]; then
-  printf 'Enable these APIs in %s before scanning their services: %s\n' "${NULLIFY_HOST_PROJECT}" "${UNREADY_SCAN_APIS[*]}"
+  printf 'Enable these APIs in %s before scanning their services: %s. Check permissions and organization policy constraints/gcp.restrictServiceUsage or constraints/serviceuser.services.\n' "${NULLIFY_HOST_PROJECT}" "${UNREADY_SCAN_APIS[*]}"
 fi
 echo
 echo "Paste these values into the Nullify console under Settings -> Cloud Integrations -> GCP:"

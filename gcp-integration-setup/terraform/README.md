@@ -85,27 +85,39 @@ policies, ensure the following are allowlisted on the host project:
 `dataflow.googleapis.com`, `bigquery.googleapis.com`,
 `orgpolicy.googleapis.com`, `accesscontextmanager.googleapis.com`.
 
-The last seven count each read against the quota of the service account's
-own project, so they must be enabled in the host project even when the
-scanned projects already enable them. The module manages them as separate Terraform resources
+These seven APIs must be enabled in the host project for the connector's
+service configuration reads. API enablement does not grant access to resources.
+Quota and billing attribution depend on the API and request; resource-based
+APIs can charge quota to the resource project rather than the host project.
+See [Google's quota project rules](https://docs.cloud.google.com/docs/quotas/quota-project).
+The module manages them as separate Terraform resources
 (`enable_scan_quota_apis`, default `true`). Terraform apply fails if an
-organisation policy or permission blocks an API. Set
+organisation policy or permission blocks an API, including
+`constraints/gcp.restrictServiceUsage` or the legacy
+`constraints/serviceuser.services`. Set
 `enable_scan_quota_apis = false` in `terraform.tfvars` to manage these APIs
 separately, then enable each permitted API in the host project. Nullify
 cannot read a service until its API is enabled there.
 The roles, not the APIs, decide what Nullify can read.
+For project scope without an organization ID, enabling Org Policy and Access
+Context Manager does not grant organization-level access; organization reads
+remain unavailable.
+
+API enablement can require active billing and can provision Google-managed
+service identities or dependent APIs. This module does not configure billing
+or change default service account grants. Review the host project billing
+and IAM policies before applying, particularly for Dataflow and its Compute
+Engine dependencies. If Compute Engine is enabled, its default service
+account is created; automatic Editor grants depend on organization policy.
+See [billing requirements](https://docs.cloud.google.com/billing/docs/how-to/modify-project),
+[service account types](https://docs.cloud.google.com/iam/docs/service-account-types),
+and [Dataflow identities](https://docs.cloud.google.com/dataflow/docs/concepts/security-and-permissions).
 
 Existing installs: re-apply the module, or enable the seven APIs separately.
 The shell installer retries each scanner API up to three times and reports
 which remain disabled without stopping identity setup. Terraform remains
 strict; the `managed_scan_quota_apis` output lists its configured services,
 not their live readiness.
-
-The API additions are compatible with the deployed scanner. Deploy
-Nullify-Platform/nullify#18346 before checking Cloud Build coverage because
-that change reads its configuration through Cloud Asset Inventory. Customer
-re-application and a fresh scan without `CONSUMER_API_DISABLED` are separate
-activation checks after merging this module.
 
 To enable them manually:
 
