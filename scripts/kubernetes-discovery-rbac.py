@@ -20,7 +20,9 @@ def api_group(value):
 
 
 def version_name(value):
-    return isinstance(value, str) and bool(re.fullmatch(r"[a-z][a-z0-9]*", value))
+    return isinstance(value, str) and len(value) <= 63 and bool(
+        re.fullmatch(r"[a-z](?:[-a-z0-9]*[a-z0-9])?", value)
+    )
 
 
 def discover(read, include_secrets=False, include_configmaps=True):

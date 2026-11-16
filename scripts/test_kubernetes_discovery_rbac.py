@@ -107,6 +107,55 @@ class DiscoveryRBAC(unittest.TestCase):
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertEqual(first.stdout, second.stdout)
 
+    def add_versions(self, data, scope, versions):
+        if scope == "core":
+            served = data["/api"]["versions"]
+            source = data["/api/v1"]
+        else:
+            group = next(group for group in data["/apis"]["groups"] if group["name"] == "acme.example")
+            served = group["versions"]
+            source = data["/apis/acme.example/v1"]
+        for version in versions:
+            group_version = str(version) if scope == "core" else "acme.example/" + str(version)
+            served.append(version if scope == "core" else {"version": version, "groupVersion": group_version})
+            document = json.loads(json.dumps(source))
+            document["groupVersion"] = group_version
+            endpoint = "/api/" + str(version) if scope == "core" else "/apis/" + group_version
+            data[endpoint] = document
+
+    def test_served_dns1035_versions_are_supported_and_order_independent(self):
+        versions = ["a", "v1-beta1", "v-1", "v" + "1" * 62]
+        baseline, _ = self.generate()
+        self.assertEqual(baseline.returncode, 0, baseline.stderr)
+        for scope in ("core", "group"):
+            with self.subTest(scope=scope):
+                def forward(data):
+                    self.add_versions(data, scope, versions)
+
+                def reverse(data):
+                    self.add_versions(data, scope, list(reversed(versions)))
+                    data["/apis"]["groups"].reverse()
+
+                first, requested = self.generate(change=forward)
+                second, _ = self.generate(change=reverse)
+                self.assertEqual(first.returncode, 0, first.stderr)
+                self.assertEqual(second.returncode, 0, second.stderr)
+                self.assertEqual(first.stdout, baseline.stdout)
+                self.assertEqual(second.stdout, first.stdout)
+                for version in versions:
+                    endpoint = "/api/" + version if scope == "core" else "/apis/acme.example/" + version
+                    self.assertIn(endpoint, requested)
+
+    def test_invalid_served_versions_fail_before_resource_requests(self):
+        for scope in ("core", "group"):
+            for version in ("", "-v1", "1v1", "v1-", "v1_beta", "v1.beta", "v1/beta", "../v1", "v1?x=y", "v1\n", "v" + "1" * 63, None, 1):
+                with self.subTest(scope=scope, version=version):
+                    result, requested = self.generate(change=lambda data: self.add_versions(data, scope, [version]))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn("invalid version", result.stderr)
+                    self.assertEqual(requested, ["/api", "/apis"])
+
     def test_charts_keep_the_same_extra_rule_policy(self):
         helpers = [ROOT / "helm-charts" / chart / "templates/_extra-rules.tpl" for chart in
                    ("nullify-k8s-collector", "nullify-k8s-readonly-access")]

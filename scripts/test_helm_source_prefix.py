@@ -9,8 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "helm-charts/nullify-k8s-collector"
 
 
-@unittest.skipUnless(shutil.which("helm"), "source-prefix boundary requires Helm")
 class HelmSourcePrefix(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("helm"):
+            raise RuntimeError("Helm is required for the source-prefix boundary suite")
+
     def render(self, prefix, fixture="eks.yaml"):
         return subprocess.run([
             "helm", "template", "fixture", str(CHART),
