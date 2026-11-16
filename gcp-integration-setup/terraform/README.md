@@ -83,9 +83,10 @@ policies, ensure the following are allowlisted on the host project:
 `serviceusage.googleapis.com`, `cloudkms.googleapis.com`,
 `sqladmin.googleapis.com`, `spanner.googleapis.com`,
 `dataflow.googleapis.com`, `bigquery.googleapis.com`,
-`orgpolicy.googleapis.com`, `accesscontextmanager.googleapis.com`.
+`orgpolicy.googleapis.com`, `accesscontextmanager.googleapis.com`,
+`appengine.googleapis.com`.
 
-These seven APIs must be enabled in the host project for the connector's
+These eight APIs must be enabled in the host project for the connector's
 service configuration reads. API enablement does not grant access to resources.
 Quota and billing attribution depend on the API and request; resource-based
 APIs can charge quota to the resource project rather than the host project.
@@ -114,10 +115,10 @@ See [billing requirements](https://docs.cloud.google.com/billing/docs/how-to/mod
 and [Dataflow identities](https://docs.cloud.google.com/dataflow/docs/concepts/security-and-permissions).
 
 The single-project example demonstrates `enable_scan_quota_apis = false`.
-Enable the seven APIs separately before using that example, or change it to
+Enable the eight APIs separately before using that example, or change it to
 `true` to let Terraform manage them.
 
-Existing installs: re-apply the module, or enable the seven APIs separately.
+Existing installs: re-apply the module, or enable the eight APIs separately.
 The shell installer retries each scanner API up to three times and reports
 which remain disabled without stopping identity setup. Terraform remains
 strict; the `managed_scan_quota_apis` output lists its configured services,
@@ -131,7 +132,7 @@ gcloud services enable \
   cloudresourcemanager.googleapis.com cloudasset.googleapis.com \
   serviceusage.googleapis.com cloudkms.googleapis.com sqladmin.googleapis.com \
   spanner.googleapis.com dataflow.googleapis.com bigquery.googleapis.com \
-  orgpolicy.googleapis.com accesscontextmanager.googleapis.com \
+  orgpolicy.googleapis.com accesscontextmanager.googleapis.com appengine.googleapis.com \
   --project=YOUR_HOST_PROJECT
 ```
 

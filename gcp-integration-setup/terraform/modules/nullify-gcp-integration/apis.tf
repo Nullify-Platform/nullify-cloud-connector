@@ -41,6 +41,7 @@ resource "google_project_service" "scan_quota" {
     "bigquery.googleapis.com",
     "orgpolicy.googleapis.com",
     "accesscontextmanager.googleapis.com",
+    "appengine.googleapis.com",
   ]) : toset([])
   project            = var.host_project_id
   service            = each.value

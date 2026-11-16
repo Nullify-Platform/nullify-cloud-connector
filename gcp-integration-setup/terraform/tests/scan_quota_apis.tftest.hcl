@@ -25,6 +25,7 @@ run "manage_scanner_apis_by_default" {
   assert {
     condition = output.managed_scan_quota_apis == tolist([
       "accesscontextmanager.googleapis.com",
+      "appengine.googleapis.com",
       "bigquery.googleapis.com",
       "cloudkms.googleapis.com",
       "dataflow.googleapis.com",
@@ -32,7 +33,7 @@ run "manage_scanner_apis_by_default" {
       "spanner.googleapis.com",
       "sqladmin.googleapis.com",
     ])
-    error_message = "The supplied root configuration must manage all seven scanner APIs by default."
+    error_message = "The supplied root configuration must manage all eight scanner APIs by default."
   }
 }
 
