@@ -29,7 +29,7 @@ class HelmSourcePrefix(unittest.TestCase):
                     self.assertIn("k8s-collector-3.49.0", result.stdout)
 
     def test_old_or_unbounded_roots_fail_before_any_install(self):
-        for prefix in ("", "k8s-collector", "k8s-collector/GitHub-1/", "k8s-collector/k8s-collector/", "k8s-collector-scoped/*/", "k8s-collector-scoped/../", "k8s-collector-scoped/GitHub-1/other/"):
+        for prefix in ("", "k8s-collector", "k8s-collector/GitHub-1/", "k8s-collector/k8s-collector/", "k8s-collector-scoped/k8s-collector/", "k8s-collector-scoped/*/", "k8s-collector-scoped/../", "k8s-collector-scoped/GitHub-1/other/"):
             with self.subTest(prefix=prefix):
                 result = self.render(prefix)
                 self.assertNotEqual(result.returncode, 0)
