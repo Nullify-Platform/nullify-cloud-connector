@@ -157,6 +157,13 @@ class HelmRBAC(unittest.TestCase):
                         for name, value in (("NULLIFY_COLLECT_SECRETS", secret), ("NULLIFY_COLLECT_CONFIGMAPS", configmap)):
                             self.assertRegex(output, r"name: " + name + r'\s+value: "' + value + '"')
 
+    def test_existing_duplicate_list_verbs_remain_valid(self):
+        values = {"extraRules": [{"apiGroups": ["acme.example"], "resources": ["widgets"], "verbs": ["list", "list"]}]}
+        for chart in ("nullify-k8s-collector", "nullify-k8s-readonly-access"):
+            with self.subTest(chart=chart):
+                output = self.render(chart, "--set-json", "extraRules=" + json.dumps(values["extraRules"]))
+                self.assertRegex(output, r"verbs:\s*\n\s*- list\s*\n\s*- list")
+
     def test_discovered_names_are_rendered_without_wildcard_resource_grants(self):
         for chart in ("nullify-k8s-collector", "nullify-k8s-readonly-access"):
             with self.subTest(chart=chart):

@@ -15,8 +15,13 @@
 {{- if or (not (kindIs "slice" .apiGroups)) (not (kindIs "slice" .resources)) (eq (len .apiGroups) 0) (eq (len .resources) 0) -}}
 {{- fail "extraRules must name non-empty apiGroups and resources lists" -}}
 {{- end -}}
-{{- if ne (toJson .verbs) "[\"list\"]" -}}
-{{- fail "extraRules verbs must be exactly [list]" -}}
+{{- if or (not (kindIs "slice" .verbs)) (eq (len .verbs) 0) -}}
+{{- fail "extraRules verbs must contain one or more list verbs" -}}
+{{- end -}}
+{{- range .verbs -}}
+{{- if or (not (kindIs "string" .)) (ne . "list") -}}
+{{- fail "extraRules verbs must contain one or more list verbs" -}}
+{{- end -}}
 {{- end -}}
 {{- range .apiGroups -}}
 {{- if or (not (kindIs "string" .)) (not (regexMatch "^([a-z0-9]([-a-z0-9.]*[a-z0-9])?)?$" .)) -}}

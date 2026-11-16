@@ -1,4 +1,4 @@
-# expect: extraRules verbs must be exactly [list]
+# expect: extraRules verbs must contain one or more list verbs
 extraRules:
   - apiGroups: ["acme.example"]
     resources: ["widgets"]
