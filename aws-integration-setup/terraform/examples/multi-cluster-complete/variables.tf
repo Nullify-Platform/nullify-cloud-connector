@@ -106,7 +106,7 @@ variable "collector_upload_prefix" {
 
   validation {
     condition = var.collector_upload_prefix == "" || (
-      can(regex("^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector/k8s-collector"
+      can(regex("^k8s-collector-scoped/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector-scoped/k8s-collector"
     )
     error_message = "collector_upload_prefix must be the source-qualified prefix from Nullify settings."
   }

@@ -41,7 +41,7 @@ variable "iam_role_arn" {
 
 variable "cluster_name" {
   type        = string
-  description = "Name of the cluster this collector runs in, required when enable_collector is true. It must match your actual cluster name exactly, as AWS reports it, and it must match a cluster registered on the Nullify configure page: Nullify joins the upload on this name and silently drops or skips it otherwise. It becomes the collector's CLUSTER_NAME and names the upload, <prefix>/k8s-collector/<cluster_name>-data.json, so two clusters sharing a name overwrite each other's inventory. Same value as collector.clusterName in the nullify-k8s-collector Helm chart"
+  description = "Name of the cluster this collector runs in, required when enable_collector is true. It must match your actual cluster name exactly, as AWS reports it, and it must match a cluster registered on the Nullify configure page: Nullify joins the upload on this name and silently drops or skips it otherwise. It becomes the collector's CLUSTER_NAME and names the upload, <collector_upload_prefix><cluster_name>-data.json, so two clusters sharing a name overwrite each other's inventory. Same value as collector.clusterName in the nullify-k8s-collector Helm chart"
   default     = ""
 }
 
@@ -100,11 +100,11 @@ variable "enable_debug" {
 
 variable "collector_upload_prefix" {
   type        = string
-  description = "Exact collectorUploadPrefix from Nullify settings. Required for collector uploads; each source owns a separate k8s-collector/<source-tenant-id>/ prefix."
+  description = "Exact collectorUploadPrefix from Nullify settings. Required for collector uploads; each source owns a separate k8s-collector-scoped/<source-tenant-id>/ prefix."
   default     = ""
   validation {
     condition = var.collector_upload_prefix == "" || (
-      can(regex("^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector/k8s-collector"
+      can(regex("^k8s-collector-scoped/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$", var.collector_upload_prefix)) && trimsuffix(var.collector_upload_prefix, "/") != "k8s-collector-scoped/k8s-collector"
     )
     error_message = "collector_upload_prefix must be the source-qualified prefix from Nullify settings."
   }

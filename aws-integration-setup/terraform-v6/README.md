@@ -115,7 +115,7 @@ module "nullify_eks_access" {
 - `tags`: Resource tags
 - `cronjob_schedule`: Deprecated and unused here; set the schedule on `k8s-resources`
 
-`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true, with no unencrypted opt-out. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
+`k8s-resources` requires `cluster_name` and `kms_key_arn` whenever `enable_collector` is true, with no unencrypted opt-out. `cluster_name` must match your actual cluster name exactly, must match a cluster registered on the Nullify configure page, and must differ per cluster: the collector uploads to `<collector_upload_prefix><cluster_name>-data.json`, and Nullify joins that upload on the name. See "Kubernetes Resources" and "KMS" in `../terraform/README.md`.
 
 A cluster cannot run the collector and the managed scan at once: the two paths register it under different identities, duplicating its inventory. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination -- `enable_collector` and `enable_managed_scan_rbac` may be set together on one `k8s-resources` instance to stage a cutover, since the ClusterRole it applies is inert until an access entry uses it. See "Kubernetes Resources" in `../terraform/README.md`.
 
@@ -123,7 +123,7 @@ A cluster cannot run the collector and the managed scan at once: the two paths r
 
 ## Upgrade Notes
 
-- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
+- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; source-qualified collectors upload to `k8s-collector-scoped/<source-tenant-id>/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
 - `k8s-resources` now requires `kms_key_arn` while `enable_collector` is true, with no opt-out. The shipped collector images refuse to upload without KMS encryption, so a deployment that left it empty was collecting successfully and then failing every upload. Set the value from the configure page; ask Nullify for a key if you have none.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The KMS policy grants `key/*` in the account and region of `kms_key_arn` only when that ARN is an alias. A concrete key ARN is preferred: it grants that ARN only.

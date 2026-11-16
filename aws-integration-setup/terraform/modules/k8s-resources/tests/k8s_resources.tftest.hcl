@@ -1,7 +1,7 @@
 mock_provider "kubernetes" {}
 
 variables {
-  collector_upload_prefix = "k8s-collector/GitHub-10000001/"
+  collector_upload_prefix = "k8s-collector-scoped/GitHub-10000001/"
 }
 
 run "collector_only_is_the_default" {
@@ -12,6 +12,11 @@ run "collector_only_is_the_default" {
     cluster_name   = "acme-prod"
     s3_bucket_name = "nullify-collector-uploads"
     kms_key_arn    = "arn:aws:kms:eu-central-1:111122223333:alias/nullify-customer-uploads"
+  }
+
+  assert {
+    condition     = length([for env in kubernetes_cron_job_v1.k8s_collector[0].spec[0].job_template[0].spec[0].template[0].spec[0].container[0].env : env if env.name == "NULLIFY_S3_SOURCE_PREFIX" && env.value == "k8s-collector-scoped/GitHub-10000001/"]) == 1
+    error_message = "The CronJob must pass the issued source prefix to the source-qualified uploader."
   }
 
   assert {
@@ -259,6 +264,15 @@ run "collector_rejects_the_shared_prefix" {
   variables {
     enable_collector        = false
     collector_upload_prefix = "k8s-collector/k8s-collector/"
+  }
+  expect_failures = [var.collector_upload_prefix]
+}
+
+run "collector_rejects_the_old_qualified_namespace" {
+  command = plan
+  variables {
+    enable_collector        = false
+    collector_upload_prefix = "k8s-collector/GitHub-10000001/"
   }
   expect_failures = [var.collector_upload_prefix]
 }

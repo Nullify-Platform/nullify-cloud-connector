@@ -46,28 +46,28 @@ class CollectorUploadScope(unittest.TestCase):
                     parameters = {
                         "NullifyS3Bucket": "nullify-collector-uploads",
                         "NullifyS3AccessPointArn": "arn:aws:s3:eu-central-1:111122223333:accesspoint/uploads",
-                        "CollectorUploadPrefix": f"k8s-collector/{source}/",
+                        "CollectorUploadPrefix": f"k8s-collector-scoped/{source}/",
                     }
                     rendered = render(policy, parameters, {"S3AccessPointProvided": access_point})
                     grants = [statement for statement in rendered["Statement"] if "s3:PutObject" in statement["Action"]]
                     self.assertTrue(grants)
                     for target, expected in (("GitHub-1", source == "GitHub-1"), ("GitHub-2", source == "GitHub-2"), ("k8s-collector", False)):
-                        objects = [f"arn:aws:s3:::nullify-collector-uploads/k8s-collector/{target}/prod-data.json"]
+                        objects = [f"arn:aws:s3:::nullify-collector-uploads/k8s-collector-scoped/{target}/prod-data.json"]
                         if access_point:
-                            objects.append(f"{parameters['NullifyS3AccessPointArn']}/object/k8s-collector/{target}/prod-data.json")
+                            objects.append(f"{parameters['NullifyS3AccessPointArn']}/object/k8s-collector-scoped/{target}/prod-data.json")
                         for obj in objects:
                             allowed = any(fnmatch.fnmatchcase(obj, resource) for grant in grants for resource in grant["Resource"])
                             self.assertEqual(allowed, expected, obj)
                     listing = next(statement for statement in rendered["Statement"] if "s3:ListBucket" in statement["Action"])
-                    self.assertEqual(listing["Condition"]["StringLike"]["s3:prefix"], [f"k8s-collector/{source}/*"])
+                    self.assertEqual(listing["Condition"]["StringLike"]["s3:prefix"], [f"k8s-collector-scoped/{source}/*"])
 
     def test_shared_and_malformed_prefixes_are_rejected(self):
         pattern = TEMPLATE["Parameters"]["CollectorUploadPrefix"]["AllowedPattern"]
-        self.assertRegex("k8s-collector/GitHub-1/", pattern)
-        for value in ("k8s-collector", "k8s-collector/k8s-collector/", "k8s-collector/*/", "k8s-collector/../", "k8s-collector/GitHub-1/other/"):
+        self.assertRegex("k8s-collector-scoped/GitHub-1/", pattern)
+        for value in ("k8s-collector-scoped/*/", "k8s-collector-scoped/../", "k8s-collector-scoped/k8s-collector/", "k8s-collector-scoped/GitHub-1/other/", "k8s-collector/GitHub-1/", "k8s-collector", "k8s-collector/k8s-collector/", "k8s-collector/*/", "k8s-collector/../"):
             self.assertIsNone(re.fullmatch(pattern, value), value)
         rule = TEMPLATE["Rules"]["CollectorPrefixRequired"]
-        for enabled, prefix, accepted in (("true", "", False), ("true", "k8s-collector/GitHub-1/", True), ("false", "", True)):
+        for enabled, prefix, accepted in (("true", "", False), ("true", "k8s-collector-scoped/GitHub-1/", True), ("false", "", True)):
             parameters = {"EnableEKSIntegration": enabled, "CollectorUploadPrefix": prefix}
             condition = render(rule["RuleCondition"], parameters, {})
             assertions = all(render(assertion["Assert"], parameters, {}) for assertion in rule["Assertions"])
@@ -77,7 +77,7 @@ class CollectorUploadScope(unittest.TestCase):
 
 
 class CollectorSetupWizard(unittest.TestCase):
-    def run_wizard(self, method, prefix="k8s-collector/GitHub-1/"):
+    def run_wizard(self, method, prefix="k8s-collector-scoped/GitHub-1/"):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -99,20 +99,20 @@ class CollectorSetupWizard(unittest.TestCase):
     def test_cloudformation_preserves_the_source_prefix(self):
         _, result = self.run_wizard("cloudformation")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector/GitHub-1/", result.stdout)
+        self.assertIn("ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector-scoped/GitHub-1/", result.stdout)
 
     def test_terraform_preserves_the_source_prefix(self):
         root, result = self.run_wizard("terraform")
         self.assertEqual(result.returncode, 0, result.stderr)
         generated = (root / "aws-integration-setup/terraform/terraform.tfvars").read_text()
-        self.assertIn('collector_upload_prefix = "k8s-collector/GitHub-1/"', generated)
+        self.assertIn('collector_upload_prefix = "k8s-collector-scoped/GitHub-1/"', generated)
 
     def test_helm_writes_current_chart_keys_and_the_actual_cluster(self):
         root, result = self.run_wizard("helm")
         self.assertEqual(result.returncode, 0, result.stderr)
         generated = (root / "helm-charts/nullify-k8s-collector/values-custom.yaml").read_text()
         self.assertIn('clusterName: "prod"', generated)
-        self.assertIn('  s3:\n    bucket: "example-uploads"\n    keyPrefix: "k8s-collector/GitHub-1/"', generated)
+        self.assertIn('  s3:\n    bucket: "example-uploads"\n    keyPrefix: "k8s-collector-scoped/GitHub-1/"', generated)
         self.assertIn('  kms:\n    keyArn:', generated)
         self.assertNotIn("s3BucketName:", generated)
         self.assertNotIn("kmsKeyArn:", generated)
