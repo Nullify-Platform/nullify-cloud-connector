@@ -11,7 +11,8 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
 > **Image tag:** the default `collector.image.tag` is `k8s-collector-3.49.0`,
-> the same pin as the Terraform `k8s-resources` module.
+> the same pin as the Terraform `k8s-resources` module. Publish and verify the
+> combined inventory-and-transport image before deploying this chart.
 
 ## Supported platforms
 
@@ -46,7 +47,7 @@ The chart refuses to render when a required value is missing or still a placehol
 
 ## Configuration
 
-> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, and
+> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, `collector.s3.keyPrefix`, and
 > `serviceAccount.annotations."eks.amazonaws.com/role-arn"` (EKS) or `collector.gke.awsRoleArn` (GKE).
 > Get these from the Nullify configure page.
 
@@ -63,7 +64,7 @@ The chart refuses to render when a required value is missing or still a placehol
 | `collector.image.pullPolicy` | Pull policy | `IfNotPresent` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `""` (required) |
-| `collector.s3.keyPrefix` | Source prefix returned as `collectorUploadPrefix` | `""` (required) |
+| `collector.s3.keyPrefix` | Exact `k8s-collector-scoped/<source>/` prefix returned as `collectorUploadPrefix` | `""` (required) |
 | `collector.aws.region` | Region of the **Nullify S3 bucket**, not your cluster. Defaults to the region in `collector.kms.keyArn`; any other value is rejected, because S3 only accepts a KMS key from the bucket's region. | `""` |
 | `collector.clusterName` | Cluster name (must match your actual cluster name) | `""` (required) |
 | `collector.kms.keyArn` | KMS key ARN `arn:aws:kms:<region>:<account-id>:key/<key-id>` or alias ARN `arn:aws:kms:<region>:<account-id>:alias/<name>`, from the Nullify configure page. With an alias, the IAM role's KMS statement must cover the key the alias resolves to, for example `arn:aws:kms:<region>:<account-id>:key/*`; see [KMS alias ARNs](#kms-alias-arns). | `""` (required) |
@@ -82,6 +83,13 @@ The collector lists discovered permitted kinds in every namespace. The chart set
 switches, so disabling either also excludes it from collection. These values do
 not change the cluster's admin collection policy; required but skipped kinds
 remain incomplete coverage.
+
+The chart passes the issued prefix as `NULLIFY_S3_SOURCE_PREFIX`, which selects
+the source-qualified writer in collector 3.49.0. `NULLIFY_S3_KEY_PREFIX` remains
+present for compatibility. Install the backend's exact tenant source grant
+before the collector: legacy `k8s-collector/*` grants do not match the new root.
+The prefix alone is not a credential readiness check. See the
+[source cutover and rollback order](../../README.md#source-qualified-collector-prefix-cutover).
 
 ## Security Context
 

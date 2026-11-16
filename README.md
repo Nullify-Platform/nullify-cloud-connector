@@ -414,7 +414,7 @@ collector:
   clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
-    keyPrefix: "k8s-collector"
+    keyPrefix: "k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
   schedule: "0 2 * * *"              # Daily at 2 AM UTC
@@ -578,27 +578,38 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Source-qualified collector prefix cutover
 
-Collector image `k8s-collector-3.49.0` uploads under the source-qualified prefix
-returned by Nullify settings as `collectorUploadPrefix`. Upgrade the image and
-set the prefix together, one cluster at a time.
+Collector chart 0.7.0 and image `k8s-collector-3.49.0` use the disjoint
+`k8s-collector-scoped/` upload root. Copy the exact `collectorUploadPrefix`
+returned by the current tenant's Nullify settings. The prefix identifies a
+source; it does not prove that credentials or ingestion are ready.
 
-- Helm: copy the value into `collector.s3.keyPrefix`. Chart 0.6.0 does not
-  render without it.
+Deploy the paired backend and its tenant-scoped S3/IAM grants first. Publish and
+verify the combined 3.49.0 inventory-and-transport image before installing these
+charts. The image and chart version in this source tree are release dependencies,
+not evidence that an image has been published or a cluster upgraded.
+
+- Helm: set `collector.s3.keyPrefix` to the issued prefix. Chart 0.7.0 rejects
+  legacy roots and passes it as `NULLIFY_S3_SOURCE_PREFIX`. It also retains the
+  existing `NULLIFY_S3_KEY_PREFIX` setting for wire compatibility.
 - Terraform: pass `collector_upload_prefix` to both the AWS integration role
   module and each `k8s-resources` collector module.
-- CloudFormation: set `CollectorUploadPrefix` to the exact value, including its
-  trailing slash. An enabled EKS collector without this value fails validation.
+- CloudFormation: set `CollectorUploadPrefix` to the exact issued value. An
+  enabled EKS collector without this value fails validation.
 
-A role configured with a source prefix grants uploads only to that prefix. The
-Terraform module keeps the shared layout only for configurations with no source
-prefix. Upgrade the role and collector together. A collector older than 3.49.0
-cannot use the new grant. Once the backend sees a source-qualified upload for a cluster, it
-rejects every shared-layout upload for that source and cluster, regardless of
-its timestamp. Keep a source-qualified collector for rollback.
+Old credentials that grant `k8s-collector/*` do not grant access to the new root.
+Install the new exact source grant before upgrading the collector. An image older
+than 3.49.0 cannot use this protocol. Manual deployments with no
+`NULLIFY_S3_SOURCE_PREFIX` keep their old upload keys, including custom legacy
+`NULLIFY_S3_KEY_PREFIX` values. Custom paths need their existing notification
+configuration; this change does not register new arbitrary ingest paths.
 
-Deploy the paired Nullify backend before these templates. Confirm that each
-upgraded cluster's snapshot was ingested into its assigned source.
-
+Upgrade one cluster at a time. Verify its source-qualified snapshot reached its
+assigned tenant and canonical inventory. Once the backend admits a qualified
+upload, its PostgreSQL scan receipt blocks later legacy uploads for that tenant
+and cluster, even if their timestamps are newer. Keep a qualified-capable image
+for rollback. Same-name clusters within one tenant remain ambiguous and need
+registration names that identify one cluster; a tenant prefix does not select a
+region or project.
 
 ## Discovered Kubernetes resource permissions
 
