@@ -91,6 +91,7 @@ any other value is rejected. Call after "k8s-collector.validateCollector".
 Rejects missing or placeholder values the CronJob cannot run without.
 */}}
 {{- define "k8s-collector.validateCollector" -}}
+{{- include "k8s-collector.validateExtraRules" . -}}
 {{- $provider := .Values.cloudProvider | default "aws" -}}
 {{- if not (has $provider (list "aws" "gcp")) -}}
 {{- fail (printf "cloudProvider must be \"aws\" or \"gcp\", got %q" $provider) -}}

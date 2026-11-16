@@ -13,16 +13,8 @@ RESOURCES = {
         "virtualservices", "serviceentries", "destinationrules"
     },
 }
-DISCOVERY = {
-    "/api", "/apis",
-    "/apis/gateway.networking.k8s.io/v1",
-    "/apis/gateway.networking.k8s.io/v1beta1",
-    "/apis/gateway.networking.k8s.io/v1alpha2",
-    "/apis/gateway.networking.k8s.io/v1alpha3",
-    "/apis/networking.istio.io/v1",
-    "/apis/networking.istio.io/v1beta1",
-    "/apis/networking.istio.io/v1alpha3",
-}
+DISCOVERY = {"/api", "/api/*", "/apis", "/apis/*"}
+
 RULE = re.compile(
     r"api_?[gG]roups\s*[:=]\s*\[([^\]]*)\]\s*"
     r"resources\s*[:=]\s*\[([^\]]*)\]"
@@ -69,7 +61,7 @@ class RoutingRBAC(unittest.TestCase):
                 self.assertIsNotNone(discovery)
                 endpoints = values(discovery[1])
                 self.assertEqual(endpoints, DISCOVERY | {"/version"})
-                self.assertFalse(any("*" in endpoint for endpoint in endpoints))
+                self.assertEqual({endpoint for endpoint in endpoints if "*" in endpoint}, {"/api/*", "/apis/*"})
                 verb = re.match(
                     r"\s*verbs\s*[:=]\s*\[([^\]]*)\]",
                     raw[discovery.end():],

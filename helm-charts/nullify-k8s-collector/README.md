@@ -10,7 +10,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
-> **Image tag:** the default `collector.image.tag` is `k8s-collector-4.0.0`,
+> **Image tag:** the default `collector.image.tag` is `k8s-collector-3.49.0`,
 > the same pin as the Terraform `k8s-resources` module.
 
 ## Supported platforms
@@ -59,7 +59,7 @@ The chart refuses to render when a required value is missing or still a placehol
 | `serviceAccount.name` | Name of the service account | `nullify-k8s-collector-sa` |
 | `serviceAccount.namespace` | Namespace of every namespaced object; `""` means the release namespace. Must already exist. | `nullify` |
 | `collector.image.repository` | Image repository | `public.ecr.aws/w4o2j2x4/integrations` |
-| `collector.image.tag` | Image tag | `k8s-collector-4.0.0` |
+| `collector.image.tag` | Image tag | `k8s-collector-3.49.0` |
 | `collector.image.pullPolicy` | Pull policy | `IfNotPresent` |
 | `collector.schedule` | CronJob schedule | `0 0 * * *` (daily at midnight) |
 | `collector.s3.bucket` | S3 bucket for storing data (from Nullify configure page) | `""` (required) |
@@ -73,8 +73,15 @@ The chart refuses to render when a required value is missing or still a placehol
 | `collector.gke.webIdentityTokenPath` | **GKE only.** In-pod path of the projected SA token. | `/var/run/secrets/tokens/gcp-sa-token` |
 | `nodeSelector` / `tolerations` | Collector pod placement | `{}` / `[]` |
 | `labels` | Additional labels for the collector resources | `{}` |
+| `grantSecretsRead` | Explicit Secret list permission, which can return values | `false` |
+| `grantConfigMapsRead` | Include ConfigMaps; match the cluster collection policy | `true` |
+| `extraRules` | Extra named resource list rules; no wildcard groups/resources or nonresource URLs. Only `status` and `scale` subresources are accepted. Core Secret/ConfigMap rules require their grant switch. | `[]` |
 
-The collector has no namespace or resource filters: it always lists every kind its ClusterRole allows, in every namespace.
+The collector lists discovered permitted kinds in every namespace. The chart sets
+`NULLIFY_COLLECT_SECRETS` and `NULLIFY_COLLECT_CONFIGMAPS` from the matching grant
+switches, so disabling either also excludes it from collection. These values do
+not change the cluster's admin collection policy; required but skipped kinds
+remain incomplete coverage.
 
 ## Security Context
 
@@ -268,9 +275,26 @@ credential references are retained. Collected declarations do not prove
 that a route is programmed or receiving traffic.
 
 Upgrading an existing collector requires both the new image and the updated
-ClusterRole. This chart requires collector 4.0.0 and its source-qualified upload protocol.
+ClusterRole. This chart requires collector 3.49.0 and its source-qualified upload protocol.
 
 
-## Collector 4 source prefix cutover
+## Source-qualified collector prefix cutover
 
-See the [upgrade and rollback requirements](../../README.md#collector-4-source-prefix-cutover).
+See the [upgrade and rollback requirements](../../README.md#source-qualified-collector-prefix-cutover).
+
+## Discovered resource grants
+
+Chart 0.7.0 accepts the [generated discovery RBAC values](../../README.md#discovered-kubernetes-resource-permissions).
+Review the file, then add it after your existing collector values:
+
+```bash
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
+  --version 0.7.0 --namespace nullify --create-namespace \
+  -f values-production.yaml -f discovered-rbac.json
+```
+
+The script does not apply RBAC. New CRDs require regeneration and a reviewed chart
+upgrade. Existing extra rules are replaced by the generated `extraRules` list;
+merge any required hand-written rules into that list before you install it.
+Chart 0.7.0 and the Terraform defaults require the published and verified
+`k8s-collector-3.49.0` image. Do not roll out these defaults before that image exists.

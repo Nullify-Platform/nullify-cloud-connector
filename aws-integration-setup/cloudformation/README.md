@@ -338,7 +338,7 @@ cd aws-integration-setup/scripts
   --customer-name yourcompany --nullify-region eu-central-1
 ```
 
-Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (the only supported mode), `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.1.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
+Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (the only supported mode), `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.2.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
 
 ### Step 4: verify
 

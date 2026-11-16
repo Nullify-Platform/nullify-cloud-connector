@@ -23,7 +23,8 @@ extraSubjects: []
 #    kind: User
 #    name: nullify-scanner
 
-# Extra rules appended verbatim to the ClusterRole. Only the list verb is
+# Extra rules appended to the ClusterRole after validation. Core Secrets and
+# ConfigMaps also need their matching grant switch. Only the list verb is
 # accepted (get reads a named object; watch streams live values). Wildcard
 # apiGroups or resources, every subresource other than status and scale (exec,
 # log and proxy, and CRD subresources such as a VM console or vnc), and any

@@ -1,0 +1,11 @@
+# expect: extraRules apiGroup "*" is not allowed
+extraRules:
+  - apiGroups: ["*"]
+    resources: ["widgets"]
+    verbs: ["list"]
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false
