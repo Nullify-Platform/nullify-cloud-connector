@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCAN_APIS = {
     "cloudkms.googleapis.com", "sqladmin.googleapis.com", "spanner.googleapis.com",
     "dataflow.googleapis.com", "bigquery.googleapis.com", "orgpolicy.googleapis.com",
-    "accesscontextmanager.googleapis.com",
+    "accesscontextmanager.googleapis.com", "appengine.googleapis.com",
 }
 GCLOUD = r'''#!/usr/bin/env python3
 import json, os, pathlib, sys
@@ -85,7 +85,7 @@ class GCPInstaller(unittest.TestCase):
         self.assertEqual(SCAN_APIS, set(enables))
         self.assertEqual(3, enables.count(blocked))
         self.assertTrue(all(enables.count(api) == 1 for api in SCAN_APIS - {blocked}))
-        self.assertIn("Scan API readiness: 6/7 enabled", result.stdout)
+        self.assertIn("Scan API readiness: 7/8 enabled", result.stdout)
         self.assertIn(blocked, result.stderr)
         self.assertIn("installed successfully", result.stdout)
         self.assertTrue(any(call[:3] == ["iam", "service-accounts", "describe"] for call in calls))
@@ -96,7 +96,7 @@ class GCPInstaller(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         enables = [call for call in calls if call[:3] == ["services", "enable", transient]]
         self.assertEqual(2, len(enables))
-        self.assertIn("Scan API readiness: 7/7 enabled", result.stdout)
+        self.assertIn("Scan API readiness: 8/8 enabled", result.stdout)
         self.assertNotIn("WARNING", result.stderr)
 
     def test_disabled_after_enable_is_not_reported_ready(self):
@@ -104,7 +104,7 @@ class GCPInstaller(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         lists = [call for call in calls if call[:2] == ["services", "list"] and "--filter=config.name=bigquery.googleapis.com" in call]
         self.assertEqual(3, len(lists))
-        self.assertIn("Scan API readiness: 6/7 enabled", result.stdout)
+        self.assertIn("Scan API readiness: 7/8 enabled", result.stdout)
         self.assertIn("bigquery.googleapis.com", result.stderr)
 
     def test_failed_list_output_is_not_reported_ready(self):
@@ -112,7 +112,7 @@ class GCPInstaller(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         lists = [call for call in calls if call[:2] == ["services", "list"] and "--filter=config.name=bigquery.googleapis.com" in call]
         self.assertEqual(3, len(lists))
-        self.assertIn("Scan API readiness: 6/7 enabled", result.stdout)
+        self.assertIn("Scan API readiness: 7/8 enabled", result.stdout)
 
     def test_required_failure_stops_identity_setup(self):
         result, calls = self.run_installer(FAIL_REQUIRED="1")

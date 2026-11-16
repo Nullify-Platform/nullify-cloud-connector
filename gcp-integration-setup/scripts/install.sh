@@ -64,6 +64,7 @@ SCAN_APIS=(
   bigquery.googleapis.com
   orgpolicy.googleapis.com
   accesscontextmanager.googleapis.com
+  appengine.googleapis.com
 )
 UNREADY_SCAN_APIS=()
 echo "==> Enabling scan APIs on ${NULLIFY_HOST_PROJECT}"
