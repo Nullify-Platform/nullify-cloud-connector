@@ -143,6 +143,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        with:
+          version: v3.22.0
+
       - name: parse CloudFormation template
         run: python3 -m json.tool aws-integration-setup/cloudformation/nullify-cloudformation-template.json > /dev/null
 
