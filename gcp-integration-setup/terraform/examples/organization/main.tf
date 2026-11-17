@@ -8,8 +8,9 @@
 module "nullify" {
   source = "../../"
 
-  customer_name   = "acme-corp"
-  host_project_id = "acme-security"
+  customer_name          = "acme-corp"
+  host_project_id        = "acme-security"
+  enable_scan_quota_apis = true
 
   scope           = "organization"
   organization_id = "123456789012"

@@ -614,6 +614,7 @@
                   "kms:GetKeyRotationStatus",
                   "kms:List*",
                   "lambda:GetFunction",
+                  "lambda:GetFunctionConfiguration",
                   "lambda:GetFunctionUrlConfig",
                   "lambda:GetPolicy",
                   "lambda:List*",
