@@ -1,0 +1,2 @@
+# expect: grantSecretsRead must be a boolean
+grantSecretsRead: "false"

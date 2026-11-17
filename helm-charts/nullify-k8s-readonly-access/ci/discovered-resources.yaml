@@ -1,0 +1,9 @@
+grantSecretsRead: false
+grantConfigMapsRead: false
+extraRules:
+  - apiGroups: ["acme.example"]
+    resources: ["gadgets", "widgets"]
+    verbs: ["list"]
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["list"]

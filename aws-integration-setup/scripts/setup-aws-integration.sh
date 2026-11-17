@@ -90,7 +90,7 @@ COLLECTOR_UPLOAD_PREFIX=""
 COLLECTOR_CLUSTER_NAME=""
 if [[ "$ENABLE_K8S" =~ ^[yY]$ || "$METHOD" == "helm" ]]; then
   read -rp "Collector upload prefix (collectorUploadPrefix from Nullify settings): " COLLECTOR_UPLOAD_PREFIX
-  if [[ ! "$COLLECTOR_UPLOAD_PREFIX" =~ ^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/$ || "$COLLECTOR_UPLOAD_PREFIX" == "k8s-collector/k8s-collector/" ]]; then
+  if [[ ! "$COLLECTOR_UPLOAD_PREFIX" =~ ^k8s-collector-scoped/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/$ || "$COLLECTOR_UPLOAD_PREFIX" == "k8s-collector-scoped/k8s-collector/" ]]; then
     echo -e "${RED}Error: Copy the source-qualified collectorUploadPrefix, including its trailing slash${NC}"
     exit 1
   fi

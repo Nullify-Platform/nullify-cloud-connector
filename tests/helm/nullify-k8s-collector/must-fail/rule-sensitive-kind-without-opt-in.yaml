@@ -1,0 +1,11 @@
+# expect: extraRules core secrets require grantSecretsRead=true
+extraRules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["list"]
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false

@@ -339,7 +339,7 @@ module "k8s_resources" {
 
 - **It must match your actual cluster name exactly**, as AWS reports it (`aws eks describe-cluster --name <cluster> --query cluster.name`). Nullify joins the upload to the cluster it discovered in your AWS inventory on this name; a mismatch drops the whole payload, so no pods, services or ingresses reach the graph and nothing says so.
 - **It must match a cluster registered on the Nullify configure page.** An upload for an unregistered name is skipped on ingest, again with no customer-visible signal.
-- **It must differ per cluster.** The collector uploads to `<prefix>/k8s-collector/<cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory and Nullify only ever sees the one that ran last.
+- **It must differ per cluster.** The collector uploads to `<collector_upload_prefix><cluster_name>-data.json`, so two collectors sharing a name overwrite each other's inventory and Nullify only ever sees the one that ran last.
 
 This is the same value as `collector.clusterName` in the `nullify-k8s-collector` Helm chart, which states the same requirement.
 
@@ -347,7 +347,7 @@ This is the same value as `collector.clusterName` in the `nullify-k8s-collector`
 
 A cluster cannot run the collector and the managed scan at once: the collector's upload registers it as on-prem keyed on `cluster_name`, the managed scan registers the same cluster as its EKS ARN, and nothing joins the two, so running both lists the cluster twice with its pods and containers duplicated. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination: pass it the cluster ARNs where `enable_collector` is `true` and the module fails at plan for any of them. To change mode, apply the new one and ask Nullify to remove the old cluster registration.
 
-`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.1`, a pinned tag of Nullify's ECR Public image. The `nullify-k8s-collector` Helm chart defaults to the same tag, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
+`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.49.0`, a pinned tag of Nullify's ECR Public image. The `nullify-k8s-collector` Helm chart defaults to the same tag, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
 
 ## Outputs
 
@@ -387,7 +387,7 @@ module "nullify_k8s" {
 
 - Terraform >= 1.8 is now required. It is the floor CI validates at and the floor the module test suites run at, so the declared version is the tested one.
 - The root and examples require AWS provider `>= 5.33`. Run `terraform init -upgrade` if your lock file pins an older 5.x.
-- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/default-name-data.json`; after this change it uploads to `k8s-collector/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
+- `k8s-resources` now requires `cluster_name` while `enable_collector` is true, and sets it as the collector's `CLUSTER_NAME`. A deployment that never set it was uploading to `k8s-collector/k8s-collector/default-name-data.json`; source-qualified collectors upload to `k8s-collector-scoped/<source-tenant-id>/<cluster_name>-data.json`. The old object is in Nullify's bucket, which your role cannot read or delete: ask Nullify to remove the stale `default-name` cluster, and register the new name on the configure page before the next run.
 - `k8s-resources` now requires `kms_key_arn` while `enable_collector` is true, with no opt-out. The shipped collector images refuse to upload without KMS encryption, so a deployment that left it empty was collecting successfully and then failing every upload. Set the value from the configure page; ask Nullify for a key if you have none.
 - `k8s-resources` collector resources moved to `count` instances. `moved` blocks keep existing state, so a plan should show no changes; check it before applying.
 - The root configuration no longer declares the Kubernetes provider. It never deployed Kubernetes resources.
@@ -420,3 +420,5 @@ terraform plan
 
 - Example configurations: `./examples/*/`
 - Contact Nullify support for integration assistance
+
+For additional discovered Kubernetes kinds, use the [explicit discovery RBAC values](../../README.md#discovered-kubernetes-resource-permissions). Terraform resource grants remain fixed; the supplemental read-only Helm release binds the generated rules to the configured managed-scan group or collector ServiceAccount. Apply that release separately from Terraform.

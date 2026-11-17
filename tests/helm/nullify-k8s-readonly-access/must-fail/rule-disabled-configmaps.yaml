@@ -1,0 +1,6 @@
+# expect: extraRules core configmaps require grantConfigMapsRead=true
+extraRules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["list"]
+grantConfigMapsRead: false

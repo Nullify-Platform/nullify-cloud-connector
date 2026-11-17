@@ -29,7 +29,7 @@ mock_provider "aws" {
 }
 
 variables {
-  collector_upload_prefix = "k8s-collector/GitHub-10000001/"
+  collector_upload_prefix = "k8s-collector-scoped/GitHub-10000001/"
   customer_name           = "acme"
   external_id             = "external-id-123456"
   nullify_role_arn        = "arn:aws:iam::123456789012:role/NullifyRole"
@@ -190,7 +190,7 @@ run "s3_access_point_policy_grants_put_only_under_the_collector_prefix" {
   }
 
   assert {
-    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector/GitHub-10000001/*"])
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:eu-central-1:111122223333:accesspoint/nullify-uploads/object/k8s-collector-scoped/GitHub-10000001/*"])
     error_message = "The access point statement must be scoped to the assigned source prefix, not the whole access point"
   }
 }
@@ -261,11 +261,11 @@ run "a_bound_bucket_collector_lists_only_its_prefix" {
     s3_bucket_name = "nullify-uploads"
   }
   assert {
-    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:::nullify-uploads/k8s-collector/GitHub-10000001/*"])
+    condition     = tolist(data.aws_iam_policy_document.s3_access_policy[0].statement[0].resources) == tolist(["arn:aws:s3:::nullify-uploads/k8s-collector-scoped/GitHub-10000001/*"])
     error_message = "The bucket statement must grant the assigned source prefix only."
   }
   assert {
-    condition     = toset(one([for statement in data.aws_iam_policy_document.s3_access_policy[0].statement : one(statement.condition).values if contains(statement.actions, "s3:ListBucket")])) == toset(["k8s-collector/GitHub-10000001/*"])
+    condition     = toset(one([for statement in data.aws_iam_policy_document.s3_access_policy[0].statement : one(statement.condition).values if contains(statement.actions, "s3:ListBucket")])) == toset(["k8s-collector-scoped/GitHub-10000001/*"])
     error_message = "Listing must stay within the assigned source prefix."
   }
 }

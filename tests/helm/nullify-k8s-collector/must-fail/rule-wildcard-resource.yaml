@@ -1,0 +1,11 @@
+# expect: extraRules resource "*" is not allowed
+extraRules:
+  - apiGroups: ["acme.example"]
+    resources: ["*"]
+    verbs: ["list"]
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false

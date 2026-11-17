@@ -34,6 +34,15 @@ clusterRoleBinding:
     create: true
     name: nullify-k8s-collector-binding
 
+# List access returns full objects when a client asks for them.
+grantSecretsRead: false
+grantConfigMapsRead: true
+
+# Explicit extra list permissions for discovered resources. Generate a reviewable
+# values file with scripts/kubernetes-discovery-rbac.py. Wildcards, write verbs,
+# and subresources other than status/scale are rejected.
+extraRules: []
+
 # Main collector configuration
 collector:
     enabled: true
@@ -51,7 +60,7 @@ collector:
     # on k8s-collector-latest: a moved tag is what every Helm install runs.
     image:
         repository: public.ecr.aws/w4o2j2x4/integrations
-        tag: k8s-collector-4.0.0
+        tag: k8s-collector-3.49.0
         pullPolicy: IfNotPresent
 
     # Resource limits

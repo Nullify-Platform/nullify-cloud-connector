@@ -91,6 +91,7 @@ any other value is rejected. Call after "k8s-collector.validateCollector".
 Rejects missing or placeholder values the CronJob cannot run without.
 */}}
 {{- define "k8s-collector.validateCollector" -}}
+{{- include "k8s-collector.validateExtraRules" . -}}
 {{- $provider := .Values.cloudProvider | default "aws" -}}
 {{- if not (has $provider (list "aws" "gcp")) -}}
 {{- fail (printf "cloudProvider must be \"aws\" or \"gcp\", got %q" $provider) -}}
@@ -111,7 +112,7 @@ Rejects missing or placeholder values the CronJob cannot run without.
 {{- $_ := required "collector.gke.awsRoleArn is required when cloudProvider is gcp: Nullify provides it after you register the cluster's OIDC issuer" (.Values.collector.gke.awsRoleArn | default .Values.collector.gke.nullifyAwsRoleArn) -}}
 {{- end -}}
 {{- $prefix := required "collector.s3.keyPrefix is required: copy collectorUploadPrefix from Nullify settings" .Values.collector.s3.keyPrefix -}}
-{{- if or (eq (trimSuffix "/" $prefix) "k8s-collector/k8s-collector") (not (regexMatch "^k8s-collector/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$" $prefix)) -}}
-{{- fail "collector.s3.keyPrefix must be the source-qualified k8s-collector/<source-tenant-id>/ prefix from Nullify settings" -}}
+{{- if or (eq (trimSuffix "/" $prefix) "k8s-collector-scoped/k8s-collector") (not (regexMatch "^k8s-collector-scoped/[A-Za-z0-9][A-Za-z0-9._-]{0,252}/?$" $prefix)) -}}
+{{- fail "collector.s3.keyPrefix must be the source-qualified k8s-collector-scoped/<source-tenant-id>/ prefix from Nullify settings" -}}
 {{- end -}}
 {{- end }}

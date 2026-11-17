@@ -1,0 +1,32 @@
+{
+  "/api": {"kind": "APIVersions", "versions": ["v1"]},
+  "/apis": {"kind": "APIGroupList", "groups": [
+    {"name": "acme.example", "versions": [{"groupVersion": "acme.example/v1beta1", "version": "v1beta1"}, {"groupVersion": "acme.example/v1", "version": "v1"}]},
+    {"name": "apps", "versions": [{"groupVersion": "apps/v1", "version": "v1"}]},
+    {"name": "apiextensions.k8s.io", "versions": [{"groupVersion": "apiextensions.k8s.io/v1", "version": "v1"}]}
+  ]},
+  "/api/v1": {"kind": "APIResourceList", "groupVersion": "v1", "resources": [
+    {"name": "pods", "verbs": ["get", "list", "watch"]},
+    {"name": "pods/log", "verbs": ["get", "list"]},
+    {"name": "secrets", "verbs": ["get", "list"]},
+    {"name": "configmaps", "verbs": ["get", "list"]},
+    {"name": "bindings", "verbs": ["create"]}
+  ]},
+  "/apis/apps/v1": {"kind": "APIResourceList", "groupVersion": "apps/v1", "resources": [
+    {"name": "deployments", "verbs": ["list"]},
+    {"name": "deployments/scale", "verbs": ["get", "list"]}
+  ]},
+  "/apis/apiextensions.k8s.io/v1": {"kind": "APIResourceList", "groupVersion": "apiextensions.k8s.io/v1", "resources": [
+    {"name": "customresourcedefinitions", "verbs": ["get", "list"]}
+  ]},
+  "/apis/acme.example/v1beta1": {"kind": "APIResourceList", "groupVersion": "acme.example/v1beta1", "resources": [
+    {"name": "widgets", "verbs": ["list"]},
+    {"name": "gadgets", "verbs": ["list"]},
+    {"name": "widgets/status", "verbs": ["list"]}
+  ]},
+  "/apis/acme.example/v1": {"kind": "APIResourceList", "groupVersion": "acme.example/v1", "resources": [
+    {"name": "widgets", "verbs": ["get", "list"]},
+    {"name": "secrets", "verbs": ["list"]},
+    {"name": "actions", "verbs": ["create"]}
+  ]}
+}

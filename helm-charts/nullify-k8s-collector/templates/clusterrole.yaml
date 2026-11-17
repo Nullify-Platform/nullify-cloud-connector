@@ -1,4 +1,5 @@
 {{- if .Values.clusterRole.create -}}
+{{- include "k8s-collector.validateExtraRules" . -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -6,14 +7,19 @@ metadata:
   labels:
     {{- include "k8s-collector.labels" . | nindent 4 }}
 rules:
-  # list-only config kinds. Secrets are omitted: list returns values.
-  # jobs (#12807) and the 11 kinds the CSPM GA collector (monorepo #12225)
-  # lists under Strict:true are included. A 403 on any of those 11 aborts
-  # the whole cluster scan. None of these grants are get/watch or
-  # subresources.
   - apiGroups: [""]
-    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "configmaps", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
+    resources: ["pods", "services", "namespaces", "nodes", "serviceaccounts", "resourcequotas", "limitranges", "persistentvolumes", "persistentvolumeclaims"]
     verbs: ["list"]
+  {{- if ne (toString .Values.grantConfigMapsRead) "false" }}
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["list"]
+  {{- end }}
+  {{- if .Values.grantSecretsRead }}
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["list"]
+  {{- end }}
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
     verbs: ["list"]
@@ -62,6 +68,9 @@ rules:
   - apiGroups: ["networking.istio.io"]
     resources: ["virtualservices", "serviceentries", "destinationrules"]
     verbs: ["list"]
-  - nonResourceURLs: ["/version", "/api", "/apis", "/apis/gateway.networking.k8s.io/v1", "/apis/gateway.networking.k8s.io/v1beta1", "/apis/gateway.networking.k8s.io/v1alpha2", "/apis/gateway.networking.k8s.io/v1alpha3", "/apis/networking.istio.io/v1", "/apis/networking.istio.io/v1beta1", "/apis/networking.istio.io/v1alpha3"]
+  - nonResourceURLs: ["/version", "/api", "/api/*", "/apis", "/apis/*"]
     verbs: ["get"]
-{{- end }} 
+  {{- with .Values.extraRules }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+{{- end }}

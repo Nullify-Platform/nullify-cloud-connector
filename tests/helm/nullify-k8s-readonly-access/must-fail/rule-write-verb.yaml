@@ -1,0 +1,5 @@
+# expect: extraRules verbs must contain one or more list verbs
+extraRules:
+  - apiGroups: ["acme.example"]
+    resources: ["widgets"]
+    verbs: ["list", "create"]

@@ -1,0 +1,10 @@
+# expect: extraRules nonResourceURL "/healthz" is not allowed
+extraRules:
+  - nonResourceURLs: ["/healthz"]
+    verbs: ["list"]
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false

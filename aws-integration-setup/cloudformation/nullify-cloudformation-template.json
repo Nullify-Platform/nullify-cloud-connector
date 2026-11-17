@@ -62,7 +62,7 @@
       "CollectorUploadPrefix": {
         "Type": "String",
         "Default": "",
-        "AllowedPattern": "^$|^k8s-collector/(?!k8s-collector/$)[A-Za-z0-9][A-Za-z0-9._-]{0,252}/$",
+        "AllowedPattern": "^$|^k8s-collector-scoped/(?!k8s-collector/$)[A-Za-z0-9][A-Za-z0-9._-]{0,252}/$",
         "Description": "Copy collectorUploadPrefix from Nullify settings, including its trailing slash. Required when EKS collector integration is enabled."
       }
     },

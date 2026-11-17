@@ -24,6 +24,7 @@ Exits non-zero and prints the symmetric difference on any mismatch.
 import fnmatch
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -229,7 +230,7 @@ def compare(label: str, cfn: set, terraform: set, reference: str = "CloudFormati
     return False
 
 
-HELM_CLUSTERROLE = REPO_ROOT / "helm-charts/nullify-k8s-collector/templates/clusterrole.yaml"
+HELM_CHART = REPO_ROOT / "helm-charts/nullify-k8s-collector"
 TF_CLUSTERROLES = [
     REPO_ROOT / "aws-integration-setup/terraform/modules/k8s-resources/main.tf",
     REPO_ROOT / "aws-integration-setup/terraform-v6/modules/k8s-resources/main.tf",
@@ -278,6 +279,18 @@ def terraform_clusterrole_kinds(text: str) -> set:
     return _clusterrole_kinds(rules, urls)
 
 
+def rendered_collector_kinds(secrets: bool, configmaps: bool) -> set:
+    rendered = subprocess.run(
+        ["helm", "template", "iam-drift", str(HELM_CHART),
+         "-f", str(HELM_CHART / "ci/eks.yaml"),
+         "--show-only", "templates/clusterrole.yaml",
+         "--set", f"grantSecretsRead={str(secrets).lower()}",
+         "--set", f"grantConfigMapsRead={str(configmaps).lower()}"],
+        check=True, capture_output=True, text=True,
+    )
+    return helm_clusterrole_kinds(rendered.stdout)
+
+
 def main() -> int:
     cfn_readonly = cfn_entries(READONLY_RESOURCES)
     cfn_deny = cfn_entries(DENY_RESOURCES)
@@ -296,10 +309,21 @@ def main() -> int:
         ok = compare(f"Allow statements: CloudFormation vs {tree}", cfn_readonly, tf_readonly) and ok
         ok = compare(f"Deny statements: CloudFormation vs {tree}", cfn_deny, tf_deny) and ok
 
-    helm_kinds = helm_clusterrole_kinds(HELM_CLUSTERROLE.read_text())
+    helm_kinds = rendered_collector_kinds(False, True)
     for path in TF_CLUSTERROLES:
         tf_kinds = terraform_clusterrole_kinds(path.read_text())
         ok = compare(f"ClusterRole kinds: Helm vs {path.relative_to(REPO_ROOT)}", helm_kinds, tf_kinds, "Helm") and ok
+
+    for secrets in (False, True):
+        for configmaps in (False, True):
+            expected = helm_kinds - {"/configmaps:list"}
+            if configmaps:
+                expected |= {"/configmaps:list"}
+            if secrets:
+                expected |= {"/secrets:list"}
+            actual = rendered_collector_kinds(secrets, configmaps)
+            ok = compare(f"Collector sensitive kinds (secrets={secrets}, configmaps={configmaps})",
+                         expected, actual, "declared policy") and ok
 
     return 0 if ok else 1
 

@@ -1,0 +1,12 @@
+# expect: extraRules core configmaps require grantConfigMapsRead=true
+extraRules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["list"]
+grantConfigMapsRead: false
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false
