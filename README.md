@@ -1,6 +1,6 @@
 # 🛡️ Nullify Cloud Connector - Infrastructure Templates
 
-**Complete infrastructure templates for deploying Nullify's cloud security integrations across Kubernetes and AWS.**
+**Complete infrastructure templates for deploying Nullify's cloud security integrations across AWS, GCP, Azure, and supported Kubernetes collection paths.**
 
 > 🚨 **SECURITY NOTICE**: This repository contains **GENERIC TEMPLATES ONLY**. Contact Nullify support for production configuration values.
 
@@ -9,10 +9,11 @@
 This repository provides comprehensive infrastructure-as-code templates for integrating Nullify's security platform with your cloud environment. It includes multiple deployment options to suit different infrastructure preferences and requirements.
 
 ### **What's Included**
-- ⚙️ **Helm Charts** - Production-ready Kubernetes deployment for **EKS (IRSA)** and **GKE (Workload Identity)**
+- ⚙️ **Helm Charts** - Production-ready Kubernetes deployment for **EKS (IRSA)** and **GKE (projected Kubernetes service-account tokens)**
 - 🏗️ **CloudFormation Templates** - AWS infrastructure setup with IAM roles and policies
 - 🔧 **Terraform Modules** - Modular infrastructure-as-code for AWS and multi-cluster EKS integration
 - ☁️ **GCP Terraform** - Read-only GCP integration via Workload Identity Federation
+- **Azure Terraform** - Azure subscription or management-group Reader access via workload federation, with optional directory permissions
 - 🤖 **GitHub Actions** - Automated chart publishing and validation
 - 📚 **Documentation** - Comprehensive setup and security guides
 - ❌ **NO real sensitive data, bucket names, or account IDs**
@@ -42,7 +43,7 @@ This repository provides comprehensive infrastructure-as-code templates for inte
 | **🏗️ CloudFormation** | AWS-centric infrastructure, ClickOps teams | AWS CLI, appropriate IAM permissions |
 | **🔧 Terraform (AWS)** | Infrastructure-as-code, multi-cluster teams | Terraform, AWS provider configured |
 | **☁️ Terraform (GCP)** | GCP environments, Workload Identity Federation | Terraform, `gcloud` auth on the host project, org or folder admin access |
-| **☁️ Terraform (GKE collector)** | GKE clusters running the Nullify k8s-collector | Terraform, GKE with Workload Identity enabled |
+| **☁️ Terraform (GKE service account)** | Optional GCP identity resources; not needed for the standard projected-token collector | Terraform; confirm the alternate identity requirement with Nullify |
 
 ### **GCP Quick Start**
 
@@ -55,15 +56,21 @@ $EDITOR terraform.tfvars            # paste values from the Nullify console
 terraform init && terraform apply
 ```
 
-Then paste the `service_account_email` and `workload_identity_provider` outputs into the Nullify console under **Settings → Cloud Integrations → GCP** and click **Verify**.
+Then paste the `service_account_email` and `workload_identity_provider` outputs into the Nullify console under **Settings → Connectors → GCP**, select **Save changes**, then **Validate**. Validation checks the saved identity. Confirm fresh inventory separately.
 
 See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terraform/README.md) for the full guide, the org / folder / project scope options, and the gcloud-only installer.
+
+### Azure quick start
+
+Open `azure-integration-setup/terraform`, copy `terraform.tfvars.example`, and fill in the tenant-specific values supplied by Nullify. Choose management-group or subscription scope, review `terraform plan`, then apply it. Paste `entra_tenant_id` and `application_client_id` into **Settings → Connectors → Azure** with Workload Identity Federation selected.
+
+Azure cloud access is separate from Entra sign-in, Azure DevOps, and Teams. The default module grants ARM Reader; optional directory permissions require separate administrator consent. See the [Azure module guide](azure-integration-setup/terraform/README.md).
 
 ### **Prerequisites**
 
 **All methods:**
 1. **Nullify Account** and dashboard access
-2. Log in to **Configure > Integrations** to obtain provider-specific values
+2. Log in to **Settings → Connectors** to obtain provider-specific values
 
 **AWS integration:**
 - AWS account with IAM permissions
@@ -77,6 +84,12 @@ See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terrafor
 - (Optional) GKE cluster with Workload Identity enabled for Kubernetes collector
 
 ---
+
+## Helm release compatibility
+
+The public Helm index now serves collector chart **0.6.0** with image **4.0.0** and readonly-access chart **0.1.0**. Publication was verified on 11 November 2026 after releasing the queued GitHub Pages workflow. Collector **0.5.0**, with image **3.48.0**, remains available for the existing backend contract. Collector 4 requires `collector.s3.keyPrefix` from a compatible backend. Confirm the backend rollout and exact `collectorUploadPrefix` with Nullify before upgrading. Do not infer the prefix or upgrade only the image.
+
+The current CloudFormation and Terraform collector paths also require the source-prefix contract; pinning Helm 0.5.0 does not make current IAM templates compatible with an older backend. Use the complete template/chart version set confirmed by Nullify.
 
 ## ⚙️ **Helm Chart Deployment**
 
@@ -102,7 +115,7 @@ serviceAccount:
 EOF
 
 # 3. Install the chart
-helm install nullify-collector nullify/nullify-k8s-collector \
+helm install nullify-collector nullify/nullify-k8s-collector --version 0.5.0 \
   -f values-production.yaml \
   --namespace nullify \
   --create-namespace
@@ -112,6 +125,8 @@ kubectl get all -n nullify
 ```
 
 ### **Option 2: Install from Source**
+
+Obtain the exact `collectorUploadPrefix` and confirm source-version compatibility with Nullify before following this path.
 
 ```bash
 # 1. Clone this repository
@@ -360,7 +375,7 @@ nullify-cloud-connector/
     ├── 🔧 terraform/                     # Terraform Modules
     │   ├── modules/
     │   │   ├── nullify-gcp-integration/  # WIF pool, provider, SA, IAM bindings
-    │   │   └── nullify-gke-collector/    # GKE k8s-collector deployment
+    │   │   └── nullify-gke-collector/    # Optional GCP service-account identity resources
     │   ├── examples/                     # Example configurations
     │   ├── terraform.tfvars.example      # Example configuration
     │   └── README.md                     # GCP Terraform documentation
@@ -374,7 +389,7 @@ nullify-cloud-connector/
 
 | Component | Purpose | Use When |
 |-----------|---------|----------|
-| **🎯 Helm Charts** | Deploy K8s collector (EKS via IRSA, GKE via Workload Identity) | You have EKS or GKE and prefer K8s-native tools |
+| **🎯 Helm Charts** | Deploy K8s collector (EKS via IRSA, GKE via projected service-account tokens) | You have EKS or GKE and prefer K8s-native tools |
 | **🏗️ CloudFormation** | Set up AWS IAM roles and policies | You prefer AWS-native infrastructure |
 | **🔧 Terraform** | Modular infrastructure-as-code with multi-cluster support | You use Terraform for infrastructure |
 | **🤖 GitHub Actions** | Automated testing and publishing | You want CI/CD for chart updates |
@@ -405,7 +420,7 @@ serviceAccount:
 
 ### **Basic Configuration**
 
-All required values are provided in the Nullify configure page.
+For chart 0.6.0, use the exact source-qualified prefix supplied by a compatible Nullify deployment. Replace every placeholder below; if the prefix is unavailable, stop and request compatible deployment values. Use the earlier 0.5.0 quick start only with the matching existing backend and IAM policy.
 
 ```yaml
 collector:
@@ -414,7 +429,7 @@ collector:
   clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
-    keyPrefix: "k8s-collector"
+    keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
   schedule: "0 2 * * *"              # Daily at 2 AM UTC
@@ -473,9 +488,12 @@ Each release is tagged `<chart>-v<version>` (for example `nullify-k8s-collector-
 Collector releases up to 0.2.0 were tagged `vX.Y.Z`; only 0.2.0 of those is still in the repository.
 
 ### **Deployment Management**
+
+The following command keeps the 0.5.0 contract. To upgrade to 0.6.0, first complete the [collector 4 cutover](#collector-4-source-prefix-cutover), including paired backend, IAM policy and exact prefix.
+
 ```bash
-# Upgrade the chart
-helm upgrade nullify-collector nullify/nullify-k8s-collector \
+# Keep the version used by the existing-backend quick start
+helm upgrade nullify-collector nullify/nullify-k8s-collector --version 0.5.0 \
   -f values-production.yaml \
   --namespace nullify
 

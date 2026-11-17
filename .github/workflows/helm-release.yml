@@ -6,6 +6,9 @@ on:
       - "helm-charts/**"
       - "manifests/**"
       - "scripts/publish-helm-repo.sh"
+      - "scripts/verify-published-helm-repo.py"
+      - "scripts/test_verify_published_helm_repo.py"
+      - "artifacthub-repo.yml"
       - "scripts/test-helm-charts.sh"
       - "scripts/check-rbac-manifest.sh"
       - "scripts/test_routing_rbac.py"
@@ -17,6 +20,9 @@ on:
       - "helm-charts/**"
       - "manifests/**"
       - "scripts/publish-helm-repo.sh"
+      - "scripts/verify-published-helm-repo.py"
+      - "scripts/test_verify_published_helm_repo.py"
+      - "artifacthub-repo.yml"
       - "scripts/test-helm-charts.sh"
       - "scripts/check-rbac-manifest.sh"
       - "scripts/test_routing_rbac.py"
@@ -70,6 +76,9 @@ jobs:
 
       - name: Check routing collector RBAC
         run: python3 scripts/test_routing_rbac.py
+
+      - name: Test public repository consumer verification
+        run: python3 scripts/test_verify_published_helm_repo.py
 
       - name: Lint and render
         run: scripts/test-helm-charts.sh "$CHART"
@@ -267,6 +276,9 @@ jobs:
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+
+      - name: Verify publicly downloadable index and chart packages
+        run: python3 scripts/verify-published-helm-repo.py --expected-index _site/index.yaml --expected-repository-metadata artifacthub-repo.yml --attempts 20
 
       - name: Fail when a chart was skipped
         run: |

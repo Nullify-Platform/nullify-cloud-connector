@@ -16,8 +16,7 @@ secrets.
   Artifact Registry, Cloud Storage, Secret Manager, BigQuery,
   Cloud Batch, Cloud Workflows, Firestore, Vertex AI, Security Command
   Center). Defined at the org for `scope = "organization" | "folder"`,
-  at the project for `scope = "projects"`. Strict allowlist of `*.get` /
-  `*.list` only — no data-plane reads (no object/secret/row/document
+  at the project for `scope = "projects"`. Explicit custom-role allowlist of read-only permissions — no data-plane reads (no object/secret/row/document
   contents, no execution payloads, no inference, no findings).
 - IAM bindings granting the Nullify service account a curated set of
   predefined viewer roles plus the custom role above. Bound at organisation
@@ -32,11 +31,16 @@ secrets.
 
 ## What this does NOT provision
 
-- No data-plane permissions. Nullify can list buckets but cannot read
-  objects. Nullify can list secrets but cannot read secret payloads.
-  Nullify can list BigQuery datasets but cannot read table rows.
+- No Cloud Storage object reads, Secret Manager secret payload reads or
+  BigQuery table-row reads through the custom role. The custom
+  logging metadata list permissions replace the older `roles/logging.viewer`
+  grant. Existing installations must apply the updated module and confirm
+  that the old grant is removed. See the full
+  [permissions guide](../docs/permissions.md) for the granted roles.
 - No write permissions. Nullify cannot modify your environment.
 - No long-lived secrets. Revoke at any time with `terraform destroy`.
+
+The tenant claim condition rejects tokens for a different tenant, but it relies on Nullify's signing key. It does not protect against a compromised signing key that can forge tenant claims.
 
 ## Deployment modes
 

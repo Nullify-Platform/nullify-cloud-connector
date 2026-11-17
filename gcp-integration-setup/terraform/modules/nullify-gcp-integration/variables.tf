@@ -51,7 +51,7 @@ variable "project_ids" {
 }
 
 variable "nullify_oidc_issuer_uri" {
-  description = "Nullify's OIDC issuer URL (e.g. https://gcp.nullify.ai for prod, https://gcp.dev.nullify.ai for dev). Provided in the Nullify console under Settings -> Cloud Integrations -> GCP. Google STS fetches the JWKS document from `{issuer}/.well-known/jwks.json` to verify subject token signatures."
+  description = "Nullify's OIDC issuer URL (e.g. https://gcp.nullify.ai for prod, https://gcp.dev.nullify.ai for dev). Provided in the Nullify console under Settings -> Connectors -> GCP. Google STS fetches the JWKS document from `{issuer}/.well-known/jwks.json` to verify subject token signatures."
   type        = string
   validation {
     condition     = startswith(var.nullify_oidc_issuer_uri, "https://") && !endswith(var.nullify_oidc_issuer_uri, "/")
@@ -60,7 +60,7 @@ variable "nullify_oidc_issuer_uri" {
 }
 
 variable "nullify_tenant_id" {
-  description = "Your Nullify tenant id. Provided in the Nullify console under Settings -> Cloud Integrations -> GCP. Embedded in the WIF provider's attribute_condition so the pool only accepts subject tokens minted for THIS tenant; this is the per-tenant isolation that makes the integration safe in a multi-tenant Nullify deployment."
+  description = "Your Nullify tenant id. Provided in the Nullify console under Settings -> Connectors -> GCP. Embedded in the WIF provider's attribute_condition so the pool only accepts subject tokens minted for THIS tenant; this is the per-tenant isolation that makes the integration safe in a multi-tenant Nullify deployment."
   type        = string
   validation {
     condition     = length(var.nullify_tenant_id) > 0 && length(var.nullify_tenant_id) <= 100 && can(regex("^[A-Za-z0-9_-]+$", var.nullify_tenant_id))
