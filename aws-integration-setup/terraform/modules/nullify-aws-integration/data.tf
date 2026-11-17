@@ -216,6 +216,7 @@ data "aws_iam_policy_document" "readonly_policy_part2" {
       "kms:GetKeyRotationStatus",
       "kms:List*",
       "lambda:GetFunction",
+      "lambda:GetFunctionConfiguration",
       "lambda:GetFunctionUrlConfig",
       "lambda:GetPolicy",
       "lambda:List*",
