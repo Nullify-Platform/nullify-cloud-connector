@@ -75,3 +75,9 @@ variable "service_account_name" {
   type        = string
   default     = "nullify-cloud-connector"
 }
+
+variable "enable_scan_quota_apis" {
+  description = "Manage the scanner APIs in the host project. Terraform apply fails if an API cannot be enabled. Set false to manage these APIs separately."
+  type        = bool
+  default     = true
+}
