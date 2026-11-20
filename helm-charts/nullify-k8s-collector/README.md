@@ -7,7 +7,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - Kubernetes 1.21+ (the chart uses `batch/v1` CronJob)
 - Helm 3
 - **EKS:** the Nullify AWS integration deployed with its EKS integration enabled (see [AWS IAM Configuration](#aws-iam-configuration))
-- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
+- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-a-projected-kubernetes-token))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
 > **Image tag:** the default `collector.image.tag` is `k8s-collector-4.0.0`,
@@ -20,12 +20,22 @@ The same chart runs on **EKS** and **GKE**. Select the platform via `cloudProvid
 | `cloudProvider` | Cluster  | How the collector authenticates to AWS              |
 | --------------- | -------- | --------------------------------------------------- |
 | `aws` (default) | EKS      | IRSA — ServiceAccount → AWS IAM role                |
-| `gcp`           | GKE      | Workload Identity → `sts:AssumeRoleWithWebIdentity` |
+| `gcp`           | GKE      | Projected Kubernetes token → AWS STS |
 
 In both cases the collector uploads cluster metadata to the same Nullify-managed
 S3 bucket. No long-lived AWS credential is stored in the customer cluster.
 
 ## Installation
+
+Use the chart version, image tag and upload prefix returned by your Nullify
+deployment's `GET /admin/integrations/cloud/k8s/setup` endpoint. The Kubernetes
+connector panel can generate the complete install command and start a collection
+Job immediately. A successful Job confirms upload; check Nullify for the fresh
+inventory and audit to confirm ingestion.
+
+The examples in this branch use chart 0.6.1 and its source-qualified upload
+contract. A deployment that returns chart 0.5.0 uses the older upload contract.
+Use its generated installation command; do not upgrade only the chart or image.
 
 The chart does not create its namespace. Let Helm create it:
 
@@ -33,7 +43,7 @@ The chart does not create its namespace. Let Helm create it:
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
 helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
-  --namespace nullify --create-namespace \
+  --version 0.6.1 --namespace nullify --create-namespace \
   -f values-production.yaml
 ```
 
@@ -46,7 +56,7 @@ The chart refuses to render when a required value is missing or still a placehol
 
 ## Configuration
 
-> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, and
+> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.s3.keyPrefix`, `collector.kms.keyArn`, and
 > `serviceAccount.annotations."eks.amazonaws.com/role-arn"` (EKS) or `collector.gke.awsRoleArn` (GKE).
 > Get these from the Nullify configure page.
 
@@ -116,14 +126,14 @@ serviceAccount:
     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-yourcompany-NullifyReadOnlyRole"
 ```
 
-### GKE with Workload Identity Federation
+### GKE with a projected Kubernetes token
 
 For GKE clusters, the collector authenticates to AWS without any long-lived credential.
 The flow is:
 
-1. GKE projects a Google-signed ServiceAccount token into the collector pod.
+1. Kubernetes projects a ServiceAccount token signed by the cluster issuer into the collector pod.
 2. The collector forwards that token to AWS STS `AssumeRoleWithWebIdentity`.
-3. AWS validates the token against the Google OIDC provider and returns short-lived
+3. AWS validates the token against the cluster OIDC provider and returns short-lived
    credentials for a Nullify-owned IAM role scoped to your S3 prefix.
 
 #### One-time onboarding
@@ -131,12 +141,12 @@ The flow is:
 1. **Get your cluster's OIDC issuer URL** and share it with Nullify:
 
    ```bash
-   gcloud container clusters describe YOUR-CLUSTER --zone YOUR-ZONE \
-     --format='value(selfLink)'
+   kubectl --context YOUR-CONTEXT get --raw /.well-known/openid-configuration | jq -r .issuer
    ```
 
-   This outputs something like:
-   `https://container.googleapis.com/v1/projects/my-project/locations/us-central1-a/clusters/prod`
+   Use the returned `issuer` exactly. The cluster API `selfLink` is not a
+   substitute for the token issuer. AWS must be able to discover the issuer and
+   its signing keys.
 
 2. **Share the OIDC issuer URL with Nullify** (via the configure page or support).
    Nullify registers it and gives you back the **role ARN** to use in the Helm values.
@@ -153,6 +163,7 @@ collector:
   clusterName: "my-gke-cluster"
   s3:
     bucket: "your-nullify-bucket"
+    keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
   gke:
@@ -164,7 +175,7 @@ Then install:
 
 ```bash
 helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
-  --namespace nullify --create-namespace -f values-gke.yaml
+  --version 0.6.1 --namespace nullify --create-namespace -f values-gke.yaml
 ```
 
 ### Other Kubernetes Clusters
