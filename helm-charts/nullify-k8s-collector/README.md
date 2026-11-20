@@ -7,7 +7,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - Kubernetes 1.21+ (the chart uses `batch/v1` CronJob)
 - Helm 3
 - **EKS:** the Nullify AWS integration deployed with its EKS integration enabled (see [AWS IAM Configuration](#aws-iam-configuration))
-- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
+- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-a-projected-kubernetes-token))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
 > **Image tag:** the default `collector.image.tag` is `k8s-collector-4.0.0`,
@@ -33,7 +33,7 @@ connector panel can generate the complete install command and start a collection
 Job immediately. A successful Job confirms upload; check Nullify for the fresh
 inventory and audit to confirm ingestion.
 
-The examples in this branch use chart 0.6.0 and its source-qualified upload
+The examples in this branch use chart 0.6.1 and its source-qualified upload
 contract. A deployment that returns chart 0.5.0 uses the older upload contract.
 Use its generated installation command; do not upgrade only the chart or image.
 
@@ -43,7 +43,7 @@ The chart does not create its namespace. Let Helm create it:
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
 helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
-  --namespace nullify --create-namespace \
+  --version 0.6.1 --namespace nullify --create-namespace \
   -f values-production.yaml
 ```
 
@@ -56,7 +56,7 @@ The chart refuses to render when a required value is missing or still a placehol
 
 ## Configuration
 
-> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.kms.keyArn`, and
+> **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.s3.keyPrefix`, `collector.kms.keyArn`, and
 > `serviceAccount.annotations."eks.amazonaws.com/role-arn"` (EKS) or `collector.gke.awsRoleArn` (GKE).
 > Get these from the Nullify configure page.
 
@@ -163,6 +163,7 @@ collector:
   clusterName: "my-gke-cluster"
   s3:
     bucket: "your-nullify-bucket"
+    keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-east-1:123456789012:key/your-key-id"
   gke:
@@ -174,7 +175,7 @@ Then install:
 
 ```bash
 helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
-  --namespace nullify --create-namespace -f values-gke.yaml
+  --version 0.6.1 --namespace nullify --create-namespace -f values-gke.yaml
 ```
 
 ### Other Kubernetes Clusters
