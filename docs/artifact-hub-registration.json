@@ -6,6 +6,9 @@
   "disabled": false,
   "scannerDisabled": false,
   "repositoryID": "158135dc-d5cd-4016-9d22-5494d9510594",
-  "status": "registered; indexing pending",
+  "status": "indexed",
+  "indexedCollectorVersion": "0.6.0",
+  "verifiedPublisher": false,
+  "checkedOn": "2026-11-22",
   "registeredOn": "2026-11-11"
 }

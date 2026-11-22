@@ -56,13 +56,13 @@ $EDITOR terraform.tfvars            # paste values from the Nullify console
 terraform init && terraform apply
 ```
 
-Then paste the `service_account_email` and `workload_identity_provider` outputs into the Nullify console under **Settings → Connectors → GCP**, select **Save changes**, then **Validate**. Validation checks the saved identity. Confirm fresh inventory separately.
+Then paste the `service_account_email` and `workload_identity_provider` outputs into the Nullify console under **Settings → Connectors → GCP**, set the matching project, folder or organization scope, select **Save changes**, then **Validate**. Validation checks the saved identity. Confirm fresh inventory separately.
 
 See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terraform/README.md) for the full guide, the org / folder / project scope options, and the gcloud-only installer.
 
 ### Azure quick start
 
-Open `azure-integration-setup/terraform`, copy `terraform.tfvars.example`, and fill in the tenant-specific values supplied by Nullify. Choose management-group or subscription scope, review `terraform plan`, then apply it. Paste `entra_tenant_id` and `application_client_id` into **Settings → Connectors → Azure** with Workload Identity Federation selected.
+Open `azure-integration-setup/terraform`, copy `terraform.tfvars.example`, and fill in the tenant-specific values supplied by Nullify. Choose management-group or subscription scope, review `terraform plan`, then apply it. Paste `entra_tenant_id` and `application_client_id` into **Settings → Connectors → Azure** with Workload Identity Federation selected. Add and enable at least one subscription covered by the Terraform grant, including when the grant is at management-group scope. Select **Save changes**, then **Validate**.
 
 Azure cloud access is separate from Entra sign-in, Azure DevOps, and Teams. The default module grants ARM Reader; optional directory permissions require separate administrator consent. See the [Azure module guide](azure-integration-setup/terraform/README.md).
 
@@ -81,7 +81,7 @@ Azure cloud access is separate from Entra sign-in, Azure DevOps, and Teams. The 
 - GCP project with `gcloud` authenticated
 - Org or folder admin access (for WIF pool + IAM bindings)
 - Values from the Nullify console: OIDC issuer URI, Tenant ID
-- (Optional) GKE cluster with Workload Identity enabled for Kubernetes collector
+- (Optional) GKE cluster with its [OIDC issuer registered with Nullify](helm-charts/nullify-k8s-collector/README.md#gke-with-workload-identity-federation) for the Kubernetes collector
 
 ---
 

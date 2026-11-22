@@ -187,7 +187,9 @@ The policy grants its actions on the ARN you pass in one statement, and on `arn:
 
 The account check runs on every request rather than at deploy time because CloudFormation template `Condition`s accept only `Ref`, `Fn::FindInMap` and other conditions, so `AWS::AccountId` cannot be compared with an account parsed out of a parameter. The effective permissions are the same either way. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. Either ARN form produces a working grant, so an existing stack does not need updating when the configure page changes. The `KMSPolicyResource` stack output lists both resources.
 
-Update an existing stack, keeping its current values:
+When EKS integration is enabled, pass the exact `collectorUploadPrefix` from
+Nullify on the first stack update that adds the parameter. Include the trailing
+slash and use the same value in Helm's `collector.s3.keyPrefix`.
 
 ```bash
 aws cloudformation update-stack \
@@ -199,11 +201,16 @@ aws cloudformation update-stack \
     ParameterKey=CustomerName,UsePreviousValue=true \
     ParameterKey=EKSOidcProviderURL,UsePreviousValue=true \
     ParameterKey=EnableEKSIntegration,UsePreviousValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=EXACT-COLLECTOR-UPLOAD-PREFIX \
     ParameterKey=ExternalID,UsePreviousValue=true \
     ParameterKey=NullifyS3Bucket,UsePreviousValue=true \
     ParameterKey=NullifyKMSKeyArn,UsePreviousValue=true \
   --capabilities CAPABILITY_NAMED_IAM
 ```
+
+Once the stack has the correct prefix, preserve it on later updates with
+`ParameterKey=CollectorUploadPrefix,UsePreviousValue=true`. If EKS integration
+is disabled and you are leaving it disabled, omit the prefix line.
 
 `UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
@@ -220,7 +227,7 @@ With `EnableEKSIntegration=true` and `NullifyS3AccessPointArn` set, the S3 acces
     ParameterKey=NullifyS3AccessPointArn,ParameterValue=arn:aws:s3:REGION:NULLIFY-ACCOUNT:accesspoint/NAME \
 ```
 
-On an existing stack, add that line to the `update-stack` command above.
+On an existing stack, add that line to the `update-stack` command above. If the stack already has the correct access point ARN, use `ParameterKey=NullifyS3AccessPointArn,UsePreviousValue=true`.
 
 ### Stack outputs
 

@@ -1,10 +1,10 @@
 output "application_client_id" {
-  description = "Paste this into the Nullify console under Settings -> Cloud Integrations -> Azure -> Client ID."
+  description = "Paste this into the Nullify console under Settings -> Connectors -> Azure -> Client ID."
   value       = module.nullify_azure_integration.application_client_id
 }
 
 output "entra_tenant_id" {
-  description = "Paste this into the Nullify console under Settings -> Cloud Integrations -> Azure -> Directory (Tenant) ID."
+  description = "Paste this into the Nullify console under Settings -> Connectors -> Azure -> Tenant ID."
   value       = module.nullify_azure_integration.entra_tenant_id
 }
 
@@ -20,11 +20,12 @@ output "next_steps" {
     Nullify Azure integration provisioned successfully.
 
     Next steps:
-      1. Open the Nullify console -> Settings -> Cloud Integrations -> Azure.
-      2. Paste the entra_tenant_id output above into "Directory (Tenant) ID".
+      1. Open the Nullify console -> Settings -> Connectors -> Azure.
+      2. Paste the entra_tenant_id output above into "Tenant ID".
       3. Paste the application_client_id output above into "Client ID".
       4. Ensure the auth mode is "Workload Identity Federation".
-      5. Click "Verify", then "Save".
+      5. In Subscriptions, select Add subscription. Enter and enable at least one subscription covered by the Terraform grant, including for management-group scope.
+      6. Select "Save changes", then "Validate".
 
     Access is read-only (built-in Reader role) with no client secret. To revoke
     at any time, run `terraform destroy` from this directory.

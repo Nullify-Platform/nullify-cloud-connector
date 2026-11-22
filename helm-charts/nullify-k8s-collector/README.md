@@ -20,21 +20,21 @@ The same chart runs on **EKS** and **GKE**. Select the platform via `cloudProvid
 | `cloudProvider` | Cluster  | How the collector authenticates to AWS              |
 | --------------- | -------- | --------------------------------------------------- |
 | `aws` (default) | EKS      | IRSA — ServiceAccount → AWS IAM role                |
-| `gcp`           | GKE      | Workload Identity → `sts:AssumeRoleWithWebIdentity` |
+| `gcp`           | GKE      | Cluster-issued service-account token → `sts:AssumeRoleWithWebIdentity` |
 
 In both cases the collector uploads cluster metadata to the same Nullify-managed
 S3 bucket. No long-lived AWS credential is stored in the customer cluster.
 
 ## Installation
 
-Chart 0.6.0 uses collector 4 and requires the exact `collectorUploadPrefix` from a compatible Nullify backend. Confirm the paired IAM/backend rollout before installing or upgrading. The standard Kubernetes panel on older deployments does not supply this value; contact Nullify instead of deriving a prefix. For an existing 3.x backend, use a complete compatible version set confirmed by Nullify, including chart 0.5.0 and its matching IAM policy. See the [cutover and rollback requirements](../../README.md#collector-4-source-prefix-cutover).
+Chart 0.6.1 uses collector 4 and requires the exact `collectorUploadPrefix` from a compatible Nullify backend. Confirm the paired IAM/backend rollout before installing or upgrading. The standard Kubernetes panel on older deployments does not supply this value; contact Nullify instead of deriving a prefix. For an existing 3.x backend, use a complete compatible version set confirmed by Nullify, including chart 0.5.0 and its matching IAM policy. See the [cutover and rollback requirements](../../README.md#collector-4-source-prefix-cutover).
 
 The chart does not create its namespace. Let Helm create it:
 
 ```bash
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
-helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.0 \
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.1 \
   --namespace nullify --create-namespace \
   -f values-production.yaml
 ```
@@ -168,7 +168,7 @@ collector:
 Then install:
 
 ```bash
-helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.0 \
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.1 \
   --namespace nullify --create-namespace -f values-gke.yaml
 ```
 
@@ -238,9 +238,9 @@ To enable debug logging for troubleshooting:
        enabled: true
    ```
 
-2. **Upgrade the deployment** with the same chart version and complete values used for installation. The command below is for a collector 4 deployment that has completed the cutover:
+2. **Upgrade the deployment** with the same chart version and complete values used for installation. This example uses chart 0.6.1. Substitute the installed version if it differs.
    ```bash
-   helm upgrade nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.0 -n nullify -f values.yaml
+   helm upgrade nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.1 -n nullify -f values.yaml
    ```
 
 3. **Check debug logs**:

@@ -1,5 +1,4 @@
 import functools
-import hashlib
 import http.server
 import importlib.util
 import json
@@ -28,9 +27,8 @@ class PublicationTests(unittest.TestCase):
         (chart / "Chart.yaml").write_text("apiVersion: v2\nname: example\nversion: 1.0.0\n")
         subprocess.run(["helm", "package", str(chart), "--destination", str(self.root)], check=True, capture_output=True)
         self.package = self.root / "example-1.0.0.tgz"
-        digest = hashlib.sha256(self.package.read_bytes()).hexdigest()
-        self.expected = {"entries": {"example": [{"version": "1.0.0", "digest": digest, "urls": [self.package.name]}]}}
-        self.write_index(self.expected)
+        subprocess.run(["helm", "repo", "index", str(self.root)], check=True, capture_output=True)
+        self.expected = verify_public.yaml_data((self.root / "index.yaml").read_bytes())
         handler = functools.partial(QuietHandler, directory=str(self.root))
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -49,8 +47,15 @@ class PublicationTests(unittest.TestCase):
     def test_public_consumer_can_download_and_read_verified_chart(self):
         self.assertEqual(verify_public.verify(self.expected, self.url), 1)
 
+    def test_index_without_api_version_is_rejected_by_helm(self):
+        changed = json.loads(json.dumps(self.expected))
+        del changed["apiVersion"]
+        self.write_index(changed)
+        with self.assertRaisesRegex(ValueError, "no API version specified"):
+            verify_public.verify(self.expected, self.url)
+
     def test_missing_version_fails(self):
-        self.write_index({"entries": {}})
+        self.write_index({"apiVersion": "v1", "entries": {}})
         with self.assertRaisesRegex(ValueError, "public index does not match"):
             verify_public.verify(self.expected, self.url)
 

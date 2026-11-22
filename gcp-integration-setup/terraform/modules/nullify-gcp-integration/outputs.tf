@@ -25,7 +25,7 @@ output "scope" {
 
 output "next_steps" {
   description = "Human-readable next steps. Surfaces in the apply output so customers don't have to dig through the Nullify docs."
-  value       = "Paste the service_account_email and workload_identity_provider outputs into Settings -> Connectors -> GCP. Set the matching project, folder or organization scope, save the connection, then select Validate and check the first collected inventory."
+  value       = "In Settings -> Connectors -> GCP, paste service_account_email into Service account email and workload_identity_provider into Workload identity provider. Set the matching project, folder or organization scope. Select Save changes, then Validate. Confirm fresh inventory separately."
 }
 
 output "managed_scan_quota_apis" {

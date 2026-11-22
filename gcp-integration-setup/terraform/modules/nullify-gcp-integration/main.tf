@@ -64,9 +64,6 @@ locals {
     # Organisation-wide asset enumeration. Cheapest way to read everything.
     "roles/cloudasset.viewer",
 
-    # Read all IAM bindings, custom roles, deny policies, recommendations.
-    "roles/iam.securityReviewer",
-
     # Compute (VPC, instances, firewalls, load balancers, routes, NAT, peering).
     "roles/compute.viewer",
 
@@ -114,6 +111,16 @@ locals {
   custom_role_id = local.use_org_custom_role ? google_organization_iam_custom_role.nullify_cloud_connector[0].id : google_project_iam_custom_role.nullify_cloud_connector[0].id
 
   custom_role_permissions_common = [
+    "iam.serviceAccounts.list",
+    "iam.serviceAccountKeys.list",
+    "iam.roles.get",
+    "iam.roles.list",
+    "iam.workloadIdentityPools.list",
+    "iam.workloadIdentityPoolProviders.list",
+    "resourcemanager.projects.getIamPolicy",
+    "orgpolicy.policies.list",
+
+    # Cloud Logging configuration.
     "logging.sinks.list",
     "logging.logMetrics.list",
     "logging.buckets.list",
@@ -141,6 +148,8 @@ locals {
     # Artifact Registry repositories (metadata only — no image content).
     "artifactregistry.repositories.get",
     "artifactregistry.repositories.list",
+    "artifactregistry.repositories.getIamPolicy",
+    "artifactregistry.dockerimages.list",
 
     # Cloud DNS managed zones + record sets.
     "dns.managedZones.get",
@@ -165,6 +174,7 @@ locals {
     # config (no secretmanager.versions.access — payloads are never read).
     "secretmanager.secrets.get",
     "secretmanager.secrets.list",
+    "secretmanager.secrets.getIamPolicy",
 
     # BigQuery dataset/table/routine schema + IAM. No bigquery.tables.getData
     # (row data) and no bigquery.jobs.create (no query execution / billing).
@@ -172,6 +182,7 @@ locals {
     # roles/bigquery.dataViewer would also grant row reads — we want only
     # the IAM-policy surface, never table data.
     "bigquery.datasets.get",
+    "bigquery.datasets.getIamPolicy",
     "bigquery.tables.get",
     "bigquery.tables.list",
     "bigquery.tables.getIamPolicy",
@@ -212,11 +223,9 @@ locals {
     "securitycenter.sources.get",
     "securitycenter.sources.list",
 
-    # Pub/Sub topic-level IAM. The predefined roles/pubsub.viewer role
-    # already grants topic/subscription metadata listing; this adds the
-    # IAM-policy surface so CSPM can detect topics bound to allUsers /
-    # allAuthenticatedUsers. No pubsub.topics.publish or subscriptions.consume.
+    # IAM policies for Pub/Sub topics and subscriptions.
     "pubsub.topics.getIamPolicy",
+    "pubsub.subscriptions.getIamPolicy",
   ]
 
   # Read-only hierarchy-browse role granted only for org/folder installs so
@@ -225,19 +234,12 @@ locals {
   # the customer enumerates projects explicitly, so discovery is unnecessary.
   discovery_roles = ["roles/browser"]
 
-  # Permissions only includable in an org-scoped custom role. GCP rejects
-  # these in a project-scoped custom role with "Permission ... is not valid"
-  # because the underlying resources (VPC SC access policies / perimeters,
-  # org policies) live at organisation scope.
   custom_role_permissions_org_only = [
-    # VPC Service Controls perimeters. accessPolicies.* is not grantable in a
-    # custom role (use the predefined roles/accesscontextmanager.policyReader
-    # for access-policy enumeration if needed).
+    "accesscontextmanager.policies.list",
     "accesscontextmanager.servicePerimeters.get",
     "accesscontextmanager.servicePerimeters.list",
 
     # Organisation policies.
-    "orgpolicy.policies.list",
     "orgpolicy.policy.get",
   ]
 }

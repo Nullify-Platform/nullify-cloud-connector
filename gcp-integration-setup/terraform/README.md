@@ -33,9 +33,9 @@ secrets.
 
 - No Cloud Storage object reads, Secret Manager secret payload reads or
   BigQuery table-row reads through the custom role. The custom
-  logging metadata list permissions replace the older `roles/logging.viewer`
-  grant. Existing installations must apply the updated module and confirm
-  that the old grant is removed. See the full
+  logging metadata list permissions and explicit IAM reads replace the older
+  `roles/logging.viewer` and `roles/iam.securityReviewer` grants. Existing installations
+  must apply the updated module and confirm that both old grants are removed. See the full
   [permissions guide](../docs/permissions.md) for the granted roles.
 - No write permissions. Nullify cannot modify your environment.
 - No long-lived secrets. Revoke at any time with `terraform destroy`.
@@ -155,8 +155,9 @@ terraform apply
 ```
 
 After `apply`, copy the `service_account_email` and `workload_identity_provider`
-outputs into the Nullify console under Settings -> Cloud Integrations -> GCP
-and click "Verify".
+outputs into the Nullify console under Settings -> Connectors -> GCP. Set the
+matching project, folder or organization scope, select **Save changes**, then
+**Validate**. Confirm fresh inventory separately.
 
 ## Required inputs
 
@@ -197,7 +198,7 @@ resources in your project).
 | `Error 403: Permission 'iam.workloadIdentityPools.create' denied` | The installer is missing `roles/iam.workloadIdentityPoolAdmin` on the host project. |
 | `Error: Constraint constraints/iam.workloadIdentityPoolProviders violated` | Your org policy restricts which OIDC issuers are accepted by WIF. Ask your security team to add `nullify_oidc_issuer_uri` to the allowlist. |
 | `Error 403: serviceusage.services.use` | The host project doesn't allow the required APIs to be enabled. Have an org admin enable them ahead of `terraform apply` (see *Prerequisites > APIs*). |
-| Verify in Nullify console returns red with `oauth2/google: status code 401: ... invalid token` | `nullify_oidc_issuer_uri` doesn't match the URL Nullify's issuer actually signs with. Re-copy from the console — `https://gcp.nullify.ai` for prod, `https://gcp.dev.nullify.ai` for dev. |
-| Verify returns red with `permission denied: assertion.tenant_id == "..."` from STS | Your `nullify_tenant_id` doesn't match your actual Nullify tenant id. Re-paste from the console. |
-| Verify returns red per project with `PERMISSION_DENIED` | The Nullify SA is missing `roles/iam.serviceAccountTokenCreator` (the WIF binding) or the predefined viewer roles on the project. Re-run `terraform apply`. |
+| Validate in Nullify console returns red with `oauth2/google: status code 401: ... invalid token` | `nullify_oidc_issuer_uri` doesn't match the URL Nullify's issuer actually signs with. Re-copy from the console — `https://gcp.nullify.ai` for prod, `https://gcp.dev.nullify.ai` for dev. |
+| Validate returns red with `permission denied: assertion.tenant_id == "..."` from STS | Your `nullify_tenant_id` doesn't match your actual Nullify tenant id. Re-paste from the console. |
+| Validate returns red per project with `PERMISSION_DENIED` | Check the tenant's `roles/iam.workloadIdentityUser` binding on the connector service account and the connector's IAM grants for the configured scope. |
 | `Error: ... iam.disableServiceAccountCreation` | An org policy blocks SA creation in this project. Either drop the org policy on the host project, or have an org admin pre-create the SA and contact Nullify support to wire it up. |

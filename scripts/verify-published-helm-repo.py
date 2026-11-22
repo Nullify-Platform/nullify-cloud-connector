@@ -28,9 +28,19 @@ def verify(expected, repository_url, expected_metadata=None):
         metadata = yaml_data(fetch(base + "artifacthub-repo.yml"))
         if metadata != expected_metadata:
             raise ValueError("public repository ownership metadata does not match")
-    public = yaml_data(fetch(base + "index.yaml"))
     checked = 0
     with tempfile.TemporaryDirectory(prefix="nullify-public-helm-") as temporary:
+        cache = Path(temporary) / "repository-cache"
+        cache.mkdir()
+        result = subprocess.run(
+            ["helm", "repo", "add", "nullify-verification", base,
+             "--repository-config", str(Path(temporary) / "repositories.yaml"),
+             "--repository-cache", str(cache), "--timeout", "30s"],
+            capture_output=True, text=True,
+        )
+        if result.returncode:
+            raise ValueError(f"Helm rejected the public repository: {result.stderr.strip()}")
+        public = yaml_data((cache / "nullify-verification-index.yaml").read_bytes())
         for name, versions in expected["entries"].items():
             actual_versions = {entry["version"]: entry for entry in public.get("entries", {}).get(name, [])}
             for entry in versions:
@@ -59,7 +69,7 @@ def verify(expected, repository_url, expected_metadata=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Verify public chart index, immutable digests and downloaded package metadata.")
+    parser = argparse.ArgumentParser(description="Load the public index with Helm and verify immutable digests and chart metadata.")
     parser.add_argument("--expected-index", type=Path, required=True)
     parser.add_argument("--expected-repository-metadata", type=Path)
     parser.add_argument("--url", default="https://nullify-platform.github.io/nullify-cloud-connector/")
