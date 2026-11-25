@@ -46,6 +46,7 @@ Entry = tuple
 # so a scoped grant like ssm:GetDocument on SSM-SessionManagerRunShell
 # compares equal instead of leaving an unhashable Fn::Sub dict in the set.
 _PARTITION_TOKEN = "${partition}"
+_ACCOUNT_TOKEN = "${account_id}"
 _CFN_PARTITION = re.compile(r"\$\{AWS::Partition\}")
 _TF_PARTITION = re.compile(r"\$\{data\.aws_partition\.current\.partition\}")
 _CFN_ACCOUNT = re.compile(r"\$\{AWS::AccountId\}")
@@ -57,7 +58,7 @@ _TF_LOCAL = re.compile(r"\$\{local\.([A-Za-z_][A-Za-z0-9_]*)\}")
 
 def _norm_cfn_string(value: str) -> str:
     value = _CFN_PARTITION.sub(_PARTITION_TOKEN, value)
-    value = _CFN_ACCOUNT.sub("${account_id}", value)
+    value = _CFN_ACCOUNT.sub(_ACCOUNT_TOKEN, value)
     return _CFN_CUSTOMER.sub("${customer_name}", value)
 
 
@@ -89,7 +90,7 @@ def _norm_tf_value(value: str, local_strings=None) -> str:
 
     value = expand(value, set())
     value = _TF_PARTITION.sub(_PARTITION_TOKEN, value)
-    value = _TF_ACCOUNT.sub("${account_id}", value)
+    value = _TF_ACCOUNT.sub(_ACCOUNT_TOKEN, value)
     return _TF_CUSTOMER.sub("${customer_name}", value)
 
 
@@ -251,15 +252,35 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     return entries
 
 
-def grants_cloud_configuration_read(readonly: set, denied: set) -> bool:
-    action = "lambda:GetFunctionConfiguration"
-    required = ("Allow", "action", action, ("resources", ("*",)), ())
+_CFN_ROLE_PROPERTIES = json.loads(CFN_TEMPLATE.read_text())["Resources"]["IAMViewOnlyRole"]["Properties"]
+_CFN_ROLE_NAME = _norm_cfn_value(_CFN_ROLE_PROPERTIES["RoleName"])
+
+REQUIRED_GRANTS = (
+    ("lambda:GetFunctionConfiguration", "*"),
+    ("iam:SimulatePrincipalPolicy", f"arn:{_PARTITION_TOKEN}:iam::{_ACCOUNT_TOKEN}:role/{_CFN_ROLE_NAME}"),
+)
+
+
+def _covers(key: str, pattern: str, action: str) -> bool:
+    return key == "not_action" or fnmatch.fnmatchcase(action.lower(), pattern.lower())
+
+
+def grants(readonly: set, denied: set, action: str, resource: str) -> bool:
+    """Report whether readonly allows action on exactly resource and nothing
+    denies it. A grant scoped to one resource must also be the only allow of
+    the action, so a broader grant next to it does not pass."""
+    required = ("Allow", "action", action, ("resources", (resource,)), ())
     if required not in readonly:
         return False
-    return not any(
-        effect == "Deny" and (key == "not_action" or fnmatch.fnmatchcase(action.lower(), pattern.lower()))
-        for effect, key, pattern, _, _ in denied
-    )
+    if resource != "*" and any(
+        entry != required and entry[0] == "Allow" and _covers(entry[1], entry[2], action) for entry in readonly
+    ):
+        return False
+    return not any(effect == "Deny" and _covers(key, pattern, action) for effect, key, pattern, _, _ in denied)
+
+
+def missing_grants(readonly: set, denied: set) -> list:
+    return [action for action, resource in REQUIRED_GRANTS if not grants(readonly, denied, action, resource)]
 
 
 def compare(label: str, cfn: set, terraform: set, reference: str = "CloudFormation") -> bool:
@@ -329,16 +350,18 @@ def main() -> int:
     cfn_readonly = cfn_entries(READONLY_RESOURCES)
     cfn_deny = cfn_entries(DENY_RESOURCES)
 
-    ok = grants_cloud_configuration_read(cfn_readonly, cfn_deny)
-    if not ok:
-        print("MISSING: exact Lambda configuration-read grant in CloudFormation")
+    missing = missing_grants(cfn_readonly, cfn_deny)
+    ok = not missing
+    if missing:
+        print(f"MISSING: exact grants in CloudFormation: {missing}")
     for tree in TERRAFORM_TREES:
         data_tf = REPO_ROOT / tree / DATA_TF_RELATIVE
         tf_readonly = terraform_entries(data_tf, READONLY_SOURCES)
         tf_deny = terraform_entries(data_tf, [DENY_SOURCE])
 
-        if not grants_cloud_configuration_read(tf_readonly, tf_deny):
-            print(f"MISSING: exact Lambda configuration-read grant in {tree}")
+        missing = missing_grants(tf_readonly, tf_deny)
+        if missing:
+            print(f"MISSING: exact grants in {tree}: {missing}")
             ok = False
         ok = compare(f"Allow statements: CloudFormation vs {tree}", cfn_readonly, tf_readonly) and ok
         ok = compare(f"Deny statements: CloudFormation vs {tree}", cfn_deny, tf_deny) and ok

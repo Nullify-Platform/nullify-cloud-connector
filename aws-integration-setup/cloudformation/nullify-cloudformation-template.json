@@ -659,20 +659,22 @@
                 "Condition": {}
               },
               {
-                "Sid": "SimulateConnectorPolicy",
-                "Effect": "Allow",
-                "Action": ["iam:SimulatePrincipalPolicy"],
-                "Resource": {
-                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
-                }
-              },
-              {
                 "Effect": "Allow",
                 "Action": [
                   "ssm:GetDocument"
                 ],
                 "Resource": {
                   "Fn::Sub": "arn:${AWS::Partition}:ssm:*:*:document/SSM-SessionManagerRunShell"
+                },
+                "Condition": {}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "iam:SimulatePrincipalPolicy"
+                ],
+                "Resource": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
                 },
                 "Condition": {}
               }

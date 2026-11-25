@@ -3,7 +3,6 @@
 import fnmatch
 import json
 import re
-import runpy
 import shutil
 import subprocess
 import tempfile
@@ -42,22 +41,20 @@ def render(value, parameters, conditions):
 
 class ConnectorPolicyProbeScope(unittest.TestCase):
     def test_drift_parser_does_not_use_a_nested_role_name(self):
-        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
         module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
-        expected = drift["cfn_entries"](drift["READONLY_RESOURCES"])
+        expected = policy_drift.cfn_entries(policy_drift.READONLY_RESOURCES)
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
             shutil.copy(module / "data.tf", target / "data.tf")
             locals_text = (module / "locals.tf").read_text()
             (target / "locals.tf").write_text(locals_text)
-            self.assertEqual(expected, drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"]))
+            self.assertEqual(expected, policy_drift.terraform_entries(target / "data.tf", policy_drift.READONLY_SOURCES))
             wrong = re.sub(r'(?m)^(\s*role_name\s*=\s*).*$', r'\1"wrong-role"', locals_text)
             wrong = wrong.rsplit("}", 1)[0] + '\n harmless_metadata = {\n role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n }\n}\n'
             (target / "locals.tf").write_text(wrong)
-            self.assertNotEqual(expected, drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"]))
+            self.assertNotEqual(expected, policy_drift.terraform_entries(target / "data.tf", policy_drift.READONLY_SOURCES))
 
     def test_drift_parser_refuses_unsupported_role_expressions(self):
-        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
         prefix = 'role_name_prefix = "AWSIntegration-${var.customer_name}"\n'
         role = 'role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n'
         cases = {
@@ -74,17 +71,17 @@ class ConnectorPolicyProbeScope(unittest.TestCase):
                 with self.subTest(name=name):
                     (target / "locals.tf").write_text(source)
                     with self.assertRaises(SystemExit):
-                        drift["terraform_entries"](target / "data.tf", drift["READONLY_SOURCES"])
+                        policy_drift.terraform_entries(target / "data.tf", policy_drift.READONLY_SOURCES)
 
     def test_drift_normalization_preserves_role_and_account_boundaries(self):
-        drift = runpy.run_path(str(ROOT / "scripts/check_iam_policy_drift.py"))
-        cfn = drift["_norm_cfn_value"]({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"})
+        cfn = policy_drift._norm_cfn_value({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"})
         resource = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"
         locals_ = {"role_name": "${local.role_name_prefix}-NullifyReadOnlyRole", "role_name_prefix": "AWSIntegration-${var.customer_name}"}
-        normalize = drift["_norm_tf_value"]
+        normalize = policy_drift._norm_tf_value
         self.assertEqual(cfn, normalize(resource, locals_))
         self.assertNotEqual(cfn, normalize(resource, {**locals_, "role_name": "another-role"}))
         self.assertNotEqual(cfn, normalize(resource.replace("${data.aws_caller_identity.current.account_id}", "999999999999"), locals_))
+        self.assertNotEqual(cfn, normalize(resource.replace("${data.aws_partition.current.partition}", "aws"), locals_))
         with self.assertRaises(SystemExit):
             normalize(resource, {"role_name": "${local.role_name}"})
 
@@ -102,44 +99,44 @@ class ConnectorPolicyProbeScope(unittest.TestCase):
             for foreign in (own.replace("acme", "other"), own.replace("123456789012", "999999999999")):
                 self.assertFalse(fnmatch.fnmatchcase(foreign, grant["Resource"]))
 
-    def test_terraform_keeps_the_same_self_scope(self):
-        for version in ("terraform", "terraform-v6"):
-            source = (ROOT / f"aws-integration-setup/{version}/modules/nullify-aws-integration/data.tf").read_text()
-            statements = re.findall(r"statement \{(.*?)\n  \}", source, re.S)
-            grants = [item for item in statements if '"iam:SimulatePrincipalPolicy"' in item]
-            self.assertEqual(len(grants), 1)
-            self.assertIn('resources = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"]', grants[0])
-            self.assertIn('actions   = ["iam:SimulatePrincipalPolicy"]', grants[0])
 
+class RequiredGrants(unittest.TestCase):
+    ROLE = "arn:${partition}:iam::${account_id}:role/AWSIntegration-${customer_name}-NullifyReadOnlyRole"
 
-class CloudConfigurationReadPermissions(unittest.TestCase):
     def policy_sources(self):
         yield "CloudFormation", policy_drift.cfn_entries(policy_drift.READONLY_RESOURCES), policy_drift.cfn_entries(policy_drift.DENY_RESOURCES)
         for tree in policy_drift.TERRAFORM_TREES:
             source = ROOT / tree / policy_drift.DATA_TF_RELATIVE
             yield tree, policy_drift.terraform_entries(source, policy_drift.READONLY_SOURCES), policy_drift.terraform_entries(source, [policy_drift.DENY_SOURCE])
 
-    def test_actual_templates_grant_configuration_reads(self):
+    def test_actual_templates_have_every_required_grant(self):
         for source, allowed, denied in self.policy_sources():
             with self.subTest(source=source):
-                self.assertTrue(policy_drift.grants_cloud_configuration_read(allowed, denied))
+                self.assertEqual(policy_drift.missing_grants(allowed, denied), [])
 
     def test_missing_broad_scoped_or_denied_grants_do_not_pass(self):
-        required = ("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())
+        lambda_read = ("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())
+        self_simulate = ("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", (self.ROLE,)), ())
         for source, allowed, denied in self.policy_sources():
-            self.assertIn(required, allowed)
-            without = allowed - {required}
-            cases = {
-                "missing": without,
-                "wildcard": without | {("Allow", "action", "lambda:Get*", ("resources", ("*",)), ())},
-                "scoped": without | {("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("arn:aws:lambda:us-east-1:123456789012:function:one",)), ())},
-                "wrong effect": without | {("Deny", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())},
-            }
-            for case, changed in cases.items():
+            self.assertIn(lambda_read, allowed)
+            self.assertIn(self_simulate, allowed)
+            for case, removed, added, extra_deny, want in (
+                ("lambda read missing", lambda_read, set(), set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read as a wildcard", lambda_read, {("Allow", "action", "lambda:Get*", ("resources", ("*",)), ())}, set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read scoped", lambda_read, {("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("arn:aws:lambda:us-east-1:123456789012:function:one",)), ())}, set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read with the wrong effect", lambda_read, {("Deny", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())}, set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read explicitly denied", None, set(), {("Deny", "action", "lambda:*", ("resources", ("*",)), ())}, ["lambda:GetFunctionConfiguration"]),
+                ("self simulation missing", self_simulate, set(), set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation on every principal", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation on another role", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("arn:${partition}:iam::${account_id}:role/other",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation as a wildcard", self_simulate, {("Allow", "action", "iam:Simulate*", ("resources", (self.ROLE,)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation explicitly denied", None, set(), {("Deny", "action", "iam:Simulate*", ("resources", ("*",)), ())}, ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to an every-principal grant", None, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to a wildcard grant", None, {("Allow", "action", "iam:*", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to a NotAction grant", None, {("Allow", "not_action", "s3:*", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+            ):
                 with self.subTest(source=source, case=case):
-                    self.assertFalse(policy_drift.grants_cloud_configuration_read(changed, denied))
-            with self.subTest(source=source, case="explicit deny"):
-                self.assertFalse(policy_drift.grants_cloud_configuration_read(allowed, denied | {("Deny", "action", "lambda:*", ("resources", ("*",)), ())}))
+                    self.assertEqual(policy_drift.missing_grants((allowed - {removed}) | added, denied | extra_deny), want)
 
 
 class CollectorUploadScope(unittest.TestCase):
