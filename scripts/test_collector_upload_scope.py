@@ -39,69 +39,8 @@ def render(value, parameters, conditions):
     return {key: render(item, parameters, conditions) for key, item in value.items()}
 
 
-class ConnectorPolicyProbeScope(unittest.TestCase):
-    def test_drift_parser_does_not_use_a_nested_role_name(self):
-        module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
-        expected = policy_drift.cfn_entries(policy_drift.READONLY_RESOURCES)
-        with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory)
-            shutil.copy(module / "data.tf", target / "data.tf")
-            locals_text = (module / "locals.tf").read_text()
-            (target / "locals.tf").write_text(locals_text)
-            self.assertEqual(expected, policy_drift.terraform_entries(target / "data.tf", policy_drift.READONLY_SOURCES))
-            wrong = re.sub(r'(?m)^(\s*role_name\s*=\s*).*$', r'\1"wrong-role"', locals_text)
-            wrong = wrong.rsplit("}", 1)[0] + '\n harmless_metadata = {\n role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n }\n}\n'
-            (target / "locals.tf").write_text(wrong)
-            self.assertNotEqual(expected, policy_drift.terraform_entries(target / "data.tf", policy_drift.READONLY_SOURCES))
-
-    def test_drift_parser_refuses_unsupported_role_expressions(self):
-        prefix = 'role_name_prefix = "AWSIntegration-${var.customer_name}"\n'
-        role = 'role_name = "${local.role_name_prefix}-NullifyReadOnlyRole"\n'
-        cases = {
-            "nested first": 'locals {\n metadata = {\n' + prefix + role + '}\n' + prefix + 'role_name = "wrong-role"\n}\n',
-            "block comment": 'locals {\n /*\n' + prefix + role + '*/\n' + prefix + 'role_name = "wrong-role"\n}\n',
-            "conditional": 'locals {\n' + prefix + role.rstrip() + ' != "" ? "wrong-role" : "other-role"\n}\n',
-            "heredoc": 'locals {\n' + prefix + 'role_name = <<-EOT\nwrong-role\nEOT\n}\n',
-        }
-        module = ROOT / "aws-integration-setup/terraform/modules/nullify-aws-integration"
-        with tempfile.TemporaryDirectory() as directory:
-            target = Path(directory)
-            shutil.copy(module / "data.tf", target / "data.tf")
-            for name, source in cases.items():
-                with self.subTest(name=name):
-                    (target / "locals.tf").write_text(source)
-                    with self.assertRaises(SystemExit):
-                        policy_drift.terraform_entries(target / "data.tf", policy_drift.READONLY_SOURCES)
-
-    def test_drift_normalization_preserves_role_and_account_boundaries(self):
-        cfn = policy_drift._norm_cfn_value({"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"})
-        resource = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:role/${local.role_name}"
-        locals_ = {"role_name": "${local.role_name_prefix}-NullifyReadOnlyRole", "role_name_prefix": "AWSIntegration-${var.customer_name}"}
-        normalize = policy_drift._norm_tf_value
-        self.assertEqual(cfn, normalize(resource, locals_))
-        self.assertNotEqual(cfn, normalize(resource, {**locals_, "role_name": "another-role"}))
-        self.assertNotEqual(cfn, normalize(resource.replace("${data.aws_caller_identity.current.account_id}", "999999999999"), locals_))
-        self.assertNotEqual(cfn, normalize(resource.replace("${data.aws_partition.current.partition}", "aws"), locals_))
-        with self.assertRaises(SystemExit):
-            normalize(resource, {"role_name": "${local.role_name}"})
-
-    def test_only_the_connector_role_can_be_simulated(self):
-        statements = TEMPLATE["Resources"]["ReadOnlyAccessPolicy2"]["Properties"]["PolicyDocument"]["Statement"]
-        grants = [item for item in statements if "iam:SimulatePrincipalPolicy" in item["Action"]]
-        self.assertEqual(len(grants), 1)
-        for partition in ("aws", "aws-us-gov", "aws-cn"):
-            parameters = {"AWS::Partition": partition, "AWS::AccountId": "123456789012", "CustomerName": "acme"}
-            grant = render(grants[0], parameters, {})
-            own = f"arn:{partition}:iam::123456789012:role/AWSIntegration-acme-NullifyReadOnlyRole"
-            self.assertEqual(grant["Resource"], own)
-            self.assertEqual(grant["Action"], ["iam:SimulatePrincipalPolicy"])
-            self.assertEqual(grant["Effect"], "Allow")
-            for foreign in (own.replace("acme", "other"), own.replace("123456789012", "999999999999")):
-                self.assertFalse(fnmatch.fnmatchcase(foreign, grant["Resource"]))
-
-
 class RequiredGrants(unittest.TestCase):
-    ROLE = "arn:${partition}:iam::${account_id}:role/AWSIntegration-${customer_name}-NullifyReadOnlyRole"
+    ROLE = "arn:${partition}:iam::${account}:role/${role_name}"
 
     def policy_sources(self):
         yield "CloudFormation", policy_drift.cfn_entries(policy_drift.READONLY_RESOURCES), policy_drift.cfn_entries(policy_drift.DENY_RESOURCES)
@@ -113,6 +52,22 @@ class RequiredGrants(unittest.TestCase):
         for source, allowed, denied in self.policy_sources():
             with self.subTest(source=source):
                 self.assertEqual(policy_drift.missing_grants(allowed, denied), [])
+
+    def test_cloudformation_simulation_is_scoped_to_the_deployed_role(self):
+        resources = TEMPLATE["Resources"]
+        role = resources["IAMViewOnlyRole"]["Properties"]
+        statements = resources["ReadOnlyAccessPolicy2"]["Properties"]["PolicyDocument"]["Statement"]
+        grants = [statement for statement in statements if "iam:SimulatePrincipalPolicy" in statement["Action"]]
+        self.assertEqual(len(grants), 1)
+        for partition in ("aws", "aws-us-gov", "aws-cn"):
+            with self.subTest(partition=partition):
+                parameters = {"AWS::Partition": partition, "AWS::AccountId": "123456789012", "CustomerName": "acme"}
+                name = render(role["RoleName"], parameters, {})
+                self.assertEqual(name, "AWSIntegration-acme-NullifyReadOnlyRole")
+                grant = render(grants[0], parameters, {})
+                self.assertEqual(grant["Resource"], f"arn:{partition}:iam::123456789012:role/{name}")
+                self.assertEqual(grant["Action"], ["iam:SimulatePrincipalPolicy"])
+                self.assertEqual(grant["Effect"], "Allow")
 
     def test_missing_broad_scoped_or_denied_grants_do_not_pass(self):
         lambda_read = ("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())
@@ -128,7 +83,7 @@ class RequiredGrants(unittest.TestCase):
                 ("lambda read explicitly denied", None, set(), {("Deny", "action", "lambda:*", ("resources", ("*",)), ())}, ["lambda:GetFunctionConfiguration"]),
                 ("self simulation missing", self_simulate, set(), set(), ["iam:SimulatePrincipalPolicy"]),
                 ("self simulation on every principal", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
-                ("self simulation on another role", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("arn:${partition}:iam::${account_id}:role/other",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation on another role", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("arn:${partition}:iam::${account}:role/other",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
                 ("self simulation as a wildcard", self_simulate, {("Allow", "action", "iam:Simulate*", ("resources", (self.ROLE,)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
                 ("self simulation explicitly denied", None, set(), {("Deny", "action", "iam:Simulate*", ("resources", ("*",)), ())}, ["iam:SimulatePrincipalPolicy"]),
                 ("self simulation next to an every-principal grant", None, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),

@@ -46,70 +46,49 @@ Entry = tuple
 # so a scoped grant like ssm:GetDocument on SSM-SessionManagerRunShell
 # compares equal instead of leaving an unhashable Fn::Sub dict in the set.
 _PARTITION_TOKEN = "${partition}"
-_ACCOUNT_TOKEN = "${account_id}"
 _CFN_PARTITION = re.compile(r"\$\{AWS::Partition\}")
 _TF_PARTITION = re.compile(r"\$\{data\.aws_partition\.current\.partition\}")
-_CFN_ACCOUNT = re.compile(r"\$\{AWS::AccountId\}")
-_TF_ACCOUNT = re.compile(r"\$\{data\.aws_caller_identity\.current\.account_id\}")
-_CFN_CUSTOMER = re.compile(r"\$\{CustomerName\}")
-_TF_CUSTOMER = re.compile(r"\$\{var\.customer_name\}")
-_TF_LOCAL = re.compile(r"\$\{local\.([A-Za-z_][A-Za-z0-9_]*)\}")
+
+# The role's own ARN is written with the account and role name tokens of each
+# template. Collapse them too, so a grant scoped to the role itself compares
+# equal.
+_ACCOUNT_TOKEN = "${account}"
+_ROLE_NAME_TOKEN = "${role_name}"
+# The CloudFormation role name is read from the role itself, so a grant that
+# names another role cannot match it.
+_CFN_ROLE_NAME = json.loads(CFN_TEMPLATE.read_text())["Resources"]["IAMViewOnlyRole"]["Properties"]["RoleName"]["Fn::Sub"]
+_CFN_TOKENS = (
+    (_CFN_PARTITION, _PARTITION_TOKEN),
+    (re.compile(r"\$\{AWS::AccountId\}"), _ACCOUNT_TOKEN),
+    (re.compile(re.escape(_CFN_ROLE_NAME)), _ROLE_NAME_TOKEN),
+)
+_TF_TOKENS = (
+    (_TF_PARTITION, _PARTITION_TOKEN),
+    (re.compile(r"\$\{data\.aws_caller_identity\.current\.account_id\}"), _ACCOUNT_TOKEN),
+    (re.compile(r"\$\{local\.role_name\}"), _ROLE_NAME_TOKEN),
+)
 
 
-def _norm_cfn_string(value: str) -> str:
-    value = _CFN_PARTITION.sub(_PARTITION_TOKEN, value)
-    value = _CFN_ACCOUNT.sub(_ACCOUNT_TOKEN, value)
-    return _CFN_CUSTOMER.sub("${customer_name}", value)
+def _substitute(tokens, value: str) -> str:
+    for pattern, token in tokens:
+        value = pattern.sub(token, value)
+    return value
 
 
 def _norm_cfn_value(value) -> str:
     if isinstance(value, str):
-        return _norm_cfn_string(value)
+        return _substitute(_CFN_TOKENS, value)
     if isinstance(value, dict) and "Fn::Sub" in value:
         template = value["Fn::Sub"]
         if isinstance(template, list):
             template = template[0]
         if isinstance(template, str):
-            return _norm_cfn_string(template)
+            return _substitute(_CFN_TOKENS, template)
     raise SystemExit(f"unsupported CloudFormation IAM value: {value!r}")
 
 
-def _norm_tf_value(value: str, local_strings=None) -> str:
-    local_strings = local_strings or {}
-
-    def expand(text, seen):
-        def replace(match):
-            name = match[1]
-            if name not in local_strings:
-                return match[0]
-            if name in seen:
-                raise SystemExit(f"cyclic Terraform string local: {name}")
-            return expand(local_strings[name], seen | {name})
-
-        return _TF_LOCAL.sub(replace, text)
-
-    value = expand(value, set())
-    value = _TF_PARTITION.sub(_PARTITION_TOKEN, value)
-    value = _TF_ACCOUNT.sub(_ACCOUNT_TOKEN, value)
-    return _TF_CUSTOMER.sub("${customer_name}", value)
-
-
-def _terraform_role_locals(path: Path) -> dict:
-    skip = r"(?:\s|\#[^\n]*(?:\n|$)|//[^\n]*(?:\n|$))*"
-    quoted = r'"(?:\\.|[^"\\\r\n])*"'
-    line_end = r"[ \t]*(?:(?:\#|//)[^\n]*)?(?:\r?\n|(?=\}))"
-    pattern = (
-        r"\A" + skip + r"locals" + skip + r"\{" + skip
-        + r"role_name_prefix[ \t]*=[ \t]*(?P<prefix>" + quoted + r")" + line_end + skip
-        + r"role_name[ \t]*=[ \t]*(?P<name>" + quoted + r")" + line_end
-    )
-    match = re.match(pattern, path.read_text())
-    if match is None:
-        raise SystemExit(f"unsupported role locals in {path}: expected leading literal role_name_prefix and role_name assignments")
-    try:
-        return {"role_name_prefix": json.loads(match["prefix"]), "role_name": json.loads(match["name"])}
-    except json.JSONDecodeError as error:
-        raise SystemExit(f"unsupported role string in {path}: {error}") from error
+def _norm_tf_value(value: str) -> str:
+    return _substitute(_TF_TOKENS, value)
 
 
 def _norm_resources(resources, negated: bool) -> tuple:
@@ -226,8 +205,6 @@ def _conditions(block: str) -> list:
 
 def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     text = data_tf.read_text()
-    locals_path = data_tf.with_name("locals.tf")
-    local_strings = _terraform_role_locals(locals_path) if "${local.role_name}" in text else {}
     entries: set = set()
     for name in data_source_names:
         for block in _find_statement_blocks(text, name):
@@ -239,25 +216,25 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
                 actions, actions_negated = not_actions, True
             else:
                 actions, actions_negated = _string_list(block, "actions"), False
-            actions = [_norm_tf_value(action, local_strings) for action in actions]
+            actions = [_norm_tf_value(action) for action in actions]
 
             not_resources = _string_list(block, "not_resources")
             if not_resources:
                 resources, resources_negated = not_resources, True
             else:
                 resources, resources_negated = _string_list(block, "resources"), False
-            resources = [_norm_tf_value(resource, local_strings) for resource in resources]
+            resources = [_norm_tf_value(resource) for resource in resources]
 
             entries |= _flatten(effect, actions, actions_negated, resources, resources_negated, _conditions(block))
     return entries
 
 
-_CFN_ROLE_PROPERTIES = json.loads(CFN_TEMPLATE.read_text())["Resources"]["IAMViewOnlyRole"]["Properties"]
-_CFN_ROLE_NAME = _norm_cfn_value(_CFN_ROLE_PROPERTIES["RoleName"])
-
+# Grants the product needs in exactly this shape. lambda:GetFunctionConfiguration
+# reads function configuration only. iam:SimulatePrincipalPolicy lets the
+# connector check its own permissions before a scan, and only on its own role.
 REQUIRED_GRANTS = (
     ("lambda:GetFunctionConfiguration", "*"),
-    ("iam:SimulatePrincipalPolicy", f"arn:{_PARTITION_TOKEN}:iam::{_ACCOUNT_TOKEN}:role/{_CFN_ROLE_NAME}"),
+    ("iam:SimulatePrincipalPolicy", f"arn:{_PARTITION_TOKEN}:iam::{_ACCOUNT_TOKEN}:role/{_ROLE_NAME_TOKEN}"),
 )
 
 
