@@ -71,7 +71,7 @@ def verify(expected, repository_url, expected_metadata=None):
                 )
                 if result.returncode:
                     raise ValueError(f"Helm could not pull {name} {version}: {result.stderr.strip()}")
-                path = Path(temporary) / Path(urllib.parse.urlsplit(package_url).path).name
+                path = Path(temporary) / Path(urllib.parse.unquote(urllib.parse.urlsplit(package_url).path)).name
                 contents = path.read_bytes()
                 if hashlib.sha256(contents).hexdigest() != entry["digest"]:
                     raise ValueError(f"public package digest mismatch for {name} {version}")
