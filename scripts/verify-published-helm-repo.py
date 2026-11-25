@@ -62,14 +62,16 @@ def verify(expected, repository_url, expected_metadata=None):
                 expected_urls = {urllib.parse.urljoin(base, url) for url in entry["urls"]}
                 if package_url not in expected_urls or urllib.parse.urlsplit(package_url).scheme not in {"https", "http"}:
                     raise ValueError(f"package URL does not match the expected location for {name} {version}")
-                subprocess.run(
+                result = subprocess.run(
                     ["helm", "pull", f"nullify-verification/{name}", "--version", str(version),
                      "--destination", temporary,
                      "--repository-config", str(Path(temporary) / "repositories.yaml"),
                      "--repository-cache", str(cache)],
-                    check=True, capture_output=True,
+                    capture_output=True, text=True,
                 )
-                path = Path(temporary) / f"{name}-{version}.tgz"
+                if result.returncode:
+                    raise ValueError(f"Helm could not pull {name} {version}: {result.stderr.strip()}")
+                path = Path(temporary) / Path(urllib.parse.urlsplit(package_url).path).name
                 contents = path.read_bytes()
                 if hashlib.sha256(contents).hexdigest() != entry["digest"]:
                     raise ValueError(f"public package digest mismatch for {name} {version}")

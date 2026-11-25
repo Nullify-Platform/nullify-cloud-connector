@@ -61,7 +61,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_package_tampering_fails(self):
         self.package.write_bytes(b"tampered")
-        with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+        with self.assertRaisesRegex(ValueError, "digest mismatch"):
             verify_public.verify(self.expected, self.url)
 
     def test_outside_repository_download_is_refused(self):
@@ -70,6 +70,12 @@ class PublicationTests(unittest.TestCase):
         self.write_index(changed)
         with self.assertRaisesRegex(ValueError, "does not match the expected location"):
             verify_public.verify(self.expected, self.url)
+
+    def test_matching_custom_package_filename_is_supported(self):
+        self.package.rename(self.root / "custom.tgz")
+        self.expected["entries"]["example"][0]["urls"] = ["custom.tgz"]
+        self.write_index(self.expected)
+        self.assertEqual(verify_public.verify(self.expected, self.url), 1)
 
     def test_duplicate_public_version_is_rejected(self):
         changed = json.loads(json.dumps(self.expected))
@@ -87,7 +93,7 @@ class PublicationTests(unittest.TestCase):
         changed = json.loads(json.dumps(self.expected))
         changed["entries"]["example"][0]["name"] = ""
         self.write_index(changed)
-        with self.assertRaises(subprocess.CalledProcessError):
+        with self.assertRaisesRegex(ValueError, "Helm could not pull"):
             verify_public.verify(self.expected, self.url)
 
     def test_empty_expected_index_cannot_pass(self):
