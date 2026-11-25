@@ -61,7 +61,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_package_tampering_fails(self):
         self.package.write_bytes(b"tampered")
-        with self.assertRaisesRegex(ValueError, "digest mismatch"):
+        with self.assertRaises((ValueError, subprocess.CalledProcessError)):
             verify_public.verify(self.expected, self.url)
 
     def test_outside_repository_download_is_refused(self):
@@ -69,6 +69,25 @@ class PublicationTests(unittest.TestCase):
         changed["entries"]["example"][0]["urls"] = ["https://example.com/other.tgz"]
         self.write_index(changed)
         with self.assertRaisesRegex(ValueError, "does not match the expected location"):
+            verify_public.verify(self.expected, self.url)
+
+    def test_duplicate_public_version_is_rejected(self):
+        changed = json.loads(json.dumps(self.expected))
+        changed["entries"]["example"].insert(0, dict(changed["entries"]["example"][0], digest="bad"))
+        self.write_index(changed)
+        with self.assertRaisesRegex(ValueError, "duplicate chart version"):
+            verify_public.verify(self.expected, self.url)
+
+    def test_duplicate_expected_version_is_rejected(self):
+        self.expected["entries"]["example"].append(dict(self.expected["entries"]["example"][0]))
+        with self.assertRaisesRegex(ValueError, "duplicate chart version"):
+            verify_public.verify(self.expected, self.url)
+
+    def test_entry_rejected_by_helm_cannot_pass_raw_index_checks(self):
+        changed = json.loads(json.dumps(self.expected))
+        changed["entries"]["example"][0]["name"] = ""
+        self.write_index(changed)
+        with self.assertRaises(subprocess.CalledProcessError):
             verify_public.verify(self.expected, self.url)
 
     def test_empty_expected_index_cannot_pass(self):

@@ -15,26 +15,7 @@ The Nullify k8s-collector on GKE uses a projected Kubernetes ServiceAccount toke
 
 2. Paste the URL into the Nullify console under **Settings → Connectors → GCP → GKE OIDC issuer URLs**.
 
-3. Nullify returns the **role ARN**. For source chart 0.6.1, obtain the exact `collectorUploadPrefix` and confirm the paired backend rollout first. Copy the bucket, prefix, and KMS key from your deployment settings; the values below are placeholders. Leave the AWS region unset so the chart derives the upload region from the KMS key. Save the following as `values-gke.yaml`, replace every placeholder, then deploy the Helm chart:
-
-   ```yaml
-   cloudProvider: gcp
-
-   collector:
-     clusterName: "my-gke-cluster"
-     s3:
-       bucket: "your-nullify-bucket"
-       keyPrefix: "k8s-collector/YOUR-SOURCE-TENANT-ID/"
-     kms:
-       keyArn: "arn:aws:kms:ap-southeast-2:123456789012:key/11111111-1111-1111-1111-111111111111"
-     gke:
-       awsRoleArn: "arn:aws:iam::123456789012:role/..."  # from Nullify
-   ```
-
-   ```bash
-   helm install nullify-collector ./helm-charts/nullify-k8s-collector \
-     --namespace nullify --create-namespace -f values-gke.yaml
-   ```
+3. Nullify returns the **role ARN**. Obtain the exact `collectorUploadPrefix`, bucket and KMS key from your deployment settings and confirm the paired backend rollout. Follow the maintained [GKE Helm installation example](../../../../helm-charts/nullify-k8s-collector/README.md#gke-with-a-projected-kubernetes-token) for values and installation commands. Copy the issued upload prefix exactly; do not construct it from the tenant ID.
 
 **Prerequisites:** Any GKE cluster, K8s 1.22+. No GKE Workload Identity setup required.
 

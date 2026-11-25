@@ -20,6 +20,16 @@ def fetch(url):
         return response.read()
 
 
+def chart_versions(index, name):
+    versions = {}
+    for entry in index.get("entries", {}).get(name, []):
+        version = entry["version"]
+        if version in versions:
+            raise ValueError(f"duplicate chart version {name} {version}")
+        versions[version] = entry
+    return versions
+
+
 def verify(expected, repository_url, expected_metadata=None):
     base = repository_url.rstrip("/") + "/"
     if expected_metadata is not None:
@@ -41,9 +51,9 @@ def verify(expected, repository_url, expected_metadata=None):
         if result.returncode:
             raise ValueError(f"Helm rejected the public repository: {result.stderr.strip()}")
         public = yaml_data((cache / "nullify-verification-index.yaml").read_bytes())
-        for name, versions in expected["entries"].items():
-            actual_versions = {entry["version"]: entry for entry in public.get("entries", {}).get(name, [])}
-            for entry in versions:
+        for name in expected["entries"]:
+            actual_versions = chart_versions(public, name)
+            for entry in chart_versions(expected, name).values():
                 version = entry["version"]
                 actual = actual_versions.get(version)
                 if actual is None or actual.get("digest") != entry["digest"]:
@@ -52,11 +62,17 @@ def verify(expected, repository_url, expected_metadata=None):
                 expected_urls = {urllib.parse.urljoin(base, url) for url in entry["urls"]}
                 if package_url not in expected_urls or urllib.parse.urlsplit(package_url).scheme not in {"https", "http"}:
                     raise ValueError(f"package URL does not match the expected location for {name} {version}")
-                contents = fetch(package_url)
+                subprocess.run(
+                    ["helm", "pull", f"nullify-verification/{name}", "--version", str(version),
+                     "--destination", temporary,
+                     "--repository-config", str(Path(temporary) / "repositories.yaml"),
+                     "--repository-cache", str(cache)],
+                    check=True, capture_output=True,
+                )
+                path = Path(temporary) / f"{name}-{version}.tgz"
+                contents = path.read_bytes()
                 if hashlib.sha256(contents).hexdigest() != entry["digest"]:
                     raise ValueError(f"public package digest mismatch for {name} {version}")
-                path = Path(temporary) / f"{name}-{version}.tgz"
-                path.write_bytes(contents)
                 metadata = subprocess.run(["helm", "show", "chart", str(path)], check=True, capture_output=True).stdout
                 chart = yaml_data(metadata)
                 if chart.get("name") != name or str(chart.get("version")) != str(version):
