@@ -421,7 +421,6 @@ collector:
   clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
-    keyPrefix: "k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/"  # Exact collectorUploadPrefix from Nullify
     keyPrefix: "k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"

@@ -208,6 +208,10 @@ aws cloudformation update-stack \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
+If EKS integration is disabled, omit `CollectorUploadPrefix`. For later updates
+that already have the correct scoped prefix, use `CollectorUploadPrefix,UsePreviousValue=true`
+instead of supplying the value again.
+
 `UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration`, `NullifyS3AccessPointArn` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
 ### 5. Collector upload target
