@@ -274,7 +274,7 @@ terraform init && terraform apply
 
 - `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
 - `s3_bucket_name`: S3 bucket for scan results (optional)
-- `nullify_s3_access_point_arn`: S3 access point for collector uploads (optional). Grants `s3:PutObject` and `s3:PutObjectAcl` on `<access point ARN>/object/k8s-collector/*` next to the bucket grants
+- `nullify_s3_access_point_arn`: S3 access point for collector uploads (optional). Grants `s3:PutObject` and `s3:PutObjectAcl` on `<access point ARN>/object/<collector_upload_prefix>*` next to the bucket grants. With no issued prefix, the legacy fallback is `k8s-collector/k8s-collector/`.
 - `kms_key_arn`: KMS ARN from the Nullify configure page, see [KMS](#kms). Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `service_account_name`: Collector service account name (default: nullify-k8s-collector-sa)
