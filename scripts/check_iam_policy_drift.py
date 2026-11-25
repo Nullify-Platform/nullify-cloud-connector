@@ -54,10 +54,13 @@ _TF_PARTITION = re.compile(r"\$\{data\.aws_partition\.current\.partition\}")
 # equal.
 _ACCOUNT_TOKEN = "${account}"
 _ROLE_NAME_TOKEN = "${role_name}"
+# The CloudFormation role name is read from the role itself, so a grant that
+# names another role cannot match it.
+_CFN_ROLE_NAME = json.loads(CFN_TEMPLATE.read_text())["Resources"]["IAMViewOnlyRole"]["Properties"]["RoleName"]["Fn::Sub"]
 _CFN_TOKENS = (
     (_CFN_PARTITION, _PARTITION_TOKEN),
     (re.compile(r"\$\{AWS::AccountId\}"), _ACCOUNT_TOKEN),
-    (re.compile(r"AWSIntegration-\$\{CustomerName\}-NullifyReadOnlyRole"), _ROLE_NAME_TOKEN),
+    (re.compile(re.escape(_CFN_ROLE_NAME)), _ROLE_NAME_TOKEN),
 )
 _TF_TOKENS = (
     (_TF_PARTITION, _PARTITION_TOKEN),
@@ -235,14 +238,22 @@ REQUIRED_GRANTS = (
 )
 
 
+def _covers(key: str, pattern: str, action: str) -> bool:
+    return key == "not_action" or fnmatch.fnmatchcase(action.lower(), pattern.lower())
+
+
 def grants(readonly: set, denied: set, action: str, resource: str) -> bool:
+    """Report whether readonly allows action on exactly resource and nothing
+    denies it. A grant scoped to one resource must also be the only allow of
+    the action, so a broader grant next to it does not pass."""
     required = ("Allow", "action", action, ("resources", (resource,)), ())
     if required not in readonly:
         return False
-    return not any(
-        effect == "Deny" and (key == "not_action" or fnmatch.fnmatchcase(action.lower(), pattern.lower()))
-        for effect, key, pattern, _, _ in denied
-    )
+    if resource != "*" and any(
+        entry != required and entry[0] == "Allow" and _covers(entry[1], entry[2], action) for entry in readonly
+    ):
+        return False
+    return not any(effect == "Deny" and _covers(key, pattern, action) for effect, key, pattern, _, _ in denied)
 
 
 def missing_grants(readonly: set, denied: set) -> list:

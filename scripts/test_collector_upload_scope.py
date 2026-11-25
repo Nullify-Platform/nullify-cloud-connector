@@ -70,6 +70,9 @@ class RequiredGrants(unittest.TestCase):
                 ("self simulation on another role", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("arn:${partition}:iam::${account}:role/other",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
                 ("self simulation as a wildcard", self_simulate, {("Allow", "action", "iam:Simulate*", ("resources", (self.ROLE,)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
                 ("self simulation explicitly denied", None, set(), {("Deny", "action", "iam:Simulate*", ("resources", ("*",)), ())}, ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to an every-principal grant", None, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to a wildcard grant", None, {("Allow", "action", "iam:*", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to a NotAction grant", None, {("Allow", "not_action", "s3:*", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
             ):
                 with self.subTest(source=source, case=case):
                     self.assertEqual(policy_drift.missing_grants((allowed - {removed}) | added, denied | extra_deny), want)
