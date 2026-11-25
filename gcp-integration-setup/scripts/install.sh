@@ -139,8 +139,74 @@ CUSTOM_ROLE_ID="nullifyCloudConnector"
 CUSTOM_ROLE_TITLE="Nullify Cloud Connector (read-only)"
 CUSTOM_ROLE_DESCRIPTION="Read-only access to security-relevant config Nullify needs that is not covered by predefined viewer roles."
 
-# shellcheck disable=SC2089
-CUSTOM_ROLE_PERMISSIONS="compute.securityPolicies.get,compute.securityPolicies.list,accesscontextmanager.servicePerimeters.get,accesscontextmanager.servicePerimeters.list,orgpolicy.policies.list,orgpolicy.policy.get,alloydb.clusters.get,alloydb.clusters.list,alloydb.instances.get,alloydb.instances.list,file.instances.get,file.instances.list,redis.instances.get,redis.instances.list,memcache.instances.get,memcache.instances.list,artifactregistry.repositories.get,artifactregistry.repositories.list,dns.managedZones.get,dns.managedZones.list,dns.resourceRecordSets.list,apigateway.gateways.get,apigateway.gateways.list,apigateway.apis.get,apigateway.apis.list,apigateway.apiconfigs.get,apigateway.apiconfigs.list,storage.buckets.get,storage.buckets.list,storage.buckets.getIamPolicy,secretmanager.secrets.get,secretmanager.secrets.list,bigquery.datasets.get,bigquery.tables.get,bigquery.tables.list,bigquery.routines.get,bigquery.routines.list,batch.jobs.get,batch.jobs.list,workflows.workflows.get,workflows.workflows.list,datastore.databases.getMetadata,datastore.databases.list,aiplatform.endpoints.get,aiplatform.endpoints.list,securitycenter.sources.get,securitycenter.sources.list"
+CUSTOM_ROLE_PERMISSIONS=(
+  iam.serviceAccounts.list
+  iam.serviceAccountKeys.list
+  iam.roles.get
+  iam.roles.list
+  iam.workloadIdentityPools.list
+  iam.workloadIdentityPoolProviders.list
+  resourcemanager.projects.getIamPolicy
+  orgpolicy.policies.list
+  logging.sinks.list
+  logging.logMetrics.list
+  logging.buckets.list
+  compute.securityPolicies.get
+  compute.securityPolicies.list
+  alloydb.clusters.get
+  alloydb.clusters.list
+  alloydb.instances.get
+  alloydb.instances.list
+  file.instances.get
+  file.instances.list
+  redis.instances.get
+  redis.instances.list
+  memcache.instances.get
+  memcache.instances.list
+  artifactregistry.repositories.get
+  artifactregistry.repositories.list
+  artifactregistry.repositories.getIamPolicy
+  artifactregistry.dockerimages.list
+  dns.managedZones.get
+  dns.managedZones.list
+  dns.resourceRecordSets.list
+  apigateway.gateways.get
+  apigateway.gateways.list
+  apigateway.apis.get
+  apigateway.apis.list
+  apigateway.apiconfigs.get
+  apigateway.apiconfigs.list
+  storage.buckets.get
+  storage.buckets.list
+  storage.buckets.getIamPolicy
+  secretmanager.secrets.get
+  secretmanager.secrets.list
+  secretmanager.secrets.getIamPolicy
+  bigquery.datasets.get
+  bigquery.datasets.getIamPolicy
+  bigquery.tables.get
+  bigquery.tables.list
+  bigquery.tables.getIamPolicy
+  bigquery.routines.get
+  bigquery.routines.list
+  batch.jobs.get
+  batch.jobs.list
+  workflows.workflows.get
+  workflows.workflows.list
+  datastore.databases.getMetadata
+  datastore.databases.list
+  aiplatform.endpoints.get
+  aiplatform.endpoints.list
+  securitycenter.sources.get
+  securitycenter.sources.list
+  pubsub.topics.getIamPolicy
+  pubsub.subscriptions.getIamPolicy
+  accesscontextmanager.policies.list
+  accesscontextmanager.servicePerimeters.get
+  accesscontextmanager.servicePerimeters.list
+  orgpolicy.policy.get
+)
+permissions_csv="$(IFS=,; printf '%s' "${CUSTOM_ROLE_PERMISSIONS[*]}")"
 
 echo "==> Creating organisation custom role ${CUSTOM_ROLE_ID}"
 if gcloud iam roles describe "${CUSTOM_ROLE_ID}" --organization="${NULLIFY_ORG_ID}" >/dev/null 2>&1; then
@@ -148,27 +214,26 @@ if gcloud iam roles describe "${CUSTOM_ROLE_ID}" --organization="${NULLIFY_ORG_I
     --organization="${NULLIFY_ORG_ID}" \
     --title="${CUSTOM_ROLE_TITLE}" \
     --description="${CUSTOM_ROLE_DESCRIPTION}" \
-    --permissions="${CUSTOM_ROLE_PERMISSIONS}" \
+    --permissions="${permissions_csv}" \
     --stage=GA >/dev/null
 else
   gcloud iam roles create "${CUSTOM_ROLE_ID}" \
     --organization="${NULLIFY_ORG_ID}" \
     --title="${CUSTOM_ROLE_TITLE}" \
     --description="${CUSTOM_ROLE_DESCRIPTION}" \
-    --permissions="${CUSTOM_ROLE_PERMISSIONS}" \
+    --permissions="${permissions_csv}" \
     --stage=GA >/dev/null
 fi
 
 echo "==> Granting predefined viewer roles at the organisation"
 ROLES=(
+  roles/browser
   roles/cloudasset.viewer
-  roles/iam.securityReviewer
   roles/compute.viewer
   roles/container.clusterViewer
   roles/cloudsql.viewer
   roles/spanner.viewer
   roles/cloudkms.viewer
-  roles/logging.viewer
   roles/run.viewer
   roles/cloudfunctions.viewer
   roles/appengine.appViewer
@@ -191,6 +256,9 @@ if [[ "${#UNREADY_SCAN_APIS[@]}" -gt 0 ]]; then
   printf 'Enable these APIs in %s before scanning their services: %s. Check permissions and organization policy constraints/gcp.restrictServiceUsage or constraints/serviceuser.services.\n' "${NULLIFY_HOST_PROJECT}" "${UNREADY_SCAN_APIS[*]}"
 fi
 echo
-echo "Paste these values into the Nullify console under Settings -> Cloud Integrations -> GCP:"
+echo "Paste these values into the Nullify console under Settings -> Connectors -> GCP:"
 echo "  Service Account Email:        ${SA_EMAIL}"
 echo "  Workload Identity Provider:   projects/$(gcloud projects describe "${NULLIFY_HOST_PROJECT}" --format='value(projectNumber)')/locations/global/workloadIdentityPools/${POOL_ID}/providers/${PROVIDER_ID}"
+
+echo "Set the organization scope to ${NULLIFY_ORG_ID}. Save the connection, then select Validate and confirm the first inventory result."
+echo "For older installations, review and remove the previous roles/iam.securityReviewer and roles/logging.viewer grants separately."

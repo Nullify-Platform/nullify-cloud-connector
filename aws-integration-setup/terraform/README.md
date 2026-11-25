@@ -8,6 +8,10 @@ This directory targets AWS provider v5. If your project uses AWS provider v6, us
 
 **EKS Integration**: The AWS integration module only sets up IAM roles and trust policies. Kubernetes access needs one of the two scan modes in [Kubernetes scan modes](#kubernetes-scan-modes).
 
+## Collector version compatibility
+
+The current `k8s-resources` module deploys collector 4.0.0 and requires `collector_upload_prefix` whenever the collector is enabled. Obtain the exact `collectorUploadPrefix` and confirm the paired Nullify backend rollout first. Pass that same prefix to the AWS integration role module and each collector module. Do not apply current collector templates to an older backend or upgrade only the image. See the [cutover and rollback requirements](../../README.md#collector-4-source-prefix-cutover). Cloud-only and managed-scan configurations do not need a collector upload prefix.
+
 ## Requirements
 
 - Terraform >= 1.8 (the version CI validates and runs the module test suites at)
@@ -87,7 +91,7 @@ terraform/
 | AWS setup | `enable_kubernetes_integration = true`, S3 bucket or access point | `eks-managed-scan-access`: one access entry per cluster |
 | Kubernetes setup | `k8s-resources` (default) or the `nullify-k8s-collector` Helm chart | A list-only `nullify-readonly` ClusterRole and ClusterRoleBinding, applied by `k8s-resources` with `enable_collector = false, enable_managed_scan_rbac = true` |
 | Kinds read | The managed scan's kinds, plus ingressclasses, horizontalpodautoscalers, poddisruptionbudgets, storageclasses, csidrivers, runtimeclasses, priorityclasses, flowschemas, certificatesigningrequests and customresourcedefinitions. `k8s-resources` and chart 0.4.0 and later grant the same set, `list` only. Charts before 0.4.0 grant an older set; see that version's `templates/clusterrole.yaml` | See [RBAC granted to Nullify](#rbac-granted-to-nullify-authorization--rbac) |
-| Upgrades | You update the image | None |
+| Upgrades | Upgrade the backend, IAM prefix grant and collector together | None |
 
 Both modes can run on the same role: IRSA uses `sts:AssumeRoleWithWebIdentity`, the managed scan uses `sts:AssumeRole` with the external ID.
 
@@ -275,6 +279,7 @@ terraform init && terraform apply
 - `aws_region`: AWS region for IAM resources (default: ap-southeast-2)
 - `s3_bucket_name`: S3 bucket for scan results (optional)
 - `nullify_s3_access_point_arn`: S3 access point for collector uploads (optional). Grants `s3:PutObject` and `s3:PutObjectAcl` on `<access point ARN>/object/k8s-collector/*` next to the bucket grants
+- `collector_upload_prefix`: Exact source prefix from Nullify; required on collector module instances and passed to the IAM module for collector 4
 - `kms_key_arn`: KMS ARN from the Nullify configure page, see [KMS](#kms). Optional for this module; required by `k8s-resources` whenever `enable_collector` is true
 - `kubernetes_namespace`: Kubernetes namespace name (default: nullify)
 - `service_account_name`: Collector service account name (default: nullify-k8s-collector-sa)
@@ -296,6 +301,8 @@ A key ARN is preferred because it avoids the wildcard. IAM does not resolve an a
 
 ## Module Usage
 
+Replace every placeholder in these examples with deployment values from Nullify, including the exact `collectorUploadPrefix`. The collector examples require the collector 4 backend and matching role policy.
+
 ### AWS Integration Only
 ```hcl
 module "nullify_aws_integration" {
@@ -311,6 +318,7 @@ module "nullify_aws_integration" {
 
   # Optional EKS integration
   enable_kubernetes_integration = true
+  collector_upload_prefix = "k8s-collector/YOUR-SOURCE-TENANT-ID/"
   eks_cluster_arns = [
     "arn:aws:eks:us-west-2:123456789012:cluster/my-cluster"
   ]
@@ -328,6 +336,7 @@ module "k8s_resources" {
 
   iam_role_arn   = module.nullify_aws_integration.role_arn
   cluster_name   = "acme-prod-use1"
+  collector_upload_prefix = "k8s-collector/YOUR-SOURCE-TENANT-ID/"
   s3_bucket_name = "my-scan-results-bucket" # or the S3 access point ARN from Nullify
   kms_key_arn    = "arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012"
   aws_region     = "us-west-2"
@@ -347,7 +356,7 @@ This is the same value as `collector.clusterName` in the `nullify-k8s-collector`
 
 A cluster cannot run the collector and the managed scan at once: the collector's upload registers it as on-prem keyed on `cluster_name`, the managed scan registers the same cluster as its EKS ARN, and nothing joins the two, so running both lists the cluster twice with its pods and containers duplicated. This is enforced by `eks-managed-scan-access`'s `collector_cluster_arns` variable, not by a `k8s-resources` flag combination: pass it the cluster ARNs where `enable_collector` is `true` and the module fails at plan for any of them. To change mode, apply the new one and ask Nullify to remove the old cluster registration.
 
-`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-3.48.1`, a pinned tag of Nullify's ECR Public image. The `nullify-k8s-collector` Helm chart defaults to the same tag, so both install paths run the same collector. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
+`collector_image` defaults to `public.ecr.aws/w4o2j2x4/integrations:k8s-collector-4.0.0`, a pinned tag of Nullify's ECR Public image. The `nullify-k8s-collector` chart 0.6.0 defaults to the same tag. Both require the collector 4 source-prefix contract. Earlier versions defaulted to `nullify/k8s-collector:latest` on Docker Hub, which Nullify does not publish; if you set that value explicitly, replace it.
 
 ## Outputs
 

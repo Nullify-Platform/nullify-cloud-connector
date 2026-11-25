@@ -80,8 +80,10 @@ terraform apply
 ```
 
 Paste the `entra_tenant_id` and `application_client_id` outputs into the Nullify
-console under **Settings → Cloud Integrations → Azure**, set the auth mode to
-**Workload Identity Federation**, then click **Verify** and **Save**.
+console under **Settings → Connectors → Azure**, set the auth mode to
+**Workload Identity Federation**, and add and enable at least one subscription
+covered by the Terraform grant. This subscription step also applies to
+management-group grants. Select **Save changes**, then **Validate**.
 
 ## Required inputs
 

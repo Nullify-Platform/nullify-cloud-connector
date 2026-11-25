@@ -15,21 +15,21 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 - The pool's attribute condition pins trust to your specific Nullify
   tenant id (`assertion.tenant_id == "<your tenant id>"`). Any other
   Nullify tenant's token is rejected by GCP before any permission check
-  happens — so even if Nullify's signing key were stolen, an attacker
-  could not mint a token accepted by another tenant's provider.
+  happens. This check trusts the tenant claim in a token signed by Nullify.
+  A compromised signing key can forge that claim. Key protection, rotation
+  and revocation remain required.
 
 ## Predefined roles
 
 | Role | Why Nullify needs it |
 | --- | --- |
+| `roles/browser` | List folders and projects for organization and folder discovery. |
 | `roles/cloudasset.viewer` | Org-wide asset enumeration via Cloud Asset Inventory. The cheapest way to discover everything. |
-| `roles/iam.securityReviewer` | Read all IAM bindings, custom roles, deny policies, recommendations. Drives the IAM exposure analysis. |
 | `roles/compute.viewer` | VPC, instances, firewalls, load balancers, routes, NAT, peering. Drives the network topology. |
 | `roles/container.clusterViewer` | GKE cluster + node pool config. |
 | `roles/cloudsql.viewer` | Cloud SQL instance + replica config. |
 | `roles/spanner.viewer` | Spanner instance + database config. |
 | `roles/cloudkms.viewer` | KMS key ring + crypto key config (no key material). |
-| `roles/logging.viewer` | Logging sink + exclusion config (no log content). |
 | `roles/run.viewer` | Cloud Run service + revision config. |
 | `roles/cloudfunctions.viewer` | Cloud Functions config. |
 | `roles/appengine.appViewer` | App Engine service + version config. |
@@ -39,31 +39,47 @@ Cloud Connector requests, and why. Use it to satisfy security review.
 
 ## Custom role: `nullifyCloudConnector`
 
-Read-only permissions on services that don't have a predefined viewer role.
-Strict allowlist of `*.get` / `*.list` only.
+The custom role lists the additional configuration and IAM permissions the collectors use.
 
 | Permission | Purpose |
 | --- | --- |
+| `logging.sinks.list`, `logging.logMetrics.list`, `logging.buckets.list` | List sink, log-based metric and log-bucket configuration. |
+| `iam.serviceAccounts.list`, `iam.serviceAccountKeys.list` | List service accounts and key metadata. |
+| `iam.roles.get/list` | Read custom roles and their included permissions. |
+| `iam.workloadIdentityPools.list`, `iam.workloadIdentityPoolProviders.list` | List workload identity pools and their providers. |
+| `resourcemanager.projects.getIamPolicy` | Read project IAM bindings and audit configurations. |
 | `compute.securityPolicies.get/list` | Cloud Armor WAF rule discovery. |
-| `accesscontextmanager.servicePerimeters.get/list` * | VPC Service Controls perimeters. |
-| `orgpolicy.policies.list` + `orgpolicy.policy.get` * | Organisation policy discovery. |
+| `accesscontextmanager.policies.list` + `accesscontextmanager.servicePerimeters.get/list` * | VPC Service Controls perimeters. |
+| `orgpolicy.policies.list` | List policies on scanned projects. |
+| `orgpolicy.policy.get` * | Read organization policies through the legacy API. |
 | `alloydb.clusters.get/list` + `alloydb.instances.get/list` | AlloyDB topology. |
 | `file.instances.get/list` | Filestore instance config. |
 | `redis.instances.get/list` + `memcache.instances.get/list` | Memorystore instance config. |
-| `artifactregistry.repositories.get/list` | Artifact Registry repo metadata (no image content). |
+| `artifactregistry.repositories.get/list/getIamPolicy`, `artifactregistry.dockerimages.list` | Repository configuration, IAM policies and image metadata. |
 | `dns.managedZones.get/list` + `dns.resourceRecordSets.list` | Cloud DNS zone + record discovery. |
 | `apigateway.gateways.get/list` + `apigateway.apis.get/list` + `apigateway.apiconfigs.get/list` | API Gateway topology. |
 | `storage.buckets.get/list` + `storage.buckets.getIamPolicy` | Cloud Storage bucket settings + bucket-level IAM. No `storage.objects.*`. |
-| `secretmanager.secrets.get/list` | Secret Manager: secret name, labels, replication policy, rotation config. No `secretmanager.versions.access` (payloads). |
-| `bigquery.datasets.get` + `bigquery.tables.get/list` + `bigquery.tables.getIamPolicy` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. `bigquery.tables.getIamPolicy` is granted explicitly (separate from `bigquery.dataViewer`, which we **do not** grant because it would also expose row data). No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
-| `pubsub.topics.getIamPolicy` | Pub/Sub topic-level IAM (detects topics bound to `allUsers` / `allAuthenticatedUsers`). The predefined `roles/pubsub.viewer` already grants metadata listing; this adds only the IAM-policy surface. No `pubsub.topics.publish` or `subscriptions.consume`. |
+| `secretmanager.secrets.get/list/getIamPolicy` | Secret metadata, configuration and IAM policies. No `secretmanager.versions.access` (payloads). |
+| `bigquery.datasets.get/getIamPolicy` + `bigquery.tables.get/list` + `bigquery.tables.getIamPolicy` + `bigquery.routines.get/list` | BigQuery dataset/table/routine schema + IAM. `bigquery.tables.getIamPolicy` is granted explicitly (separate from `bigquery.dataViewer`, which we **do not** grant because it would also expose row data). No `bigquery.tables.getData` (rows) and no `bigquery.jobs.create` (no query execution / billing). |
+| `pubsub.topics.getIamPolicy`, `pubsub.subscriptions.getIamPolicy` | Topic and subscription IAM (detects topics bound to `allUsers` / `allAuthenticatedUsers`). The predefined `roles/pubsub.viewer` role grants metadata listing. |
 | `batch.jobs.get/list` | Cloud Batch job spec. No task logs or output artifacts. |
 | `workflows.workflows.get/list` | Cloud Workflows: workflow definitions only. **Not** `workflows.executions.*` or `workflows.stepEntries.*` — execution arguments and step inputs/outputs are runtime data. |
 | `datastore.databases.list` + `datastore.databases.getMetadata` | Firestore database list + metadata. **Not** `datastore.entities.*` — document contents are runtime data. (Firestore in Native and Datastore modes share the `datastore.*` IAM family.) |
 | `aiplatform.endpoints.get/list` | Vertex AI endpoint deployment config. No `aiplatform.endpoints.predict` (inference) and no model/dataset/featurestore reads. |
 | `securitycenter.sources.get/list` | Security Command Center source config (which detection sources are wired up). **Not** `securitycenter.findings.*` or `securitycenter.assets.*` — finding contents are runtime data. Org-scope only; harmless no-op at project scope. |
 
-\* Permissions marked with an asterisk are only includable in **organisation-scoped** custom roles — GCP rejects them in a project-scoped custom role because the underlying resources live at the organisation. They are silently omitted when this module is deployed without `organization_id` (single-project installs); a single-project install simply has no VPC SC or org-policy data to read.
+\* The module includes these permissions only in its **organisation-defined** custom role. A single-project installation does not receive them and cannot read ancestor-organization VPC SC policies. Project organization-policy listing is included in all scopes.
+
+Earlier installations granted `roles/logging.viewer` and
+`roles/iam.securityReviewer`. Both roles can read log entries. Apply the
+updated Terraform and confirm removal of both managed bindings. For
+script-managed installations, rerun the installer to update the custom role,
+then review and remove both legacy organization bindings from the connector
+service account. The uninstall script also removes those legacy bindings.
+
+For Cloud Logging, the installers grant access to configuration metadata. Check for roles
+granted separately or inherited from an ancestor before validating effective
+access. See the [Cloud Logging permissions reference](https://docs.cloud.google.com/iam/docs/roles-permissions/logging).
 
 ## What Nullify cannot do
 

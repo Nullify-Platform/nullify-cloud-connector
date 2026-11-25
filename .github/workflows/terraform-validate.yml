@@ -106,6 +106,7 @@ jobs:
           - 1.8.5
           - 1.10.5
         directory:
+          - gcp-integration-setup/terraform/modules/nullify-gcp-integration
           - gcp-integration-setup/terraform
           - aws-integration-setup/terraform/modules/eks-managed-scan-access
           - aws-integration-setup/terraform/modules/k8s-resources
@@ -165,4 +166,4 @@ jobs:
           shellcheck gcp-integration-setup/scripts/uninstall.sh
 
       - name: Exercise GCP installer with synthetic gcloud responses
-        run: python3 scripts/test_gcp_installer.py
+        run: python3 -B scripts/test_gcp_installer.py

@@ -18,7 +18,7 @@ This template creates:
 
 1. **Obtain Configuration Values from Nullify Configure Page**:
    - Log in to your Nullify configure page
-   - Navigate to Configure > Integrations
+   - Navigate to **Settings → Connectors → AWS**
    - Select AWS integration to begin setup
    - Note the provided values:
      - External ID for your account
@@ -35,7 +35,7 @@ This template creates:
    - OIDC provider URL (see [Getting EKS OIDC URL](#getting-eks-oidc-url) below)
    - **Helm charts or Kubernetes manifests** to deploy the collector cronjobs
 
-> 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/integrations/aws/configuration).
+> 📖 **Reference**: For detailed setup instructions, see the [Nullify AWS Integration Documentation](https://docs.nullify.ai/connectors/aws/configuration).
 
 **Alternative**: Contact Nullify Support for assistance with configuration values.
 
@@ -68,10 +68,7 @@ oidc.eks.us-west-2.amazonaws.com/id/ABCDEF1234567890ABCDEF1234567890
 3. Go to the **Configuration** tab
 4. Under **Details**, look for **OpenID Connect provider URL**
 
-### Method 3: kubectl (if you have cluster access)
-```bash
-kubectl get configmap aws-auth -n kube-system -o yaml | grep "oidc"
-```
+The `aws-auth` ConfigMap does not supply the cluster OIDC issuer. Use the AWS CLI or EKS console methods above.
 
 ### OIDC URL Format
 - **Full URL format**: `https://oidc.eks.REGION.amazonaws.com/id/CLUSTER_ID`
@@ -127,6 +124,8 @@ aws cloudformation describe-stacks \
 
 ### 3. Deploy with EKS Integration
 
+The current EKS collector template requires the exact `CollectorUploadPrefix` from a compatible Nullify backend. Confirm the paired backend rollout and deploy collector 4 with the same prefix. If the value is unavailable, stop and ask Nullify for a complete compatible version set; do not combine the current role policy with a 3.x collector. See the [cutover and rollback requirements](../../README.md#collector-4-source-prefix-cutover). Replace the prefix and KMS placeholders below with supplied deployment values.
+
 ```bash
 # For EKS clusters, enable integration
 # First, get your OIDC URL (see "Getting EKS OIDC URL" section above)
@@ -142,6 +141,8 @@ aws cloudformation create-stack \
     ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::NULLIFY-ACCOUNT:role/NULLIFY-ROLE \
     ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
     ParameterKey=EnableEKSIntegration,ParameterValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector/YOUR-SOURCE-TENANT-ID/ \
+    ParameterKey=NullifyKMSKeyArn,ParameterValue=arn:aws:kms:us-west-2:123456789012:key/YOUR-KEY-ID \
     ParameterKey=EKSOidcProviderURL,ParameterValue=$OIDC_URL \
   --capabilities CAPABILITY_NAMED_IAM
 
@@ -155,7 +156,9 @@ aws cloudformation create-stack \
     ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::NULLIFY-ACCOUNT:role/NULLIFY-ROLE \
     ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
     ParameterKey=EnableEKSIntegration,ParameterValue=true \
-    ParameterKey=EKSOidcProviderURL,ParameterValue=A78D8794A06CAE5791C5812CDB164C7D.gr7.ap-southeast-2.eks.amazonaws.com \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector/YOUR-SOURCE-TENANT-ID/ \
+    ParameterKey=NullifyKMSKeyArn,ParameterValue=arn:aws:kms:us-west-2:123456789012:key/YOUR-KEY-ID \
+    ParameterKey=EKSOidcProviderURL,ParameterValue=oidc.eks.us-west-2.amazonaws.com/id/YOUR-OIDC-ID \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
@@ -184,7 +187,9 @@ The policy grants its actions on the ARN you pass in one statement, and on `arn:
 
 The account check runs on every request rather than at deploy time because CloudFormation template `Condition`s accept only `Ref`, `Fn::FindInMap` and other conditions, so `AWS::AccountId` cannot be compared with an account parsed out of a parameter. The effective permissions are the same either way. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. Either ARN form produces a working grant, so an existing stack does not need updating when the configure page changes. The `KMSPolicyResource` stack output lists both resources.
 
-Update an existing stack, keeping its current values:
+When EKS integration is enabled, pass the exact `collectorUploadPrefix` from
+Nullify on the first stack update that adds the parameter. Include the trailing
+slash and use the same value in Helm's `collector.s3.keyPrefix`.
 
 ```bash
 aws cloudformation update-stack \
@@ -196,11 +201,16 @@ aws cloudformation update-stack \
     ParameterKey=CustomerName,UsePreviousValue=true \
     ParameterKey=EKSOidcProviderURL,UsePreviousValue=true \
     ParameterKey=EnableEKSIntegration,UsePreviousValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=EXACT-COLLECTOR-UPLOAD-PREFIX \
     ParameterKey=ExternalID,UsePreviousValue=true \
     ParameterKey=NullifyS3Bucket,UsePreviousValue=true \
     ParameterKey=NullifyKMSKeyArn,UsePreviousValue=true \
   --capabilities CAPABILITY_NAMED_IAM
 ```
+
+Once the stack has the correct prefix, preserve it on later updates with
+`ParameterKey=CollectorUploadPrefix,UsePreviousValue=true`. If EKS integration
+is disabled and you are leaving it disabled, omit the prefix line.
 
 `UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
@@ -217,7 +227,7 @@ With `EnableEKSIntegration=true` and `NullifyS3AccessPointArn` set, the S3 acces
     ParameterKey=NullifyS3AccessPointArn,ParameterValue=arn:aws:s3:REGION:NULLIFY-ACCOUNT:accesspoint/NAME \
 ```
 
-On an existing stack, add that line to the `update-stack` command above.
+On an existing stack, add that line to the `update-stack` command above. If the stack already has the correct access point ARN, use `ParameterKey=NullifyS3AccessPointArn,UsePreviousValue=true`.
 
 ### Stack outputs
 

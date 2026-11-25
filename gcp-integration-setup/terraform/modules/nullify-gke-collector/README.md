@@ -13,37 +13,19 @@ The Nullify k8s-collector on GKE uses a projected Kubernetes ServiceAccount toke
      --format='value(selfLink)'
    ```
 
-2. Paste the URL into the Nullify console under **Settings → Cloud Integrations → GCP → GKE Clusters**.
+2. Paste the URL into the Nullify console under **Settings → Connectors → GCP → GKE OIDC issuer URLs**.
 
-3. Nullify returns the **role ARN**. Deploy the Helm chart:
-
-   ```yaml
-   cloudProvider: gcp
-
-   collector:
-     clusterName: "my-gke-cluster"
-     aws:
-       region: "us-east-1"
-     s3:
-       bucket: "your-nullify-bucket"
-     gke:
-       awsRoleArn: "arn:aws:iam::123456789012:role/..."  # from Nullify
-   ```
-
-   ```bash
-   helm install nullify-collector nullify/nullify-k8s-collector -f values-gke.yaml
-   ```
+3. Nullify returns the **role ARN**. Obtain the exact `collectorUploadPrefix`, bucket and KMS key from your deployment settings and confirm the paired backend rollout. Follow the maintained [GKE Helm installation example](../../../../helm-charts/nullify-k8s-collector/README.md#gke-with-a-projected-kubernetes-token) for values and installation commands. Copy the issued upload prefix exactly; do not construct it from the tenant ID.
 
 **Prerequisites:** Any GKE cluster, K8s 1.22+. No GKE Workload Identity setup required.
 
-## When to use this module
+Run the source-chart command from a reviewed repository checkout after release compatibility is confirmed. For the published chart 0.5.0, use that release's values and instructions rather than substituting the collector 4 image.
 
-This module creates a GCP service account with a Workload Identity binding. It is only needed if:
+## Scope of this module
 
-- Your cluster does not support projected service account tokens (K8s < 1.22, extremely rare on GKE)
-- You need the GCP metadata endpoint auth path instead of the projected token path
+This module creates a GCP service account and a Workload Identity binding. The standard collector chart uses a projected Kubernetes service-account token to assume its AWS role and does not require these GCP identity resources.
 
-For all other cases, use the standard flow above.
+Creating this module does not add a fallback authentication mode to that chart, configure AWS OIDC trust, or make a cluster without projected tokens supported. Use it only when Nullify confirms a separate deployment requirement for the GCP identity resources.
 
 ## What this module creates
 
