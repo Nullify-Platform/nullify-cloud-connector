@@ -65,7 +65,8 @@ class RequiredGrants(unittest.TestCase):
                 name = render(role["RoleName"], parameters, {})
                 self.assertEqual(name, "AWSIntegration-acme-NullifyReadOnlyRole")
                 grant = render(grants[0], parameters, {})
-                self.assertEqual(grant["Resource"], f"arn:{partition}:iam::123456789012:role/{name}")
+                role_path = render(role.get("Path", "/"), parameters, {})
+                self.assertEqual(grant["Resource"], f"arn:{partition}:iam::123456789012:role{role_path}{name}")
                 self.assertEqual(grant["Action"], ["iam:SimulatePrincipalPolicy"])
                 self.assertEqual(grant["Effect"], "Allow")
 
