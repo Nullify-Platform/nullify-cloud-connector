@@ -289,3 +289,24 @@ run "a_bound_bucket_collector_lists_only_its_prefix" {
     error_message = "Listing must stay within the assigned source prefix."
   }
 }
+
+run "permission_simulation_targets_the_deployed_role" {
+  command = plan
+
+  assert {
+    condition     = output.role_name == "AWSIntegration-acme-NullifyReadOnlyRole"
+    error_message = "The deployed connector role must use the same name as CloudFormation."
+  }
+
+  assert {
+    condition = length([
+      for statement in data.aws_iam_policy_document.readonly_policy_part2.statement : statement
+      if statement.effect == "Allow" &&
+      toset(statement.actions) == toset(["iam:SimulatePrincipalPolicy"]) &&
+      toset(statement.resources) == toset([
+        "arn:aws:iam::123456789012:role${coalesce(aws_iam_role.nullify_readonly_role.path, "/")}${output.role_name}"
+      ])
+    ]) == 1
+    error_message = "The IAM permission diagnostic must target exactly the deployed connector role."
+  }
+}

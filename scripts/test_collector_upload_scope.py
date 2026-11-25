@@ -53,6 +53,23 @@ class RequiredGrants(unittest.TestCase):
             with self.subTest(source=source):
                 self.assertEqual(policy_drift.missing_grants(allowed, denied), [])
 
+    def test_cloudformation_simulation_is_scoped_to_the_deployed_role(self):
+        resources = TEMPLATE["Resources"]
+        role = resources["IAMViewOnlyRole"]["Properties"]
+        statements = resources["ReadOnlyAccessPolicy2"]["Properties"]["PolicyDocument"]["Statement"]
+        grants = [statement for statement in statements if "iam:SimulatePrincipalPolicy" in statement["Action"]]
+        self.assertEqual(len(grants), 1)
+        for partition in ("aws", "aws-us-gov", "aws-cn"):
+            with self.subTest(partition=partition):
+                parameters = {"AWS::Partition": partition, "AWS::AccountId": "123456789012", "CustomerName": "acme"}
+                name = render(role["RoleName"], parameters, {})
+                self.assertEqual(name, "AWSIntegration-acme-NullifyReadOnlyRole")
+                grant = render(grants[0], parameters, {})
+                role_path = render(role.get("Path", "/"), parameters, {})
+                self.assertEqual(grant["Resource"], f"arn:{partition}:iam::123456789012:role{role_path}{name}")
+                self.assertEqual(grant["Action"], ["iam:SimulatePrincipalPolicy"])
+                self.assertEqual(grant["Effect"], "Allow")
+
     def test_missing_broad_scoped_or_denied_grants_do_not_pass(self):
         lambda_read = ("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())
         self_simulate = ("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", (self.ROLE,)), ())
