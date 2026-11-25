@@ -304,7 +304,7 @@ run "permission_simulation_targets_the_deployed_role" {
       if statement.effect == "Allow" &&
       toset(statement.actions) == toset(["iam:SimulatePrincipalPolicy"]) &&
       toset(statement.resources) == toset([
-        "arn:aws:iam::123456789012:role${aws_iam_role.nullify_readonly_role.path}${output.role_name}"
+        "arn:aws:iam::123456789012:role${coalesce(aws_iam_role.nullify_readonly_role.path, "/")}${output.role_name}"
       ])
     ]) == 1
     error_message = "The IAM permission diagnostic must target exactly the deployed connector role."
