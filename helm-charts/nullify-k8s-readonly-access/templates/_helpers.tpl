@@ -59,28 +59,5 @@ wildcards, subresources other than status/scale, and any nonResourceURLs.
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- $allowedSubresources := list "status" "scale" -}}
-{{- range .Values.extraRules -}}
-{{- range .verbs -}}
-{{- if not (eq (toString .) "list") -}}
-{{- fail (printf "extraRules verb %q is not allowed: this chart only grants list" (toString .)) -}}
-{{- end -}}
-{{- end -}}
-{{- range .apiGroups -}}
-{{- if contains "*" (toString .) -}}
-{{- fail (printf "extraRules apiGroup %q is not allowed: name each API group" (toString .)) -}}
-{{- end -}}
-{{- end -}}
-{{- range .resources -}}
-{{- $resource := lower (trim (toString .)) -}}
-{{- $parts := splitList "/" $resource -}}
-{{- $allowedSubresource := and (eq (len $parts) 2) (has (last $parts) $allowedSubresources) -}}
-{{- if or (contains "*" $resource) (and (gt (len $parts) 1) (not $allowedSubresource)) -}}
-{{- fail (printf "extraRules resource %q is not allowed: wildcards and subresources other than status and scale reach beyond read-only configuration" (toString .)) -}}
-{{- end -}}
-{{- end -}}
-{{- range .nonResourceURLs -}}
-{{- fail (printf "extraRules nonResourceURL %q is not allowed: this chart only grants resource list rules; /version is already granted with get" (toString .)) -}}
-{{- end -}}
-{{- end -}}
+{{- include "nullify-readonly.validateExtraRules" . -}}
 {{- end }}

@@ -34,8 +34,14 @@ spec:
               value: "{{ .Values.collector.s3.bucket }}"
             - name: NULLIFY_S3_KEY_PREFIX
               value: "{{ .Values.collector.s3.keyPrefix }}"
+            - name: NULLIFY_S3_SOURCE_PREFIX
+              value: "{{ .Values.collector.s3.keyPrefix }}"
             - name: AWS_REGION
               value: "{{ include "k8s-collector.awsRegion" . }}"
+            - name: NULLIFY_COLLECT_SECRETS
+              value: {{ .Values.grantSecretsRead | default false | quote }}
+            - name: NULLIFY_COLLECT_CONFIGMAPS
+              value: {{ ne (toString .Values.grantConfigMapsRead) "false" | quote }}
             - name: CLUSTER_NAME
               value: "{{ .Values.collector.clusterName }}"
             {{- if $isGKE }}

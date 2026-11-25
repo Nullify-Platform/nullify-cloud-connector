@@ -1,0 +1,5 @@
+# expect: extraRules must name non-empty apiGroups and resources lists
+extraRules:
+  - apiGroups: ["acme.example"]
+    resources: []
+    verbs: ["list"]

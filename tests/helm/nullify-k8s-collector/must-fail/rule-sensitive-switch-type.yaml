@@ -1,0 +1,8 @@
+# expect: grantSecretsRead must be a boolean
+grantSecretsRead: "false"
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false

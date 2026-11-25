@@ -1,4 +1,4 @@
-# expect: extraRules verb "create" is not allowed
+# expect: extraRules verbs must contain one or more list verbs
 extraRules:
   - apiGroups: [""]
     resources: ["pods"]

@@ -18,7 +18,7 @@ The data collected includes (but is not limited to):
 - Cloud Provider: {{ .Values.cloudProvider | default "aws" }}
 - Cluster Name: {{ .Values.collector.clusterName }}
 - S3 Bucket: {{ .Values.collector.s3.bucket }}
-- S3 Key Prefix: {{ .Values.collector.s3.keyPrefix }}
+- S3 Source Prefix: {{ .Values.collector.s3.keyPrefix }}
 - AWS Region: {{ .Values.collector.aws.region | default "region of collector.kms.keyArn" }}
 - Namespace: {{ include "k8s-collector.namespace" . }}
 - Schedule: {{ .Values.collector.schedule }}

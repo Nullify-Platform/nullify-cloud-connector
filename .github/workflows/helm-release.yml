@@ -9,6 +9,10 @@ on:
       - "scripts/test-helm-charts.sh"
       - "scripts/check-rbac-manifest.sh"
       - "scripts/test_routing_rbac.py"
+      - "scripts/kubernetes-discovery-rbac.py"
+      - "scripts/test_kubernetes_discovery_rbac.py"
+      - "scripts/test_helm_source_prefix.py"
+      - "tests/fixtures/kubernetes-discovery/**"
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   push:
@@ -20,6 +24,10 @@ on:
       - "scripts/test-helm-charts.sh"
       - "scripts/check-rbac-manifest.sh"
       - "scripts/test_routing_rbac.py"
+      - "scripts/kubernetes-discovery-rbac.py"
+      - "scripts/test_kubernetes_discovery_rbac.py"
+      - "scripts/test_helm_source_prefix.py"
+      - "tests/fixtures/kubernetes-discovery/**"
       - "tests/helm/**"
       - ".github/workflows/helm-release.yml"
   workflow_dispatch:
@@ -70,6 +78,12 @@ jobs:
 
       - name: Check routing collector RBAC
         run: python3 scripts/test_routing_rbac.py
+
+      - name: Check discovery permission generation
+        run: python3 scripts/test_kubernetes_discovery_rbac.py
+
+      - name: Check collector source upload configuration
+        run: python3 scripts/test_helm_source_prefix.py
 
       - name: Lint and render
         run: scripts/test-helm-charts.sh "$CHART"

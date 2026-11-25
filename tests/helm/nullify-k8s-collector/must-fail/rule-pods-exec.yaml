@@ -1,0 +1,11 @@
+# expect: extraRules resource "pods/exec" is not allowed
+extraRules:
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["list"]
+collector:
+  enabled: false
+serviceAccount:
+  create: false
+clusterRoleBinding:
+  create: false

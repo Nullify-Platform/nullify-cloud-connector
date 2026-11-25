@@ -142,6 +142,7 @@ aws cloudformation create-stack \
     ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::NULLIFY-ACCOUNT:role/NULLIFY-ROLE \
     ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
     ParameterKey=EnableEKSIntegration,ParameterValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/ \
     ParameterKey=EKSOidcProviderURL,ParameterValue=$OIDC_URL \
   --capabilities CAPABILITY_NAMED_IAM
 
@@ -155,6 +156,7 @@ aws cloudformation create-stack \
     ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::NULLIFY-ACCOUNT:role/NULLIFY-ROLE \
     ParameterKey=NullifyS3Bucket,ParameterValue=NULLIFY-BUCKET \
     ParameterKey=EnableEKSIntegration,ParameterValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/ \
     ParameterKey=EKSOidcProviderURL,ParameterValue=A78D8794A06CAE5791C5812CDB164C7D.gr7.ap-southeast-2.eks.amazonaws.com \
   --capabilities CAPABILITY_NAMED_IAM
 ```
@@ -184,7 +186,9 @@ The policy grants its actions on the ARN you pass in one statement, and on `arn:
 
 The account check runs on every request rather than at deploy time because CloudFormation template `Condition`s accept only `Ref`, `Fn::FindInMap` and other conditions, so `AWS::AccountId` cannot be compared with an account parsed out of a parameter. The effective permissions are the same either way. Nullify's key policy is the real gate: the role can only use Nullify keys whose key policy allows it. Either ARN form produces a working grant, so an existing stack does not need updating when the configure page changes. The `KMSPolicyResource` stack output lists both resources.
 
-Update an existing stack, keeping its current values:
+Update an existing stack, keeping its current values and supplying the exact
+`CollectorUploadPrefix` issued by Nullify for an enabled EKS collector. Keep an
+existing access point ARN; a bucket grant does not cover access point uploads:
 
 ```bash
 aws cloudformation update-stack \
@@ -198,11 +202,17 @@ aws cloudformation update-stack \
     ParameterKey=EnableEKSIntegration,UsePreviousValue=true \
     ParameterKey=ExternalID,UsePreviousValue=true \
     ParameterKey=NullifyS3Bucket,UsePreviousValue=true \
+    ParameterKey=NullifyS3AccessPointArn,UsePreviousValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/ \
     ParameterKey=NullifyKMSKeyArn,UsePreviousValue=true \
   --capabilities CAPABILITY_NAMED_IAM
 ```
 
-`UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
+If EKS integration is disabled, omit `CollectorUploadPrefix`. For later updates
+that already have the correct scoped prefix, use `CollectorUploadPrefix,UsePreviousValue=true`
+instead of supplying the value again.
+
+`UsePreviousValue=true` only works for parameters the stack's current template already has. A stack deployed from an older template version may lack `EKSOidcProviderURL`, `EnableEKSIntegration`, `NullifyS3AccessPointArn` or `NullifyKMSKeyArn`: for those, replace `UsePreviousValue=true` with `ParameterValue=...` (or drop the line to take the default), and keep `--template-body file://nullify-cloudformation-template.json` so the new template is used.
 
 ### 5. Collector upload target
 
@@ -322,6 +332,11 @@ Nullify connects from these IPs. Use the Nullify region that serves your tenant:
 
 ### Setup script
 
+Until release tag `nullify-k8s-readonly-access-v0.2.0` is published, run the
+script from a reviewed checkout containing `manifests/nullify-readonly-rbac.yaml`,
+or pass that reviewed file explicitly with `--rbac-manifest PATH`. A standalone
+download cannot fetch the matching release manifest before publication and stops.
+
 `../scripts/setup-eks-managed-scan.sh` does steps 1 (unless `--skip-access-entry`), 2 and 3 for one cluster, and verifies the result:
 
 ```bash
@@ -338,7 +353,7 @@ cd aws-integration-setup/scripts
   --customer-name yourcompany --nullify-region eu-central-1
 ```
 
-Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (the only supported mode), `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.1.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
+Other flags: `--role-arn` instead of `--customer-name`, `--authorization rbac` (the only supported mode), `--group`, `--allow-auth-mode-change`, `--kube-context NAME` (use an existing kubeconfig context instead of a temporary one), `--rbac-manifest PATH|URL` (default: `manifests/nullify-readonly-rbac.yaml` from this checkout, or the same file at release tag `nullify-k8s-readonly-access-v0.2.0` when the checkout lacks it; if that tag's file cannot be fetched the run stops and asks for `--rbac-manifest`), `--skip-rbac` when Helm or GitOps applies RBAC, `--skip-network`, and `--dry-run` with `apply` or `remove`. `--help` lists them all.
 
 ### Step 4: verify
 
@@ -369,6 +384,6 @@ Remove in this order so no access entry outlives the role:
 
 `../scripts/cleanup.sh --method cloudformation --stack-name nullify-aws-integration --region <stack-region> --eks-access-regions eu-west-1,us-east-1` does steps 2 and 3 in that order. Without `--region`, the main stack is looked up in the AWS CLI's configured region.
 
-## Collector 4 source prefix cutover
+## Source-qualified collector prefix cutover
 
-See the [upgrade and rollback requirements](../../README.md#collector-4-source-prefix-cutover).
+See the [upgrade and rollback requirements](../../README.md#source-qualified-collector-prefix-cutover).

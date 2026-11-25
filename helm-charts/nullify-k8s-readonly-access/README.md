@@ -70,7 +70,7 @@ Choose one of the three methods below.
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
 helm upgrade --install nullify-k8s-readonly-access nullify/nullify-k8s-readonly-access \
-  --version 0.1.0 --namespace default --set groupName="$NULLIFY_GROUP"
+  --version 0.2.0 --namespace default --set groupName="$NULLIFY_GROUP"
 ```
 
 Both objects are cluster-scoped. `--namespace` only chooses where Helm stores its release record.
@@ -99,7 +99,7 @@ spec:
   chart:
     spec:
       chart: nullify-k8s-readonly-access
-      version: "0.1.x"
+      version: "0.2.x"
       sourceRef:
         kind: HelmRepository
         name: nullify
@@ -119,7 +119,7 @@ spec:
   interval: 24h
   url: https://github.com/Nullify-Platform/nullify-cloud-connector
   ref:
-    tag: nullify-k8s-readonly-access-v0.1.0
+    tag: nullify-k8s-readonly-access-v0.2.0
   ignore: |
     /*
     !/manifests/
@@ -145,7 +145,7 @@ is the chart's default render. CI fails if the manifest and the chart drift apar
 Pin a tag, never `main`:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/nullify-k8s-readonly-access-v0.1.0/manifests/nullify-readonly-rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/Nullify-Platform/nullify-cloud-connector/nullify-k8s-readonly-access-v0.2.0/manifests/nullify-readonly-rbac.yaml
 ```
 
 To move from the manifest to Helm later, let Helm adopt the two objects instead
@@ -240,7 +240,7 @@ kinds, leaving those kinds uncollected.
 | `grantSecretsRead` | `false` | Opt in to Secret-value access. The default managed-scan verifier rejects this grant. |
 | `grantConfigMapsRead` | `true` | Include `configmaps`. Must match `collectConfigMaps` on the cluster in Nullify. |
 | `extraSubjects` | `[]` | Extra binding subjects of kind `User`, `Group` or `ServiceAccount`. Any name starting `system:` (trimmed, any case) is rejected, as are the `default` ServiceAccount in any namespace and ServiceAccounts in `kube-system`, `kube-public` and `kube-node-lease`. |
-| `extraRules` | `[]` | Extra ClusterRole rules. Only `list` (no `get` or `watch`); no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); no `nonResourceURLs` (`/version` is already granted with `get`). |
+| `extraRules` | `[]` | Extra ClusterRole rules. Core Secrets and ConfigMaps also require their matching grant switches. Only `list` (no `get` or `watch`); no wildcard `apiGroups` or `resources`; no subresources other than `status` and `scale` (so no `exec`, `log`, `proxy`, or CRD subresources such as a VM `console`); no `nonResourceURLs` (`/version` is already granted with `get`). |
 | `labels` | `{}` | Labels added to both objects. `rbac.authorization.k8s.io/aggregate-to-view`, `aggregate-to-edit` and `aggregate-to-admin` are rejected, as are keys this chart already sets (`app.kubernetes.io/managed-by` and the other standard labels). |
 | `annotations` | `{}` | Annotations added to both objects |
 
@@ -250,3 +250,11 @@ kinds, leaving those kinds uncollected.
 helm uninstall nullify-k8s-readonly-access --namespace default
 # or: kubectl delete clusterrolebinding,clusterrole nullify-readonly
 ```
+
+## Discovered resource grants
+
+See the [discovery RBAC procedure](../../README.md#discovered-kubernetes-resource-permissions)
+for exact CRD and custom-resource list rules. The same generated values file works
+with this chart and the collector chart. For this chart, keep `groupName` equal to
+the EKS access entry or Terraform managed-scan group. Existing Terraform roles can
+stay managed by Terraform; give a supplemental Helm release distinct role names.
