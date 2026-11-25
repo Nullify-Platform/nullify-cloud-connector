@@ -6,8 +6,7 @@
 #   helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
 #     --namespace nullify --create-namespace -f values-production.yaml
 #
-# The file below shows the EKS (IRSA) setup. See the bottom of this file
-# for the equivalent GKE (Workload Identity) setup.
+# EKS (IRSA) example
 #
 # REQUIRED VALUES (get these from Nullify configure page):
 #   - collector.clusterName: Your exact cluster name
@@ -73,12 +72,9 @@ labels:
   environment: "production"
 
 # ---------------------------------------------------------------------------
-# GKE (Workload Identity) example
+# GKE projected-token example
 # ---------------------------------------------------------------------------
 # Replace the section above with the block below for a GKE deployment.
-# See README.md for one-time onboarding steps (creating the GCP service
-# account, sharing its uniqueId with Nullify, and binding it to the
-# in-cluster ServiceAccount via Workload Identity).
 #
 # cloudProvider: gcp
 #

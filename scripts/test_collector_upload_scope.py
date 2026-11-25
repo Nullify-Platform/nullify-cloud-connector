@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import check_iam_policy_drift as policy_drift
+
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = json.loads((ROOT / "aws-integration-setup/cloudformation/nullify-cloudformation-template.json").read_text())
 
@@ -35,6 +37,45 @@ def render(value, parameters, conditions):
         condition, yes, no = value["Fn::If"]
         return render(yes if conditions[condition] else no, parameters, conditions)
     return {key: render(item, parameters, conditions) for key, item in value.items()}
+
+
+class RequiredGrants(unittest.TestCase):
+    ROLE = "arn:${partition}:iam::${account}:role/${role_name}"
+
+    def policy_sources(self):
+        yield "CloudFormation", policy_drift.cfn_entries(policy_drift.READONLY_RESOURCES), policy_drift.cfn_entries(policy_drift.DENY_RESOURCES)
+        for tree in policy_drift.TERRAFORM_TREES:
+            source = ROOT / tree / policy_drift.DATA_TF_RELATIVE
+            yield tree, policy_drift.terraform_entries(source, policy_drift.READONLY_SOURCES), policy_drift.terraform_entries(source, [policy_drift.DENY_SOURCE])
+
+    def test_actual_templates_have_every_required_grant(self):
+        for source, allowed, denied in self.policy_sources():
+            with self.subTest(source=source):
+                self.assertEqual(policy_drift.missing_grants(allowed, denied), [])
+
+    def test_missing_broad_scoped_or_denied_grants_do_not_pass(self):
+        lambda_read = ("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())
+        self_simulate = ("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", (self.ROLE,)), ())
+        for source, allowed, denied in self.policy_sources():
+            self.assertIn(lambda_read, allowed)
+            self.assertIn(self_simulate, allowed)
+            for case, removed, added, extra_deny, want in (
+                ("lambda read missing", lambda_read, set(), set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read as a wildcard", lambda_read, {("Allow", "action", "lambda:Get*", ("resources", ("*",)), ())}, set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read scoped", lambda_read, {("Allow", "action", "lambda:GetFunctionConfiguration", ("resources", ("arn:aws:lambda:us-east-1:123456789012:function:one",)), ())}, set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read with the wrong effect", lambda_read, {("Deny", "action", "lambda:GetFunctionConfiguration", ("resources", ("*",)), ())}, set(), ["lambda:GetFunctionConfiguration"]),
+                ("lambda read explicitly denied", None, set(), {("Deny", "action", "lambda:*", ("resources", ("*",)), ())}, ["lambda:GetFunctionConfiguration"]),
+                ("self simulation missing", self_simulate, set(), set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation on every principal", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation on another role", self_simulate, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("arn:${partition}:iam::${account}:role/other",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation as a wildcard", self_simulate, {("Allow", "action", "iam:Simulate*", ("resources", (self.ROLE,)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation explicitly denied", None, set(), {("Deny", "action", "iam:Simulate*", ("resources", ("*",)), ())}, ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to an every-principal grant", None, {("Allow", "action", "iam:SimulatePrincipalPolicy", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to a wildcard grant", None, {("Allow", "action", "iam:*", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+                ("self simulation next to a NotAction grant", None, {("Allow", "not_action", "s3:*", ("resources", ("*",)), ())}, set(), ["iam:SimulatePrincipalPolicy"]),
+            ):
+                with self.subTest(source=source, case=case):
+                    self.assertEqual(policy_drift.missing_grants((allowed - {removed}) | added, denied | extra_deny), want)
 
 
 class CollectorUploadScope(unittest.TestCase):

@@ -69,6 +69,6 @@ For all other cases, use the standard flow above.
 | `service_account_unique_id` | 21-digit SA unique ID |
 
 
-## Collector 4 source prefix cutover
+## Source-qualified collector prefix cutover
 
-See the [upgrade and rollback requirements](../../../../README.md#collector-4-source-prefix-cutover).
+See the [upgrade and rollback requirements](../../../../README.md#source-qualified-collector-prefix-cutover).

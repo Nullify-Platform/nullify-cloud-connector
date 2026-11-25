@@ -82,6 +82,10 @@ See [`gcp-integration-setup/terraform/README.md`](gcp-integration-setup/terrafor
 
 ### **Option 1: Install from Helm Repository (Recommended)**
 
+Install 0.7.0 after it is published and your tenant backend and upload grants are ready.
+For existing releases pinned to 0.6.1 or earlier, follow the
+[source-qualified prefix cutover](#source-qualified-collector-prefix-cutover) first.
+
 ```bash
 # 1. Add the Nullify Helm repository
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
@@ -93,16 +97,18 @@ collector:
   clusterName: "your-cluster-name"     # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
+    keyPrefix: "k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/"  # Exact collectorUploadPrefix from Nullify
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
 
 serviceAccount:
   annotations:
-    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/NullifyReadOnlyRole"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-your-company-NullifyReadOnlyRole"
 EOF
 
 # 3. Install the chart
 helm install nullify-collector nullify/nullify-k8s-collector \
+  --version 0.7.0 \
   -f values-production.yaml \
   --namespace nullify \
   --create-namespace
@@ -232,6 +238,7 @@ aws cloudformation create-stack \
     ParameterKey=CrossAccountRoleArn,ParameterValue=arn:aws:iam::ACCOUNT:role/ROLE \
     ParameterKey=NullifyS3Bucket,ParameterValue=your-nullify-bucket \
     ParameterKey=EnableEKSIntegration,ParameterValue=true \
+    ParameterKey=CollectorUploadPrefix,ParameterValue=k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/ \
     ParameterKey=EKSOidcProviderURL,ParameterValue=your-oidc-url \
   --capabilities CAPABILITY_NAMED_IAM \
   --region us-west-2
@@ -414,6 +421,7 @@ collector:
   clusterName: "your-cluster-name"   # Must match your actual EKS cluster name
   s3:
     bucket: "your-nullify-bucket"
+    keyPrefix: "k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/"  # Exact collectorUploadPrefix from Nullify
     keyPrefix: "k8s-collector-scoped/YOUR-SOURCE-TENANT-ID/"
   kms:
     keyArn: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
@@ -597,7 +605,11 @@ not evidence that an image has been published or a cluster upgraded.
   enabled EKS collector without this value fails validation.
 
 Old credentials that grant `k8s-collector/*` do not grant access to the new root.
-Install the new exact source grant before upgrading the collector. An image older
+Install the new exact source grant before upgrading the collector. Replace the
+legacy `k8s-collector/<source>/` value in your saved Helm values or Terraform
+variables with the issued `k8s-collector-scoped/<source>/` value. Retaining the
+legacy value, including through `--reuse-values`, fails the 0.7.0 validator.
+Keep the existing S3 bucket or access point ARN and KMS configuration. An image older
 than 3.49.0 cannot use this protocol. Manual deployments with no
 `NULLIFY_S3_SOURCE_PREFIX` keep their old upload keys, including custom legacy
 `NULLIFY_S3_KEY_PREFIX` values. Custom paths need their existing notification

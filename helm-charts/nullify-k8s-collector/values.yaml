@@ -12,9 +12,6 @@
 #   - GKE: collector.gke.awsRoleArn
 #          (Nullify-owned federated AWS IAM role ARN, provided by Nullify
 #           after you register your cluster's OIDC issuer URL)
-#          serviceAccount.annotations."iam.gke.io/gcp-service-account"
-#          (Your GCP service account email, bound to the in-cluster
-#           ServiceAccount via Workload Identity)
 #
 # The chart does not create its namespace. Install with
 #   helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
@@ -23,7 +20,6 @@
 # Which cluster platform the collector is running on.
 # Supported values: "aws" (EKS, default) | "gcp" (GKE).
 # - "aws" authenticates via IRSA (service account → AWS IAM role).
-# - "gcp" authenticates via GKE Workload Identity → sts:AssumeRoleWithWebIdentity.
 cloudProvider: aws
 
 # Cluster-level permissions
@@ -136,7 +132,6 @@ nodeSelector: {}
 #
 # The chart picks the right annotation based on `cloudProvider`:
 #   - aws: expects `eks.amazonaws.com/role-arn` (IRSA)
-#   - gcp: expects `iam.gke.io/gcp-service-account` (Workload Identity)
 #
 # Leave the other provider's annotation unset; the chart renders only the
 # one that applies. Extra annotations are passed through unchanged.
@@ -145,9 +140,6 @@ serviceAccount:
         # Required when cloudProvider=aws (EKS). IAM role ARN from the Nullify
         # configure page: arn:aws:iam::<account-id>:role/AWSIntegration-<CustomerName>-NullifyReadOnlyRole
         eks.amazonaws.com/role-arn: ""
-        # Used when cloudProvider=gcp (GKE). Your GCP service account email,
-        # e.g. nullify-k8s-collector@your-project.iam.gserviceaccount.com.
-        # iam.gke.io/gcp-service-account: "YOUR-GCP-SA-EMAIL"
     create: true
     # cloudProvider=aws: fail the render unless the role-arn annotation above is
     # an arn:aws:iam:: role ARN. Set false only when
