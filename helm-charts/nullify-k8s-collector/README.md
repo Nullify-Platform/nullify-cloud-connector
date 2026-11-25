@@ -7,7 +7,7 @@ This Helm chart deploys a Kubernetes collector for the Nullify platform to gathe
 - Kubernetes 1.21+ (the chart uses `batch/v1` CronJob)
 - Helm 3
 - **EKS:** the Nullify AWS integration deployed with its EKS integration enabled (see [AWS IAM Configuration](#aws-iam-configuration))
-- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-workload-identity-federation))
+- **GKE:** the cluster registered with Nullify (see [GKE](#gke-with-a-projected-kubernetes-token))
 - Egress from the collector pod over HTTPS to `public.ecr.aws`, and to STS and S3 in the Nullify bucket's region
 
 > **Image tag:** the default `collector.image.tag` is `k8s-collector-4.0.0`,
@@ -20,22 +20,30 @@ The same chart runs on **EKS** and **GKE**. Select the platform via `cloudProvid
 | `cloudProvider` | Cluster  | How the collector authenticates to AWS              |
 | --------------- | -------- | --------------------------------------------------- |
 | `aws` (default) | EKS      | IRSA — ServiceAccount → AWS IAM role                |
-| `gcp`           | GKE      | Cluster-issued service-account token → `sts:AssumeRoleWithWebIdentity` |
+| `gcp`           | GKE      | Projected Kubernetes token → AWS STS |
 
 In both cases the collector uploads cluster metadata to the same Nullify-managed
 S3 bucket. No long-lived AWS credential is stored in the customer cluster.
 
 ## Installation
 
-Chart 0.6.1 uses collector 4 and requires the exact `collectorUploadPrefix` from a compatible Nullify backend. Confirm the paired IAM/backend rollout before installing or upgrading. The standard Kubernetes panel on older deployments does not supply this value; contact Nullify instead of deriving a prefix. For an existing 3.x backend, use a complete compatible version set confirmed by Nullify, including chart 0.5.0 and its matching IAM policy. See the [cutover and rollback requirements](../../README.md#collector-4-source-prefix-cutover).
+Use the chart version, image tag and upload prefix returned by your Nullify
+deployment's `GET /admin/integrations/cloud/k8s/setup` endpoint. The Kubernetes
+connector panel can generate the complete install command and start a collection
+Job immediately. A successful Job confirms upload; check Nullify for the fresh
+inventory and audit to confirm ingestion.
+
+The examples in this branch use chart 0.6.1 and its source-qualified upload
+contract. A deployment that returns chart 0.5.0 uses the older upload contract.
+Use its generated installation command; do not upgrade only the chart or image.
 
 The chart does not create its namespace. Let Helm create it:
 
 ```bash
 helm repo add nullify https://nullify-platform.github.io/nullify-cloud-connector/
 helm repo update
-helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.1 \
-  --namespace nullify --create-namespace \
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
+  --version 0.6.1 --namespace nullify --create-namespace \
   -f values-production.yaml
 ```
 
@@ -50,7 +58,7 @@ The chart refuses to render when a required value is missing or still a placehol
 
 > **Required values**: `collector.clusterName`, `collector.s3.bucket`, `collector.s3.keyPrefix`, `collector.kms.keyArn`, and
 > `serviceAccount.annotations."eks.amazonaws.com/role-arn"` (EKS) or `collector.gke.awsRoleArn` (GKE).
-> Get these from the Nullify deployment settings. If the exact prefix is absent, stop and ask Nullify to confirm backend compatibility.
+> Get these from the Nullify configure page.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
@@ -89,14 +97,14 @@ The collector container runs with:
 
 ## AWS IAM Configuration
 
-> 📖 **Note**: Copy the IAM role ARN, S3 bucket and KMS key ARN from **Settings → Connectors → AWS** and **Kubernetes**. Obtain the exact collector upload prefix from a compatible Nullify deployment.
+> 📖 **Note**: The IAM role ARN, S3 bucket and KMS key ARN are provided in the Nullify configure page (Configure > Integrations > AWS).
 
 ### EKS with IRSA (IAM Roles for Service Accounts)
 
 Do not create the IRSA role by hand. The Nullify AWS integration role gains the collector's trust and permissions when you enable its EKS integration:
 
-- **CloudFormation** ([template](../../aws-integration-setup/cloudformation/README.md)): update the stack with `EnableEKSIntegration=true`, `EKSOidcProviderURL=oidc.eks.<cluster-region>.amazonaws.com/id/<ISSUER_ID>` (no `https://`), `NullifyS3Bucket`, `NullifyKMSKeyArn` (the key ARN), and the exact `CollectorUploadPrefix`.
-- **Terraform** ([module](../../aws-integration-setup/terraform/README.md)): set `enable_kubernetes_integration = true`, `eks_cluster_arns`, `s3_bucket_name`, `kms_key_arn`, and `collector_upload_prefix`. `kubernetes_namespace` and `service_account_name` must match this chart's `serviceAccount.namespace` and `serviceAccount.name`. Deploy the collector with either this chart or the `k8s-resources` module, not both.
+- **CloudFormation** ([template](../../aws-integration-setup/cloudformation/README.md)): update the stack with `EnableEKSIntegration=true`, `EKSOidcProviderURL=oidc.eks.<cluster-region>.amazonaws.com/id/<ISSUER_ID>` (no `https://`), `NullifyS3Bucket` and `NullifyKMSKeyArn` (the key ARN).
+- **Terraform** ([module](../../aws-integration-setup/terraform/README.md)): set `enable_kubernetes_integration = true`, `eks_cluster_arns`, `s3_bucket_name` and `kms_key_arn`. `kubernetes_namespace` and `service_account_name` must match this chart's `serviceAccount.namespace` and `serviceAccount.name`. Deploy the collector with either this chart or the `k8s-resources` module, not both.
 
 The cluster needs an IAM OIDC provider (`eksctl utils associate-iam-oidc-provider --cluster <name> --approve`).
 
@@ -118,14 +126,14 @@ serviceAccount:
     eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/AWSIntegration-yourcompany-NullifyReadOnlyRole"
 ```
 
-### GKE with Workload Identity Federation
+### GKE with a projected Kubernetes token
 
 For GKE clusters, the collector authenticates to AWS without any long-lived credential.
 The flow is:
 
-1. Kubernetes projects a ServiceAccount token signed by the GKE cluster into the collector pod.
+1. Kubernetes projects a ServiceAccount token signed by the cluster issuer into the collector pod.
 2. The collector forwards that token to AWS STS `AssumeRoleWithWebIdentity`.
-3. AWS validates the token against the registered cluster OIDC provider and returns short-lived
+3. AWS validates the token against the cluster OIDC provider and returns short-lived
    credentials for a Nullify-owned IAM role scoped to your S3 prefix.
 
 #### One-time onboarding
@@ -133,12 +141,12 @@ The flow is:
 1. **Get your cluster's OIDC issuer URL** and share it with Nullify:
 
    ```bash
-   gcloud container clusters describe YOUR-CLUSTER --zone YOUR-ZONE \
-     --format='value(selfLink)'
+   kubectl --context YOUR-CONTEXT get --raw /.well-known/openid-configuration | jq -r .issuer
    ```
 
-   This outputs something like:
-   `https://container.googleapis.com/v1/projects/my-project/locations/us-central1-a/clusters/prod`
+   Use the returned `issuer` exactly. The cluster API `selfLink` is not a
+   substitute for the token issuer. AWS must be able to discover the issuer and
+   its signing keys.
 
 2. **Share the OIDC issuer URL with Nullify** (via the configure page or support).
    Nullify registers it and gives you back the **role ARN** to use in the Helm values.
@@ -147,8 +155,6 @@ No GCP service accounts, Workload Identity bindings, or special cluster configur
 The chart uses a projected Kubernetes ServiceAccount token signed by the cluster's OIDC issuer.
 
 #### Helm values
-
-Save the following as `values-gke.yaml` and replace all placeholders, including the exact prefix returned by Nullify. Do not use this example until the collector 4 backend and role policy are ready.
 
 ```yaml
 cloudProvider: gcp
@@ -168,8 +174,8 @@ collector:
 Then install:
 
 ```bash
-helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.1 \
-  --namespace nullify --create-namespace -f values-gke.yaml
+helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
+  --version 0.6.1 --namespace nullify --create-namespace -f values-gke.yaml
 ```
 
 ### Other Kubernetes Clusters
@@ -238,9 +244,9 @@ To enable debug logging for troubleshooting:
        enabled: true
    ```
 
-2. **Upgrade the deployment** with the same chart version and complete values used for installation. This example uses chart 0.6.1. Substitute the installed version if it differs.
+2. **Upgrade the deployment**:
    ```bash
-   helm upgrade nullify-k8s-collector nullify/nullify-k8s-collector --version 0.6.1 -n nullify -f values.yaml
+   helm upgrade nullify-k8s-collector nullify/nullify-k8s-collector -n nullify -f values.yaml
    ```
 
 3. **Check debug logs**:

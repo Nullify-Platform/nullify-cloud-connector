@@ -6,13 +6,11 @@
 #   helm upgrade --install nullify-k8s-collector nullify/nullify-k8s-collector \
 #     --namespace nullify --create-namespace -f values-production.yaml
 #
-# The file below shows the EKS (IRSA) setup. See the bottom of this file
-# for the equivalent GKE cluster OIDC setup.
+# EKS (IRSA) example
 #
 # REQUIRED VALUES (get these from Nullify configure page):
 #   - collector.clusterName: Your exact cluster name
 #   - collector.s3.bucket: S3 bucket name
-#   - collector.s3.keyPrefix: Exact collectorUploadPrefix from Nullify, including its trailing slash
 #   - collector.kms.keyArn: KMS key ARN (or alias ARN)
 #   - EKS only: serviceAccount.annotations."eks.amazonaws.com/role-arn"
 #   - GKE only: collector.gke.awsRoleArn
@@ -74,12 +72,9 @@ labels:
   environment: "production"
 
 # ---------------------------------------------------------------------------
-# GKE cluster OIDC example
+# GKE projected-token example
 # ---------------------------------------------------------------------------
 # Replace the section above with the block below for a GKE deployment.
-# Register the cluster OIDC issuer with Nullify and use the supplied AWS role.
-# The chart projects a Kubernetes service-account token for AWS STS.
-# See README.md for the cluster issuer onboarding steps.
 #
 # cloudProvider: gcp
 #

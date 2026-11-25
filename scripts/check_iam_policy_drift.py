@@ -21,6 +21,7 @@ statement -- before comparing.
 Exits non-zero and prints the symmetric difference on any mismatch.
 """
 
+import fnmatch
 import json
 import re
 import sys
@@ -48,21 +49,46 @@ _PARTITION_TOKEN = "${partition}"
 _CFN_PARTITION = re.compile(r"\$\{AWS::Partition\}")
 _TF_PARTITION = re.compile(r"\$\{data\.aws_partition\.current\.partition\}")
 
+# The role's own ARN is written with the account and role name tokens of each
+# template. Collapse them too, so a grant scoped to the role itself compares
+# equal.
+_ACCOUNT_TOKEN = "${account}"
+_ROLE_NAME_TOKEN = "${role_name}"
+# The CloudFormation role name is read from the role itself, so a grant that
+# names another role cannot match it.
+_CFN_ROLE_NAME = json.loads(CFN_TEMPLATE.read_text())["Resources"]["IAMViewOnlyRole"]["Properties"]["RoleName"]["Fn::Sub"]
+_CFN_TOKENS = (
+    (_CFN_PARTITION, _PARTITION_TOKEN),
+    (re.compile(r"\$\{AWS::AccountId\}"), _ACCOUNT_TOKEN),
+    (re.compile(re.escape(_CFN_ROLE_NAME)), _ROLE_NAME_TOKEN),
+)
+_TF_TOKENS = (
+    (_TF_PARTITION, _PARTITION_TOKEN),
+    (re.compile(r"\$\{data\.aws_caller_identity\.current\.account_id\}"), _ACCOUNT_TOKEN),
+    (re.compile(r"\$\{local\.role_name\}"), _ROLE_NAME_TOKEN),
+)
+
+
+def _substitute(tokens, value: str) -> str:
+    for pattern, token in tokens:
+        value = pattern.sub(token, value)
+    return value
+
 
 def _norm_cfn_value(value) -> str:
     if isinstance(value, str):
-        return _CFN_PARTITION.sub(_PARTITION_TOKEN, value)
+        return _substitute(_CFN_TOKENS, value)
     if isinstance(value, dict) and "Fn::Sub" in value:
         template = value["Fn::Sub"]
         if isinstance(template, list):
             template = template[0]
         if isinstance(template, str):
-            return _CFN_PARTITION.sub(_PARTITION_TOKEN, template)
+            return _substitute(_CFN_TOKENS, template)
     raise SystemExit(f"unsupported CloudFormation IAM value: {value!r}")
 
 
 def _norm_tf_value(value: str) -> str:
-    return _TF_PARTITION.sub(_PARTITION_TOKEN, value)
+    return _substitute(_TF_TOKENS, value)
 
 
 def _norm_resources(resources, negated: bool) -> tuple:
@@ -203,6 +229,37 @@ def terraform_entries(data_tf: Path, data_source_names: list) -> set:
     return entries
 
 
+# Grants the product needs in exactly this shape. lambda:GetFunctionConfiguration
+# reads function configuration only. iam:SimulatePrincipalPolicy lets the
+# connector check its own permissions before a scan, and only on its own role.
+REQUIRED_GRANTS = (
+    ("lambda:GetFunctionConfiguration", "*"),
+    ("iam:SimulatePrincipalPolicy", f"arn:{_PARTITION_TOKEN}:iam::{_ACCOUNT_TOKEN}:role/{_ROLE_NAME_TOKEN}"),
+)
+
+
+def _covers(key: str, pattern: str, action: str) -> bool:
+    return key == "not_action" or fnmatch.fnmatchcase(action.lower(), pattern.lower())
+
+
+def grants(readonly: set, denied: set, action: str, resource: str) -> bool:
+    """Report whether readonly allows action on exactly resource and nothing
+    denies it. A grant scoped to one resource must also be the only allow of
+    the action, so a broader grant next to it does not pass."""
+    required = ("Allow", "action", action, ("resources", (resource,)), ())
+    if required not in readonly:
+        return False
+    if resource != "*" and any(
+        entry != required and entry[0] == "Allow" and _covers(entry[1], entry[2], action) for entry in readonly
+    ):
+        return False
+    return not any(effect == "Deny" and _covers(key, pattern, action) for effect, key, pattern, _, _ in denied)
+
+
+def missing_grants(readonly: set, denied: set) -> list:
+    return [action for action, resource in REQUIRED_GRANTS if not grants(readonly, denied, action, resource)]
+
+
 def compare(label: str, cfn: set, terraform: set, reference: str = "CloudFormation") -> bool:
     if cfn == terraform:
         print(f"OK: {label} matches ({len(cfn)} entries)")
@@ -270,12 +327,19 @@ def main() -> int:
     cfn_readonly = cfn_entries(READONLY_RESOURCES)
     cfn_deny = cfn_entries(DENY_RESOURCES)
 
-    ok = True
+    missing = missing_grants(cfn_readonly, cfn_deny)
+    ok = not missing
+    if missing:
+        print(f"MISSING: exact grants in CloudFormation: {missing}")
     for tree in TERRAFORM_TREES:
         data_tf = REPO_ROOT / tree / DATA_TF_RELATIVE
         tf_readonly = terraform_entries(data_tf, READONLY_SOURCES)
         tf_deny = terraform_entries(data_tf, [DENY_SOURCE])
 
+        missing = missing_grants(tf_readonly, tf_deny)
+        if missing:
+            print(f"MISSING: exact grants in {tree}: {missing}")
+            ok = False
         ok = compare(f"Allow statements: CloudFormation vs {tree}", cfn_readonly, tf_readonly) and ok
         ok = compare(f"Deny statements: CloudFormation vs {tree}", cfn_deny, tf_deny) and ok
 

@@ -614,6 +614,7 @@
                   "kms:GetKeyRotationStatus",
                   "kms:List*",
                   "lambda:GetFunction",
+                  "lambda:GetFunctionConfiguration",
                   "lambda:GetFunctionUrlConfig",
                   "lambda:GetPolicy",
                   "lambda:List*",
@@ -664,6 +665,16 @@
                 ],
                 "Resource": {
                   "Fn::Sub": "arn:${AWS::Partition}:ssm:*:*:document/SSM-SessionManagerRunShell"
+                },
+                "Condition": {}
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "iam:SimulatePrincipalPolicy"
+                ],
+                "Resource": {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AWSIntegration-${CustomerName}-NullifyReadOnlyRole"
                 },
                 "Condition": {}
               }
